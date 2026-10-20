@@ -10,6 +10,8 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // flutter_local_notifications 要求开启核心库脱糖（desugaring），否则 release 构建的 AAR 元数据检查会失败
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -51,4 +53,6 @@ flutter {
 dependencies {
     // MLKit 中文 OCR 模型（阶段三图片课表识别，必须显式引入避免中文乱码）
     implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    // 核心库脱糖运行时（配合上面的 isCoreLibraryDesugaringEnabled）
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
