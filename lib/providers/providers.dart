@@ -8,6 +8,7 @@ import '../models/course.dart';
 import '../models/course_override.dart';
 import '../models/semester.dart';
 import '../models/time_slot.dart';
+import '../models/ui_settings.dart';
 import '../services/notification_service.dart';
 import '../services/ongoing_notice_service.dart';
 import '../services/widget_service.dart';
@@ -533,3 +534,28 @@ class SegmentSettingsNotifier extends AsyncNotifier<SegmentSettings> {
 final segmentSettingsProvider =
     AsyncNotifierProvider<SegmentSettingsNotifier, SegmentSettings>(
         SegmentSettingsNotifier.new);
+
+/// 界面设置状态（1.1.1）：整体 JSON 持久化到 app_settings 的 ui_settings 键。
+/// 改动即落库并通知全 App（主题色/字体在 MaterialApp 层监听，格子外观在周视图监听）。
+class UiSettingsNotifier extends AsyncNotifier<UiSettings> {
+  @override
+  Future<UiSettings> build() async {
+    return UiSettings.fromEncoded(await Dao.instance.getSetting('ui_settings'));
+  }
+
+  /// 整体替换（设置页每次调节都走这里）：先落库再发状态，保证重启后一致
+  Future<void> apply(UiSettings next) async {
+    await Dao.instance.setSetting('ui_settings', next.encode());
+    state = AsyncData(next);
+  }
+
+  /// 便捷更新：基于当前值 copyWith 后整体替换
+  Future<void> updateWith(UiSettings Function(UiSettings) fn) async {
+    final cur = state.value ?? const UiSettings();
+    await apply(fn(cur));
+  }
+}
+
+final uiSettingsProvider =
+    AsyncNotifierProvider<UiSettingsNotifier, UiSettings>(
+        UiSettingsNotifier.new);

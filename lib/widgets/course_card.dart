@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../models/course.dart';
-import '../ui/app_styles.dart';
+import '../utils/color_schemes.dart';
 import '../utils/morandi_palette.dart';
 
-/// 周视图课程卡片（莫兰迪底色圆角卡片，展示 课程名、教室、老师三项）
+/// 周视图课程卡片（圆角卡片，展示 课程名、教室、老师、备注）
 ///
 /// 跨节次合并时高度由父布局按 (endSection - startSection + 1) 撑高。
-/// 单击进入详情，长按弹出编辑/删除菜单。
+/// 单击进入详情，长按弹出编辑/删除菜单（菜单是否可用由周视图编辑模式决定）。
+/// 显示色经当前配色方案映射（[displayColorValue]，由调用方用
+/// mapCourseColor 算好传入；不传则用课程存储色）。
+/// 圆角、边框、字号档位、显示项开关均来自「界面设置」，由调用方传入，
+/// 默认值保持 1.1.0 之前的观感，方便其他场景（如预览）直接复用。
 /// 深色模式下底色经 [MorandiPalette.desaturateForDark] 降饱和降明度，
-/// 文字切换为浅色系，保证深色背景上的对比度（阶段五·深色适配）。
+/// 文字切换为浅色系，保证深色背景上的对比度。
 class CourseCard extends StatelessWidget {
   const CourseCard({
     super.key,
@@ -18,7 +22,13 @@ class CourseCard extends StatelessWidget {
     required this.onLongPress,
     this.dimmed = false,
     this.badgeText,
-    this.showNoteDot = false,
+    this.displayColorValue,
+    this.cornerRadius = 12,
+    this.boldBorder = false,
+    this.textSizeLevel = 1,
+    this.showClassroom = true,
+    this.showTeacher = true,
+    this.showNote = true,
   });
 
   final Course course;
@@ -28,51 +38,73 @@ class CourseCard extends StatelessWidget {
   /// 置灰状态（设置里开启「显示非本周课程」时使用）
   final bool dimmed;
 
-  /// 右上角角标文字，如同格多课时的「+2」；为空不显示
+  /// 右上角角标文字，如同格多课时的「+N」；为空不显示
   final String? badgeText;
 
-  /// 课程有备注时在右上角显示小圆点提示
-  final bool showNoteDot;
+  /// 实际显示色（ARGB，已按当前配色方案映射）；为空用课程存储色
+  final int? displayColorValue;
 
-  bool get _hasBadge =>
-      (badgeText != null && badgeText!.isNotEmpty) || showNoteDot;
+  /// 圆角半径（界面设置）
+  final double cornerRadius;
+
+  /// 是否加粗边框：边框取格子色加深版（界面设置）
+  final bool boldBorder;
+
+  /// 文字大小档位：0 小 / 1 中 / 2 大（界面设置）
+  final int textSizeLevel;
+
+  /// 是否显示教室 / 老师 / 备注（界面设置）
+  final bool showClassroom;
+  final bool showTeacher;
+  final bool showNote;
+
+  double get _nameSize => switch (textSizeLevel) { 0 => 11, 2 => 13, _ => 12 };
+  double get _subSize => switch (textSizeLevel) { 0 => 9, 2 => 11, _ => 10 };
 
   @override
   Widget build(BuildContext context) {
     // 深色模式：底色降饱和降明度 + 浅色文字；浅色模式：原色 + 深色文字
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark
-        ? MorandiPalette.desaturateForDark(Color(course.colorValue))
-        : Color(course.colorValue);
+    final baseColor = Color(displayColorValue ?? course.colorValue);
+    final cardColor =
+        isDark ? MorandiPalette.desaturateForDark(baseColor) : baseColor;
     final titleColor = Color(
         isDark ? MorandiPalette.darkTextColor : MorandiPalette.textColor);
     final subtitleColor = Color(isDark
         ? MorandiPalette.darkSubTextColor
         : MorandiPalette.subTextColor);
-    // 角标/备注圆点在深色下反色为浅色块+深字，浅色下保持深色块+白字
+    // 角标在深色下反色为浅色块+深字，浅色下保持深色块+白字
     final badgeBg = Color(isDark
         ? MorandiPalette.darkBadgeBackground
         : MorandiPalette.textColor);
     final badgeFg = isDark
         ? Color(MorandiPalette.darkBadgeTextColor)
         : Colors.white;
+    // 加粗边框：取「实际显示底色」加深一档，同色系描边不跳色
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(cornerRadius),
+      side: boldBorder
+          ? BorderSide(color: darkenColor(cardColor), width: 1.4)
+          : BorderSide.none,
+    );
+    final noteText = course.note?.trim() ?? '';
     return Opacity(
       opacity: dimmed ? 0.35 : 1,
       child: Material(
         color: cardColor,
-        // 圆角统一取全局常量（视觉规范：卡片 12px）
-        borderRadius: BorderRadius.circular(AppRadii.card),
+        shape: shape,
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
           onLongPress: onLongPress,
-          borderRadius: BorderRadius.circular(AppRadii.card),
+          customBorder: shape,
           child: Stack(
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                // 名称、教室、老师拼成一个富文本整体展示：单节卡片高度有限时
-                // 由 maxLines 统一截断省略，避免多 Text 纵向堆叠溢出
+                // 名称、教室、老师、备注拼成一个富文本整体展示：单节卡片高度
+                // 有限时由 maxLines 统一截断省略，避免多 Text 纵向堆叠溢出。
+                // 备注用斜体小字跟在最后（1.1.1 起替代原右上角小圆点）。
                 child: Text.rich(
                   TextSpan(
                     children: [
@@ -80,27 +112,40 @@ class CourseCard extends StatelessWidget {
                         text: course.name,
                         style: TextStyle(
                           color: titleColor,
-                          fontSize: 12,
+                          fontSize: _nameSize,
                           fontWeight: FontWeight.w600,
                           height: 1.15,
                         ),
                       ),
-                      if (course.classroom != null &&
+                      if (showClassroom &&
+                          course.classroom != null &&
                           course.classroom!.isNotEmpty)
                         TextSpan(
                           text: '\n${course.classroom!}',
                           style: TextStyle(
                             color: subtitleColor,
-                            fontSize: 10,
+                            fontSize: _subSize,
                             height: 1.1,
                           ),
                         ),
-                      if (course.teacher != null && course.teacher!.isNotEmpty)
+                      if (showTeacher &&
+                          course.teacher != null &&
+                          course.teacher!.isNotEmpty)
                         TextSpan(
                           text: '\n${course.teacher!}',
                           style: TextStyle(
                             color: subtitleColor,
-                            fontSize: 10,
+                            fontSize: _subSize,
+                            height: 1.1,
+                          ),
+                        ),
+                      if (showNote && noteText.isNotEmpty)
+                        TextSpan(
+                          text: '\n$noteText',
+                          style: TextStyle(
+                            color: subtitleColor,
+                            fontSize: _subSize,
+                            fontStyle: FontStyle.italic,
                             height: 1.1,
                           ),
                         ),
@@ -108,53 +153,32 @@ class CourseCard extends StatelessWidget {
                   ),
                   maxLines:
                       (course.endSection - course.startSection + 1) == 1
-                          ? 3
-                          : 6,
+                          ? 4
+                          : 8,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              // 右上角角标区：备注圆点 + 多课「+N」
-              if (_hasBadge)
+              // 右上角角标（多课「+N」/ 调课「调」）
+              if (badgeText != null && badgeText!.isNotEmpty)
                 Positioned(
                   top: 4,
                   right: 4,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (showNoteDot)
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: badgeBg,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      if (showNoteDot &&
-                          badgeText != null &&
-                          badgeText!.isNotEmpty)
-                        const SizedBox(width: 4),
-                      if (badgeText != null && badgeText!.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 5, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: badgeBg,
-                            // 卡片角标（+N / 调）是 chip 级小元素，圆角统一取全局常量
-                            borderRadius:
-                                BorderRadius.circular(AppRadii.chip),
-                          ),
-                          child: Text(
-                            badgeText!,
-                            style: TextStyle(
-                              color: badgeFg,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              height: 1.2,
-                            ),
-                          ),
-                        ),
-                    ],
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: badgeBg,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      badgeText!,
+                      style: TextStyle(
+                        color: badgeFg,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        height: 1.2,
+                      ),
+                    ),
                   ),
                 ),
             ],

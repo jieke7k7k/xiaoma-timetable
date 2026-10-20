@@ -3,25 +3,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../models/course.dart';
+import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../ui/app_styles.dart';
+import '../utils/color_schemes.dart';
 import '../utils/exam_countdown.dart';
 import '../utils/week_parser.dart';
 
 /// 课程详情底部弹窗：完整展示课程信息，提供编辑/删除入口
+///
+/// 1.1.1 起详情页不再受周视图「编辑模式」限制：点课程进详情即可编辑、
+/// 删除、加时段、改备注（用户拍板）；编辑模式开关只管空白新建与长按菜单。
 class CourseDetailSheet extends ConsumerWidget {
-  const CourseDetailSheet(
-      {super.key, required this.course, this.allowEdit = true});
+  const CourseDetailSheet({super.key, required this.course});
 
   final Course course;
 
-  /// 是否允许修改（编辑/删除/新增时段入口）。
-  /// 周视图未开启编辑模式时传 false，详情只供查看，防止误触改课。
-  final bool allowEdit;
-
   /// 展示课程详情 BottomSheet
-  static Future<void> show(BuildContext context, Course course,
-      {bool allowEdit = true}) {
+  static Future<void> show(BuildContext context, Course course) {
     return showModalBottomSheet(
       context: context,
       // 弹层圆角统一走全局常量（与 main.dart 的 bottomSheetTheme 一致）
@@ -29,7 +28,7 @@ class CourseDetailSheet extends ConsumerWidget {
         borderRadius:
             BorderRadius.vertical(top: Radius.circular(AppRadii.sheet)),
       ),
-      builder: (_) => CourseDetailSheet(course: course, allowEdit: allowEdit),
+      builder: (_) => CourseDetailSheet(course: course),
     );
   }
 
@@ -73,7 +72,11 @@ class CourseDetailSheet extends ConsumerWidget {
                   width: 12,
                   height: 12,
                   decoration: BoxDecoration(
-                    color: Color(course.colorValue),
+                    // 色点跟随当前课程配色方案（与卡片显示色一致）
+                    color: Color(mapCourseColor(
+                        course.colorValue,
+                        (ref.watch(uiSettingsProvider).value ?? const UiSettings())
+                            .colorScheme)),
                     // 12px 考试色点近似正圆的微圆角，属微小装饰元素，不归入 AppRadii
                     borderRadius: BorderRadius.circular(3),
                   ),
@@ -132,7 +135,6 @@ class CourseDetailSheet extends ConsumerWidget {
                   ? '无'
                   : course.note!,
             ),
-            if (allowEdit) ...[
             const SizedBox(height: 16),
             // 同名课程快捷录入：一周多节 / 实验课不用重复填名称老师颜色
             SizedBox(
@@ -174,7 +176,6 @@ class CourseDetailSheet extends ConsumerWidget {
                 ),
               ],
             ),
-            ],
           ],
         ),
       ),

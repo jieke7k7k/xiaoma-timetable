@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/course.dart';
+import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../ui/app_styles.dart';
 import '../utils/morandi_palette.dart';
@@ -74,7 +75,10 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
       // 同名快捷录入（详情页「新增本课其他时段」）时额外带入名称/老师/莫兰迪颜色
       _dayOfWeek = args['dayOfWeek'] as int? ?? 1;
       _startSection = args['startSection'] as int? ?? 1;
-      _endSection = _startSection;
+      // 长按高亮建课会带入结束节次（拖动选了多节）；没有时与起始节相同
+      final presetEnd = args['endSection'] as int?;
+      _endSection =
+          (presetEnd != null && presetEnd > _startSection) ? presetEnd : _startSection;
       final presetName = args['name'] as String?;
       if (presetName != null && presetName.isNotEmpty) {
         _nameController.text = presetName;
@@ -293,19 +297,32 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
               ],
             ),
             const SizedBox(height: 20),
-            // 莫兰迪色板
-            Text('课程颜色（莫兰迪色系）',
+            // 课程颜色：显示当前配色方案的颜色，选中后仍存「莫兰迪色位」的
+            // 标准值（见 color_schemes.dart 的映射原理），以后切方案能整表换色
+            Text(
+                '课程颜色（${(ref.watch(uiSettingsProvider).value ?? const UiSettings()).colorScheme.name}）',
                 style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 8),
             Wrap(
               spacing: AppSpacing.m,
               runSpacing: AppSpacing.m,
               children: [
-                for (final c in MorandiPalette.colors)
+                for (var i = 0; i < MorandiPalette.colors.length; i++)
                   _ColorDot(
-                    color: c,
-                    selected: c == _colorValue,
-                    onTap: () => setState(() => _colorValue = c),
+                    color: (ref.watch(uiSettingsProvider).value ??
+                            const UiSettings())
+                        .colorScheme
+                        .colors[i],
+                    selected: MorandiPalette.colors[i] == _colorValue,
+                    onTap: () =>
+                        setState(() => _colorValue = MorandiPalette.colors[i]),
+                  ),
+                // 课程存了非色板色（历史自定义色）时，把它也列出来保持可选
+                if (!MorandiPalette.colors.contains(_colorValue))
+                  _ColorDot(
+                    color: _colorValue,
+                    selected: true,
+                    onTap: () {},
                   ),
               ],
             ),

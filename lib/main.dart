@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'models/ui_settings.dart';
 import 'pages/course_edit_page.dart';
 import 'pages/course_override_page.dart';
 import 'pages/exam_countdown_page.dart';
 import 'pages/import_page.dart';
 import 'pages/semester_manage_page.dart';
 import 'pages/settings_page.dart';
+import 'pages/ui_settings_page.dart';
 import 'pages/splash_page.dart';
 import 'pages/time_settings_page.dart';
 import 'pages/week_view_page.dart';
@@ -36,11 +38,17 @@ class SimpleTimetableApp extends ConsumerWidget {
     // provider 加载完成前（首帧）先按跟随系统渲染，读库完成后立即切到持久化值
     final themeMode =
         ref.watch(themeSettingsProvider).value ?? ThemeMode.system;
-    final colorScheme = ColorScheme.fromSeed(seedColor: const Color(0xFF6B8E7B));
+    // 主题种子色与显示字体由「界面设置」驱动（1.1.1）：种子色默认雾绿 0xFF6B8E7B，
+    // 用户可在界面设置里换预置或自定义；provider 未加载完时用默认值渲染首帧
+    final uiSettings =
+        ref.watch(uiSettingsProvider).value ?? const UiSettings();
+    final seed = Color(uiSettings.themeSeedValue);
+    final colorScheme = ColorScheme.fromSeed(seedColor: seed);
     final darkColorScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF6B8E7B),
+      seedColor: seed,
       brightness: Brightness.dark,
     );
+    final fontFamily = uiSettings.fontFamily;
     // 全局统一圆角/弹层形状（阶段五·视觉打磨）：卡片 12px、BottomSheet 顶部 16px，
     // 具体常量见 ui/app_styles.dart，页面内不要再各自硬编码
     return MaterialApp(
@@ -49,6 +57,7 @@ class SimpleTimetableApp extends ConsumerWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: colorScheme,
+        fontFamily: fontFamily,
         cardTheme: const CardThemeData(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(AppRadii.card)),
@@ -64,6 +73,7 @@ class SimpleTimetableApp extends ConsumerWidget {
       darkTheme: ThemeData(
         useMaterial3: true,
         colorScheme: darkColorScheme,
+        fontFamily: fontFamily,
         cardTheme: const CardThemeData(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(AppRadii.card)),
@@ -87,6 +97,8 @@ class SimpleTimetableApp extends ConsumerWidget {
         '/course-edit': (context) => const CourseEditPage(),
         // 作息时间设置
         '/time-settings': (context) => const TimeSettingsPage(),
+        // 界面设置（格子外观/配色方案/主题色/字体）
+        '/ui-settings': (context) => const UiSettingsPage(),
         // 课程导入入口
         '/import': (context) => const ImportPage(),
         // 学期管理（新建/切换/删除学期）

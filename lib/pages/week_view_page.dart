@@ -1,10 +1,13 @@
+import 'package:flutter/gestures.dart' show DeviceGestureSettings;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/course.dart';
 import '../models/course_override.dart';
+import '../models/ui_settings.dart';
 import '../providers/providers.dart';
+import '../utils/color_schemes.dart';
 import '../utils/override_effect.dart';
 import '../utils/slot_layout.dart';
 import '../utils/week_calc.dart';
@@ -67,6 +70,9 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
   /// 编辑模式：开启后才能点空白新建课程、长按课程编辑/删除；
   /// 关闭时点空白无反应、点课程只看详情，防止误触（用户真机反馈）
   bool _editMode = false;
+
+  /// 网格纵向滚动锁：长按空白格拖动扩展节次期间锁定纵向滚动，避免手势打架
+  bool _gridScrollLocked = false;
 
   /// 时间轴宽度
   static const double _timeAxisWidth = 50;
@@ -141,7 +147,10 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
 
     return Scaffold(
       appBar: AppBar(
-        centerTitle: true,
+        // 周数标题靠左上角（用户要求）；主页是根页面，显式关掉系统自动
+        // 生成的返回箭头（首次使用经导入流程进入时曾出现无用返回按钮）
+        automaticallyImplyLeading: false,
+        centerTitle: false,
         title: InkWell(
           onTap: () => setState(() => _showJumper = !_showJumper),
           borderRadius: BorderRadius.circular(AppRadii.chip),
@@ -247,6 +256,9 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
               displayDays: displayDays,
               timeAxisWidth: _timeAxisWidth,
               editMode: _editMode,
+              scrollLocked: _gridScrollLocked,
+              onScrollLockChanged: (locked) =>
+                  setState(() => _gridScrollLocked = locked),
               onWeekChanged: (page) =>
                   ref.read(displayWeekProvider.notifier).setWeek(page + 1),
             ),
@@ -372,7 +384,8 @@ class _DayCell extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          '周${_weekNames[date.weekday - 1]}',
+          // 表头只显示一~日，不带「周」字（用户要求）
+          _weekNames[date.weekday - 1],
           style: TextStyle(
             fontSize: 10,
             color: isToday ? colorScheme.primary : colorScheme.outline,
@@ -465,10 +478,13 @@ class _WeekJumper extends StatelessWidget {
   }
 }
 
-/// 网格区：左侧时间轴固定 + PageView 承载每周网格
+/// 网格区：左侧时间轴 + PageView 承载每周网格
 ///
-/// 在这里统一计算布局度量（列宽 / 行高 / 生效分隔带），时间轴与周网格共用，
-/// 保证分隔带两侧严格对齐（高度守恒）。
+/// 1.1.1 布局变更：行高不再按屏均分，改用「界面设置」的固定格子高度（px）；
+/// 总高超过可视区时整块（时间轴 + 网格）可纵向滚动，两者共用同一滚动体
+/// 保证分隔带两侧严格对齐。高亮拖动建课期间经 [scrollLocked] 锁住纵向滚动。
+/// 左右滑切周降灵敏：子树统一把手势触发距离（touchSlop）调大到 30，
+/// 手指静置/微动不再拖动课表（用户反馈）。
 class _GridArea extends ConsumerWidget {
   const _GridArea({
     required this.pageController,
@@ -477,6 +493,8 @@ class _GridArea extends ConsumerWidget {
     required this.timeAxisWidth,
     required this.onWeekChanged,
     required this.editMode,
+    required this.scrollLocked,
+    required this.onScrollLockChanged,
   });
 
   final PageController pageController;
@@ -485,6 +503,8 @@ class _GridArea extends ConsumerWidget {
   final double timeAxisWidth;
   final ValueChanged<int> onWeekChanged;
   final bool editMode;
+  final bool scrollLocked;
+  final ValueChanged<bool> onScrollLockChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -492,6 +512,7 @@ class _GridArea extends ConsumerWidget {
     final slots = ref.watch(timeSlotsProvider).value ?? [];
     if (semester == null || slots.isEmpty) return const SizedBox.shrink();
     final sectionCount = slots.length;
+    final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
     // 分隔带位置由「作息分段设置」驱动；provider 未加载完成时回退默认值（午休 5 / 晚间 9）
     final seg = ref.watch(segmentSettingsProvider).value;
     final lunchAfter = seg?.lunchAfterSection ?? 5;
@@ -501,52 +522,71 @@ class _GridArea extends ConsumerWidget {
       (after: lunchAfter, label: '午休'),
       (after: dinnerAfter, label: '晚间'),
     ].where((b) => b.after < sectionCount).toList();
+    // 固定行高（界面设置）；总高 = 节次行高之和 + 分隔带
+    final rowHeight = ui.cellHeight;
+    final totalHeight =
+        sectionCount * rowHeight + activeBands.length * _bandHeight;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final columnCount = displayDays.length;
         final cellWidth =
             (constraints.maxWidth - timeAxisWidth - 1) / columnCount;
-        // 高度守恒：分隔带参与总高度计算，行高 = 剩余高度 / 节次数
-        final rowHeight =
-            (constraints.maxHeight - activeBands.length * _bandHeight) /
-                sectionCount;
-        return Row(
-          children: [
-            // 左侧时间轴（固定，与网格共用行高 + 分隔带占位）
-            _TimeAxis(
-              slots: slots,
-              width: timeAxisWidth,
-              rowHeight: rowHeight,
-              activeBands: activeBands,
-            ),
-            const VerticalDivider(width: 1),
-            // 右侧周网格（可左右滑动）
-            Expanded(
-              child: PageView.builder(
-                controller: pageController,
-                onPageChanged: (page) {
-                  // 切周成功的轻触感反馈
-                  HapticFeedback.lightImpact();
-                  onWeekChanged(page);
-                },
-                itemCount: semester.totalWeeks,
-                itemBuilder: (context, index) {
-                  final week = index + 1;
-                  return _WeekGrid(
-                    key: ValueKey(week),
-                    week: week,
-                    sectionCount: sectionCount,
-                    displayDays: displayDays,
-                    cellWidth: cellWidth,
+        // 内容不足一屏时按可视高撑满（格子保持设定高度，空白留在底部）
+        final contentHeight =
+            totalHeight < constraints.maxHeight ? constraints.maxHeight : totalHeight;
+        return MediaQuery(
+          // 降灵敏：子树手势触发距离 18 → 30，静置手指不再拖动课表
+          data: MediaQuery.of(context).copyWith(
+            gestureSettings: const DeviceGestureSettings(touchSlop: 30),
+          ),
+          child: SingleChildScrollView(
+            physics: scrollLocked
+                ? const NeverScrollableScrollPhysics()
+                : const ClampingScrollPhysics(),
+            child: SizedBox(
+              height: contentHeight,
+              child: Row(
+                children: [
+                  // 左侧时间轴（与网格共用行高 + 分隔带占位，随网格一起滚动）
+                  _TimeAxis(
+                    slots: slots,
+                    width: timeAxisWidth,
                     rowHeight: rowHeight,
                     activeBands: activeBands,
-                    editMode: editMode,
-                  );
-                },
+                    showTime: ui.axisShowTime,
+                  ),
+                  const VerticalDivider(width: 1),
+                  // 右侧周网格（可左右滑动）
+                  Expanded(
+                    child: PageView.builder(
+                      controller: pageController,
+                      onPageChanged: (page) {
+                        // 切周成功的轻触感反馈
+                        HapticFeedback.lightImpact();
+                        onWeekChanged(page);
+                      },
+                      itemCount: semester.totalWeeks,
+                      itemBuilder: (context, index) {
+                        final week = index + 1;
+                        return _WeekGrid(
+                          key: ValueKey(week),
+                          week: week,
+                          sectionCount: sectionCount,
+                          displayDays: displayDays,
+                          cellWidth: cellWidth,
+                          rowHeight: rowHeight,
+                          activeBands: activeBands,
+                          editMode: editMode,
+                          onScrollLockChanged: onScrollLockChanged,
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         );
       },
     );
@@ -560,12 +600,16 @@ class _TimeAxis extends StatelessWidget {
     required this.width,
     required this.rowHeight,
     required this.activeBands,
+    required this.showTime,
   });
 
   final List<dynamic> slots;
   final double width;
   final double rowHeight;
   final List<({int after, String label})> activeBands;
+
+  /// 是否显示每节起止时间（界面设置）；关时只显示节次数字
+  final bool showTime;
 
   @override
   Widget build(BuildContext context) {
@@ -593,12 +637,14 @@ class _TimeAxis extends StatelessWidget {
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                             color: colorScheme.onSurfaceVariant)),
-                    Text(slots[i].startTime,
-                        style:
-                            TextStyle(fontSize: 8, color: colorScheme.outline)),
-                    Text(slots[i].endTime,
-                        style:
-                            TextStyle(fontSize: 8, color: colorScheme.outline)),
+                    if (showTime) ...[
+                      Text(slots[i].startTime,
+                          style: TextStyle(
+                              fontSize: 8, color: colorScheme.outline)),
+                      Text(slots[i].endTime,
+                          style: TextStyle(
+                              fontSize: 8, color: colorScheme.outline)),
+                    ],
                   ],
                 ),
               ),
@@ -614,7 +660,12 @@ class _TimeAxis extends StatelessWidget {
 }
 
 /// 某一周的网格：N 列 × M 节次，课程按三态布局段绝对定位
-class _WeekGrid extends ConsumerWidget {
+///
+/// 1.1.1 新增「长按空白格高亮建课」：未点铅笔时（编辑模式亦可）长按空白格，
+/// 该格高亮并出现加号；保持长按上下拖动可按整节扩展/收缩节次（吸附节次、
+/// 遇已有课程止步）；松手后高亮保留，再单击高亮区进新建页（预填起止节次），
+/// 单击别处取消高亮。高亮状态保存在本页 State 里，PageView 滑走即自动消失。
+class _WeekGrid extends ConsumerStatefulWidget {
   const _WeekGrid({
     super.key,
     required this.week,
@@ -624,6 +675,7 @@ class _WeekGrid extends ConsumerWidget {
     required this.rowHeight,
     required this.activeBands,
     required this.editMode,
+    required this.onScrollLockChanged,
   });
 
   final int week;
@@ -633,9 +685,21 @@ class _WeekGrid extends ConsumerWidget {
   final double rowHeight;
   final List<({int after, String label})> activeBands;
   final bool editMode;
+  final ValueChanged<bool> onScrollLockChanged;
 
-  double _topOf(int section) =>
-      yOffsetTop(section, rowHeight, bandsBefore(section, activeBands));
+  @override
+  ConsumerState<_WeekGrid> createState() => _WeekGridState();
+}
+
+class _WeekGridState extends ConsumerState<_WeekGrid> {
+  /// 长按高亮选区（星期 + 起止节次）；为空表示无高亮
+  ({int day, int start, int end})? _highlight;
+
+  /// 长按起始节次（拖动扩展以它为锚点上下伸缩）
+  int? _anchorRow;
+
+  double _topOf(int section) => yOffsetTop(
+      section, widget.rowHeight, bandsBefore(section, widget.activeBands));
 
   /// 段内第一门课在该周的单次调课记录。
   /// 草稿课（无 id）或该周本就不上课的课程（调课记录无效）返回 null。
@@ -646,11 +710,65 @@ class _WeekGrid extends ConsumerWidget {
     return overrideMap[first.id];
   }
 
+  /// 坐标 → （星期， 节次）；点在分隔带上或越界返回 null
+  ({int day, int row})? _cellAt(
+      Offset pos, Map<int, List<DisplaySlot>> daySlots) {
+    final col = (pos.dx / widget.cellWidth).floor();
+    if (col < 0 || col >= widget.displayDays.length) return null;
+    for (var s = 1; s <= widget.sectionCount; s++) {
+      final top = _topOf(s);
+      if (pos.dy >= top && pos.dy < top + widget.rowHeight) {
+        return (day: widget.displayDays[col], row: s);
+      }
+    }
+    return null;
+  }
+
+  /// 某格是否无课（可高亮/新建）
+  bool _isEmptyCell(
+      Map<int, List<DisplaySlot>> daySlots, int day, int row) {
+    for (final slot in daySlots[day] ?? const <DisplaySlot>[]) {
+      if (!slot.isEmpty && row >= slot.startSection && row <= slot.endSection) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// 锚点所在「连续无课区间」：从锚点上下扩展，遇已有课程或边界止步
+  ({int lo, int hi}) _freeRange(
+      Map<int, List<DisplaySlot>> daySlots, int day, int anchor) {
+    final occupied = <int>{};
+    for (final slot in daySlots[day] ?? const <DisplaySlot>[]) {
+      if (slot.isEmpty) continue;
+      for (var s = slot.startSection; s <= slot.endSection; s++) {
+        occupied.add(s);
+      }
+    }
+    var lo = anchor;
+    while (lo > 1 && !occupied.contains(lo - 1)) {
+      lo--;
+    }
+    var hi = anchor;
+    while (hi < widget.sectionCount && !occupied.contains(hi + 1)) {
+      hi++;
+    }
+    return (lo: lo, hi: hi);
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    final week = widget.week;
+    final sectionCount = widget.sectionCount;
+    final displayDays = widget.displayDays;
+    final cellWidth = widget.cellWidth;
+    final rowHeight = widget.rowHeight;
+    final activeBands = widget.activeBands;
+    final editMode = widget.editMode;
     final allCourses = ref.watch(coursesProvider).value ?? [];
     final overrides = ref.watch(courseOverridesProvider).value ?? [];
     final showOther = ref.watch(showOtherWeeksProvider);
+    final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
     // 应用单次调课（阶段五）：停课的本次不显示，调课的按新时间/教室显示。
     // 调课副本保留原 course id 与 weeks，三态布局与详情页无需感知差异。
     final effective = effectiveCoursesForWeek(
@@ -684,49 +802,78 @@ class _WeekGrid extends ConsumerWidget {
     ];
     final totalHeight =
         sectionCount * rowHeight + activeBands.length * _bandHeight;
+    final scheme = Theme.of(context).colorScheme;
 
     return GestureDetector(
-      // 点击空白格新建课程（自动带入星期与节次）；非编辑模式直接忽略，防误触
+      // 点击处理：高亮存在时优先处理高亮（单击确认/单击别处取消）；
+      // 否则编辑模式下点空白格新建（自动带入星期与节次）；非编辑模式忽略，防误触
       onTapUp: (details) {
+        final cell = _cellAt(details.localPosition, daySlots);
+        if (cell == null) return;
+        final hl = _highlight;
+        if (hl != null) {
+          if (cell.day == hl.day &&
+              cell.row >= hl.start &&
+              cell.row <= hl.end) {
+            setState(() => _highlight = null);
+            Navigator.pushNamed(context, '/course-edit', arguments: {
+              'dayOfWeek': hl.day,
+              'startSection': hl.start,
+              'endSection': hl.end,
+            });
+          } else {
+            setState(() => _highlight = null);
+          }
+          return;
+        }
         if (!editMode) return;
-        final col = (details.localPosition.dx / cellWidth).floor();
-        if (col < 0 || col >= displayDays.length) return;
-        // 逐节比对纵向坐标（已含分隔带偏移）；点到分隔带上则忽略
-        int? row;
-        for (var s = 1; s <= sectionCount; s++) {
-          final top = _topOf(s);
-          if (details.localPosition.dy >= top &&
-              details.localPosition.dy < top + rowHeight) {
-            row = s;
-            break;
-          }
-        }
-        if (row == null) return;
-        final day = displayDays[col];
-        // 若点到已有课程则不处理（卡片自带手势）
-        for (final slot in daySlots[day]!) {
-          if (!slot.isEmpty &&
-              row >= slot.startSection &&
-              row <= slot.endSection) {
-            return;
-          }
-        }
+        if (!_isEmptyCell(daySlots, cell.day, cell.row)) return;
         Navigator.pushNamed(context, '/course-edit', arguments: {
-          'dayOfWeek': day,
-          'startSection': row,
+          'dayOfWeek': cell.day,
+          'startSection': cell.row,
         });
       },
+      // 长按空白格：起高亮（编辑模式开不开都行，这是防误触之外的第二入口）
+      onLongPressStart: (details) {
+        final cell = _cellAt(details.localPosition, daySlots);
+        if (cell == null) return;
+        if (!_isEmptyCell(daySlots, cell.day, cell.row)) return;
+        HapticFeedback.mediumImpact();
+        setState(() {
+          _anchorRow = cell.row;
+          _highlight = (day: cell.day, start: cell.row, end: cell.row);
+        });
+        widget.onScrollLockChanged(true);
+      },
+      // 保持长按上下拖：以锚点为中心、按整节吸附扩展/收缩，遇已有课程止步
+      onLongPressMoveUpdate: (details) {
+        final hl = _highlight;
+        final anchor = _anchorRow;
+        if (hl == null || anchor == null) return;
+        final cell = _cellAt(details.localPosition, daySlots);
+        if (cell == null || cell.day != hl.day) return;
+        final range = _freeRange(daySlots, hl.day, anchor);
+        final target = cell.row.clamp(range.lo, range.hi);
+        final ns = target < anchor ? target : anchor;
+        final ne = target > anchor ? target : anchor;
+        if (ns != hl.start || ne != hl.end) {
+          setState(() => _highlight = (day: hl.day, start: ns, end: ne));
+        }
+      },
+      onLongPressEnd: (_) => widget.onScrollLockChanged(false),
+      onLongPressCancel: () => widget.onScrollLockChanged(false),
       child: Stack(
         children: [
-          // 网格背景线
-          _GridLines(
-            cellWidth: cellWidth,
-            rowHeight: rowHeight,
-            sectionCount: sectionCount,
-            columnCount: displayDays.length,
-            activeBands: activeBands,
-            totalHeight: totalHeight,
-          ),
+          // 网格背景线（界面设置可关）
+          if (ui.showGridLines)
+            _GridLines(
+              cellWidth: cellWidth,
+              rowHeight: rowHeight,
+              sectionCount: sectionCount,
+              columnCount: displayDays.length,
+              activeBands: activeBands,
+              totalHeight: totalHeight,
+            ),
           // 午休 / 晚间分隔带
           for (var i = 0; i < activeBands.length; i++)
             Positioned(
@@ -736,10 +883,36 @@ class _WeekGrid extends ConsumerWidget {
               height: _bandHeight,
               child: _DividerBand(label: activeBands[i].label),
             ),
+          // 长按高亮选区：主题色描边 + 浅填充 + 中央加号（再次单击进新建页）
+          if (_highlight != null && displayDays.contains(_highlight!.day))
+            Positioned(
+              left: displayDays.indexOf(_highlight!.day) * cellWidth + 1.5,
+              top: _topOf(_highlight!.start) + 1.5,
+              width: cellWidth - 3,
+              height: (_highlight!.end - _highlight!.start + 1) * rowHeight - 3,
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withValues(alpha: 0.13),
+                    border: Border.all(color: scheme.primary, width: 1.6),
+                    borderRadius: BorderRadius.circular(ui.cornerRadius),
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        color: scheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.add, size: 16, color: scheme.onPrimary),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           // 课程卡片（按三态布局段绝对定位）
-          for (var dayIndex = 0;
-              dayIndex < displayDays.length;
-              dayIndex++)
+          for (var dayIndex = 0; dayIndex < displayDays.length; dayIndex++)
             for (final slot in daySlots[displayDays[dayIndex]]!)
               if (!slot.isEmpty)
                 _PositionedCourseCard(
@@ -751,6 +924,7 @@ class _WeekGrid extends ConsumerWidget {
                   width: cellWidth,
                   height: slot.span * rowHeight,
                   editMode: editMode,
+                  ui: ui,
                 ),
           // 空周占位提示（阶段五·视觉打磨）：网格全空时给中文引导，
           // IgnorePointer 保证点击穿透到空白格的新建手势
@@ -893,11 +1067,15 @@ class _PositionedCourseCard extends StatelessWidget {
     required this.width,
     required this.height,
     required this.editMode,
+    required this.ui,
   });
 
   final DisplaySlot slot;
   final int week;
   final bool editMode;
+
+  /// 界面设置（配色方案/圆角/边框/字号/显示项），渲染卡片时用
+  final UiSettings ui;
 
   /// 该课在该周的单次调课记录（无则 null）
   final CourseOverride? courseOverride;
@@ -923,12 +1101,17 @@ class _PositionedCourseCard extends StatelessWidget {
         badgeText: isMulti
             ? '+${slot.extraCount}'
             : (isMoved ? '调' : null),
-        showNoteDot:
-            slot.courses.first.note?.trim().isNotEmpty == true,
+        displayColorValue:
+            mapCourseColor(slot.courses.first.colorValue, ui.colorScheme),
+        cornerRadius: ui.cornerRadius,
+        boldBorder: ui.boldBorder,
+        textSizeLevel: ui.cardTextSize,
+        showClassroom: ui.showClassroom,
+        showTeacher: ui.showTeacher,
+        showNote: ui.showNote,
         onTap: () => isMulti
             ? _showSlotPicker(context, slot)
-            : CourseDetailSheet.show(context, slot.courses.first,
-                allowEdit: editMode),
+            : CourseDetailSheet.show(context, slot.courses.first),
         // 非编辑模式长按无反应，防止误触进修改菜单
         onLongPress: () {
           if (editMode) {
@@ -979,7 +1162,7 @@ class _PositionedCourseCard extends StatelessWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
                   Navigator.pop(ctx);
-                  CourseDetailSheet.show(context, c, allowEdit: editMode);
+                  CourseDetailSheet.show(context, c);
                 },
               ),
             const SizedBox(height: 8),

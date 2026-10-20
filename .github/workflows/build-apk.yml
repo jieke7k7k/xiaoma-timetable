@@ -18,6 +18,13 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: 下载内置字体（不随仓库分发，见 assets/fonts/README.md）
+        run: |
+          curl -sL --retry 3 -o assets/fonts/LXGWWenKai-Regular.ttf "https://github.com/lxgw/LxgwWenKai/releases/download/v1.530/LXGWWenKai-Regular.ttf"
+          curl -sL --retry 3 -o assets/fonts/ZCOOLKuaiLe-Regular.ttf "https://raw.githubusercontent.com/google/fonts/main/ofl/zcoolkuaile/ZCOOLKuaiLe-Regular.ttf"
+          test $(stat -c%s assets/fonts/LXGWWenKai-Regular.ttf) -gt 10000000
+          test $(stat -c%s assets/fonts/ZCOOLKuaiLe-Regular.ttf) -gt 1000000
+          ls -la assets/fonts
       - name: 解码并校验正式签名钥匙
         run: |
           printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/xiaoma-release.jks"

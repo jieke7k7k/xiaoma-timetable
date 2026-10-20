@@ -122,6 +122,13 @@ class SettingsPage extends ConsumerWidget {
               ),
             ),
             const _SectionHeader(title: '显示设置'),
+            ListTile(
+              leading: const Icon(Icons.tune_outlined),
+              title: const Text('界面设置'),
+              subtitle: const Text('格子大小、配色方案、主题颜色、显示字体，带实时预览'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.pushNamed(context, '/ui-settings'),
+            ),
             Consumer(
               builder: (ctx, ref, _) {
                 final showOther = ref.watch(showOtherWeeksProvider);
