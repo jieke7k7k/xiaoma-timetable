@@ -18,8 +18,12 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - name: 解码正式签名钥匙
-        run: printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/xiaoma-release.jks"
+      - name: 解码并校验正式签名钥匙
+        run: |
+          printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/xiaoma-release.jks"
+          echo "f946a471a600c98ad4b16ec13e2d05fc20f812fc41ae64e2951167cee2b25c6b  $RUNNER_TEMP/xiaoma-release.jks" | sha256sum -c -
+          keytool -list -keystore "$RUNNER_TEMP/xiaoma-release.jks" -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" -alias "${{ secrets.ANDROID_KEY_ALIAS }}" > /dev/null
+          echo "签名钥匙完整性与密码校验通过"
       - run: flutter build apk --release
         env:
           KEYSTORE_PATH: ${{ runner.temp }}/xiaoma-release.jks
