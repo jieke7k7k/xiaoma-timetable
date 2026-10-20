@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/models/course.dart';
 import 'package:xiaoma_timetable/models/time_slot.dart';
 import 'package:xiaoma_timetable/utils/ics_parser.dart';
@@ -87,6 +88,44 @@ void main() {
       expect(slot(3).endTime, '10:20');
       // 第 5 节结束来自「药理学」块（第 3–5 节 12:00 止）
       expect(slot(5).endTime, '12:00');
+    });
+
+    test('以 App 默认作息为底校准：重建完整的 13 节真实网格', () {
+      // 真机回归：默认作息与真实作息结构不一致时，旧校准拼出过
+      // 第 5 节 14:00-12:00、第 8 节 16:55-16:20 等倒置时间。
+      // 期望网格按文件块交叉推导（每节 40 分钟）逐节核对。
+      final calibrated =
+          SlotCalibrator.calibrate(defaultTimeSlots, result.timeBlocks);
+
+      expect(calibrated, hasLength(13)); // 扩出第 13 节
+      const expected = {
+        1: ('08:00', '08:40'),
+        2: ('08:50', '09:30'),
+        3: ('09:40', '10:20'),
+        4: ('10:30', '11:10'),
+        5: ('11:20', '12:00'),
+        6: ('14:00', '14:40'),
+        7: ('14:50', '15:30'),
+        8: ('15:40', '16:20'),
+        9: ('16:30', '17:10'),
+        10: ('18:00', '18:40'),
+        11: ('18:45', '19:25'),
+        12: ('19:40', '20:20'),
+        13: ('20:30', '21:10'),
+      };
+      for (final s in calibrated) {
+        final e = expected[s.section]!;
+        expect(s.startTime, e.$1, reason: '第 ${s.section} 节开始');
+        expect(s.endTime, e.$2, reason: '第 ${s.section} 节结束');
+        expect(s.startTime.compareTo(s.endTime), lessThan(0),
+            reason: '第 ${s.section} 节不得倒置');
+      }
+      // 分段间隔：午休 12:00-14:00、晚餐 17:10-18:00
+      TimeSlot slot(int sec) => calibrated.firstWhere((e) => e.section == sec);
+      expect(slot(5).endTime, '12:00');
+      expect(slot(6).startTime, '14:00');
+      expect(slot(9).endTime, '17:10');
+      expect(slot(10).startTime, '18:00');
     });
   });
 }

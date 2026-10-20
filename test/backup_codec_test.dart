@@ -167,7 +167,7 @@ void main() {
           onCreate: (d, v) => DbHelper.instance.createSchema(d),
         ),
       );
-      // createSchema 自带「旧数据」：默认学期 + 12 节时间，正好用来验证被清空
+      // createSchema 自带「旧数据」：默认学期 + 默认节次时间，正好用来验证被清空
     });
 
     tearDown(() => db.close());
@@ -175,7 +175,7 @@ void main() {
     test('清空旧数据、重映射外键、覆盖设置', () async {
       // 旧数据确实存在
       expect(await db.query('semesters'), isNotEmpty);
-      expect((await db.query('time_slots')).length, 12);
+      expect((await db.query('time_slots')).length, defaultTimeSlots.length);
 
       final data = BackupCodec.decode(jsonEncode(backupJson()));
       final summary = await BackupCodec.restore(db, data);

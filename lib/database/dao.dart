@@ -76,10 +76,13 @@ class Dao {
     return rows.map(TimeSlot.fromMap).toList();
   }
 
+  /// 保存节次时间：已有节次则更新，没有则插入。
+  /// 导入校准可能扩出新节次（如第 13 节），纯 update 会静默丢弃，
+  /// 故用 insert + replace 主键冲突策略实现 upsert。
   Future<void> updateTimeSlot(TimeSlot slot) async {
     final db = await _db;
-    await db.update('time_slots', slot.toMap(),
-        where: 'section = ?', whereArgs: [slot.section]);
+    await db.insert('time_slots', slot.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   // ---------- 课程 ----------

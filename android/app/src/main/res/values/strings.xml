@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 小组件在系统选择器里的说明文案 -->
+    <string name="widget_description">今日课程一览</string>
+</resources>

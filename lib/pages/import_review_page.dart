@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../database/dao.dart';
 import '../models/course.dart';
+import '../models/time_slot.dart';
 import '../providers/providers.dart';
 import '../utils/conflict_detector.dart';
 import '../utils/ics_parser.dart';
@@ -151,8 +152,17 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
               SlotCalibrator.calibrate(currentSlots, widget.timeBlocks);
           final notifier = ref.read(timeSlotsProvider.notifier);
           for (final ns in newSlots) {
-            final old = currentSlots.firstWhere((s) => s.section == ns.section);
-            if (old.startTime != ns.startTime || old.endTime != ns.endTime) {
+            // 校准可能扩出原作息没有的新节次（如第 13 节），找不到旧值时直接新增
+            TimeSlot? old;
+            for (final s in currentSlots) {
+              if (s.section == ns.section) {
+                old = s;
+                break;
+              }
+            }
+            if (old == null ||
+                old.startTime != ns.startTime ||
+                old.endTime != ns.endTime) {
               await notifier.updateSlot(ns);
             }
           }

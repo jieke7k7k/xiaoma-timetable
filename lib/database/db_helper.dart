@@ -131,19 +131,21 @@ class DbHelper {
   }
 }
 
-/// 内置默认节次时间（12 节，上午 4 节 + 下午 4 节 + 晚上 4 节）
-/// 用户可在设置页修改节次总数与每节上下课时间
+/// 内置默认节次时间（13 节，上午 5 节 + 下午 4 节 + 晚上 4 节，每节 40 分钟）
+/// 与分段默认点（午休在第 5 节后、晚餐在第 9 节后）对齐；
+/// 导入课表文件后会按文件自动校准，用户也可在设置页逐节修改
 final List<TimeSlot> defaultTimeSlots = [
-  const TimeSlot(section: 1, startTime: '08:00', endTime: '08:45'),
-  const TimeSlot(section: 2, startTime: '08:55', endTime: '09:40'),
-  const TimeSlot(section: 3, startTime: '10:00', endTime: '10:45'),
-  const TimeSlot(section: 4, startTime: '10:55', endTime: '11:40'),
-  const TimeSlot(section: 5, startTime: '14:00', endTime: '14:45'),
-  const TimeSlot(section: 6, startTime: '14:55', endTime: '15:40'),
-  const TimeSlot(section: 7, startTime: '16:00', endTime: '16:45'),
-  const TimeSlot(section: 8, startTime: '16:55', endTime: '17:40'),
-  const TimeSlot(section: 9, startTime: '19:00', endTime: '19:45'),
-  const TimeSlot(section: 10, startTime: '19:55', endTime: '20:40'),
-  const TimeSlot(section: 11, startTime: '20:50', endTime: '21:35'),
-  const TimeSlot(section: 12, startTime: '21:45', endTime: '22:30'),
+  const TimeSlot(section: 1, startTime: '08:00', endTime: '08:40'),
+  const TimeSlot(section: 2, startTime: '08:50', endTime: '09:30'),
+  const TimeSlot(section: 3, startTime: '09:40', endTime: '10:20'),
+  const TimeSlot(section: 4, startTime: '10:30', endTime: '11:10'),
+  const TimeSlot(section: 5, startTime: '11:20', endTime: '12:00'),
+  const TimeSlot(section: 6, startTime: '14:00', endTime: '14:40'),
+  const TimeSlot(section: 7, startTime: '14:50', endTime: '15:30'),
+  const TimeSlot(section: 8, startTime: '15:40', endTime: '16:20'),
+  const TimeSlot(section: 9, startTime: '16:30', endTime: '17:10'),
+  const TimeSlot(section: 10, startTime: '18:00', endTime: '18:40'),
+  const TimeSlot(section: 11, startTime: '18:50', endTime: '19:30'),
+  const TimeSlot(section: 12, startTime: '19:40', endTime: '20:20'),
+  const TimeSlot(section: 13, startTime: '20:30', endTime: '21:10'),
 ];

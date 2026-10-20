@@ -31,6 +31,19 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            // 正式签名：云端构建时由 GitHub Secrets 注入钥匙路径与密码（环境变量）；本地无钥匙时不配置，release 回退用 debug 签名
+            val ksPath = System.getenv("KEYSTORE_PATH")
+            if (!ksPath.isNullOrEmpty() && file(ksPath).exists() && file(ksPath).length() > 0) {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             // 个人自用包：关闭 R8 代码压缩与资源收缩，避免 MLKit 等插件的反射类被裁剪导致构建失败或真机闪退（代价是包体积略大）
@@ -38,7 +51,7 @@ android {
             isShrinkResources = false
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (!System.getenv("KEYSTORE_PATH").isNullOrEmpty()) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }
     }
 }

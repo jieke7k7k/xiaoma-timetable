@@ -18,7 +18,14 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: 解码正式签名钥匙
+        run: printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/xiaoma-release.jks"
       - run: flutter build apk --release
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/xiaoma-release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       - uses: actions/upload-artifact@v4
         with:
           name: xiaoma-apk
