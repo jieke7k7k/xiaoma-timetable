@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/course.dart';
 import '../models/time_slot.dart';
 import '../providers/providers.dart';
 
@@ -81,6 +82,7 @@ class TimeSettingsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final slots = ref.watch(timeSlotsProvider).value ?? [];
+    final courses = ref.watch(coursesProvider).value ?? [];
     final segSettings = ref.watch(segmentSettingsProvider).value;
     final lunch = segSettings?.lunchAfterSection ?? 5;
     final dinner = segSettings?.dinnerAfterSection ?? 9;
@@ -105,6 +107,9 @@ class TimeSettingsPage extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 12),
+          // 每日节次总数（可自定义 4~20 节）
+          _buildSectionCountCard(context, ref, slots.length, courses),
+          const SizedBox(height: 12),
           // 分段设置
           _buildSegmentSettingsCard(context, ref, lunch, dinner, maxSection),
           const SizedBox(height: 12),
@@ -122,6 +127,72 @@ class TimeSettingsPage extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// 「每日节次」卡片：步进器增减总节数（4~20 节）。
+  /// 增加时在末尾按上一节时长顺延一节；减少时删最后一节，
+  /// 若有课程占用将被删掉的节次，先弹窗确认再删。
+  Widget _buildSectionCountCard(
+      BuildContext context, WidgetRef ref, int count, List<Course> courses) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('每日节次', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 4),
+            Text('一天一共上多少节课，按自己学校的作息增减',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.outline,
+                    )),
+            const SizedBox(height: 8),
+            _SegmentStepper(
+              label: '总节数',
+              value: count,
+              min: 4,
+              max: 20,
+              onChanged: (v) =>
+                  _changeSectionCount(context, ref, v, count, courses),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _changeSectionCount(BuildContext context, WidgetRef ref,
+      int target, int current, List<Course> courses) async {
+    final notifier = ref.read(timeSlotsProvider.notifier);
+    if (target > current) {
+      for (var i = current; i < target; i++) {
+        await notifier.addSection();
+      }
+    } else if (target < current) {
+      final affected = courses.where((c) => c.endSection > target).length;
+      if (affected > 0) {
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (d) => AlertDialog(
+            title: const Text('减少节次'),
+            content: Text('第 ${target + 1} 节及之后还有 $affected 门课程，'
+                '减少后这些课程将没有对应的上课时间。确定要减少吗？'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(d, false),
+                  child: const Text('取消')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(d, true),
+                  child: const Text('确定减少')),
+            ],
+          ),
+        );
+        if (ok != true) return;
+      }
+      for (var i = current; i > target; i--) {
+        await notifier.removeLastSection();
+      }
+    }
   }
 
   /// 「分段设置」卡片：两个步进器调整午休/晚餐分段点，改动即时持久化

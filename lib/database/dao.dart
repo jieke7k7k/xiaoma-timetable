@@ -79,6 +79,11 @@ class Dao {
   /// 保存节次时间：已有节次则更新，没有则插入。
   /// 导入校准可能扩出新节次（如第 13 节），纯 update 会静默丢弃，
   /// 故用 insert + replace 主键冲突策略实现 upsert。
+  Future<void> deleteTimeSlot(int section) async {
+    final db = await _db;
+    await db.delete('time_slots', where: 'section = ?', whereArgs: [section]);
+  }
+
   Future<void> updateTimeSlot(TimeSlot slot) async {
     final db = await _db;
     await db.insert('time_slots', slot.toMap(),

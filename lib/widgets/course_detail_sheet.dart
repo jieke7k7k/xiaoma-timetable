@@ -10,12 +10,18 @@ import '../utils/week_parser.dart';
 
 /// 课程详情底部弹窗：完整展示课程信息，提供编辑/删除入口
 class CourseDetailSheet extends ConsumerWidget {
-  const CourseDetailSheet({super.key, required this.course});
+  const CourseDetailSheet(
+      {super.key, required this.course, this.allowEdit = true});
 
   final Course course;
 
+  /// 是否允许修改（编辑/删除/新增时段入口）。
+  /// 周视图未开启编辑模式时传 false，详情只供查看，防止误触改课。
+  final bool allowEdit;
+
   /// 展示课程详情 BottomSheet
-  static Future<void> show(BuildContext context, Course course) {
+  static Future<void> show(BuildContext context, Course course,
+      {bool allowEdit = true}) {
     return showModalBottomSheet(
       context: context,
       // 弹层圆角统一走全局常量（与 main.dart 的 bottomSheetTheme 一致）
@@ -23,7 +29,7 @@ class CourseDetailSheet extends ConsumerWidget {
         borderRadius:
             BorderRadius.vertical(top: Radius.circular(AppRadii.sheet)),
       ),
-      builder: (_) => CourseDetailSheet(course: course),
+      builder: (_) => CourseDetailSheet(course: course, allowEdit: allowEdit),
     );
   }
 
@@ -126,6 +132,7 @@ class CourseDetailSheet extends ConsumerWidget {
                   ? '无'
                   : course.note!,
             ),
+            if (allowEdit) ...[
             const SizedBox(height: 16),
             // 同名课程快捷录入：一周多节 / 实验课不用重复填名称老师颜色
             SizedBox(
@@ -167,6 +174,7 @@ class CourseDetailSheet extends ConsumerWidget {
                 ),
               ],
             ),
+            ],
           ],
         ),
       ),

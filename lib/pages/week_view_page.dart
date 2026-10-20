@@ -64,6 +64,10 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
   PageController? _pageController;
   bool _showJumper = false;
 
+  /// 编辑模式：开启后才能点空白新建课程、长按课程编辑/删除；
+  /// 关闭时点空白无反应、点课程只看详情，防止误触（用户真机反馈）
+  bool _editMode = false;
+
   /// 时间轴宽度
   static const double _timeAxisWidth = 50;
 
@@ -165,6 +169,26 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
           ),
         ),
         actions: [
+          // 编辑模式开关（右上角）：防误触——不开时点空白不新建、长按不出菜单
+          if (_editMode)
+            TextButton.icon(
+              onPressed: () => setState(() => _editMode = false),
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('完成'),
+            )
+          else
+            IconButton(
+              tooltip: '编辑模式（开启后可添加/修改课程）',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                setState(() => _editMode = true);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('编辑模式已开启：点击空白处新建课程，长按课程可编辑'),
+                  duration: Duration(seconds: 2),
+                ));
+              },
+            ),
           // 考试倒计时入口（阶段五）：首页一键直达，高频查看不绕设置页
           IconButton(
             tooltip: '考试倒计时',
@@ -222,6 +246,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
               displayWeek: displayWeek,
               displayDays: displayDays,
               timeAxisWidth: _timeAxisWidth,
+              editMode: _editMode,
               onWeekChanged: (page) =>
                   ref.read(displayWeekProvider.notifier).setWeek(page + 1),
             ),
@@ -451,6 +476,7 @@ class _GridArea extends ConsumerWidget {
     required this.displayDays,
     required this.timeAxisWidth,
     required this.onWeekChanged,
+    required this.editMode,
   });
 
   final PageController pageController;
@@ -458,6 +484,7 @@ class _GridArea extends ConsumerWidget {
   final List<int> displayDays;
   final double timeAxisWidth;
   final ValueChanged<int> onWeekChanged;
+  final bool editMode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -514,6 +541,7 @@ class _GridArea extends ConsumerWidget {
                     cellWidth: cellWidth,
                     rowHeight: rowHeight,
                     activeBands: activeBands,
+                    editMode: editMode,
                   );
                 },
               ),
@@ -595,6 +623,7 @@ class _WeekGrid extends ConsumerWidget {
     required this.cellWidth,
     required this.rowHeight,
     required this.activeBands,
+    required this.editMode,
   });
 
   final int week;
@@ -603,6 +632,7 @@ class _WeekGrid extends ConsumerWidget {
   final double cellWidth;
   final double rowHeight;
   final List<({int after, String label})> activeBands;
+  final bool editMode;
 
   double _topOf(int section) =>
       yOffsetTop(section, rowHeight, bandsBefore(section, activeBands));
@@ -656,8 +686,9 @@ class _WeekGrid extends ConsumerWidget {
         sectionCount * rowHeight + activeBands.length * _bandHeight;
 
     return GestureDetector(
-      // 点击空白格新建课程（自动带入星期与节次）
+      // 点击空白格新建课程（自动带入星期与节次）；非编辑模式直接忽略，防误触
       onTapUp: (details) {
+        if (!editMode) return;
         final col = (details.localPosition.dx / cellWidth).floor();
         if (col < 0 || col >= displayDays.length) return;
         // 逐节比对纵向坐标（已含分隔带偏移）；点到分隔带上则忽略
@@ -719,16 +750,19 @@ class _WeekGrid extends ConsumerWidget {
                   top: _topOf(slot.startSection),
                   width: cellWidth,
                   height: slot.span * rowHeight,
+                  editMode: editMode,
                 ),
           // 空周占位提示（阶段五·视觉打磨）：网格全空时给中文引导，
           // IgnorePointer 保证点击穿透到空白格的新建手势
           if (visible.isEmpty)
-            const Positioned.fill(
+            Positioned.fill(
               child: IgnorePointer(
                 child: EmptyState(
                   icon: Icons.wb_sunny_outlined,
                   title: '本周没有课程',
-                  message: '点击空白格子新建，或从底部「新建」导入课表',
+                  message: editMode
+                      ? '点击空白格子新建，或从底部「新建」导入课表'
+                      : '点右上角的编辑按钮开启编辑模式后，可添加课程',
                 ),
               ),
             ),
@@ -858,10 +892,12 @@ class _PositionedCourseCard extends StatelessWidget {
     required this.top,
     required this.width,
     required this.height,
+    required this.editMode,
   });
 
   final DisplaySlot slot;
   final int week;
+  final bool editMode;
 
   /// 该课在该周的单次调课记录（无则 null）
   final CourseOverride? courseOverride;
@@ -891,9 +927,14 @@ class _PositionedCourseCard extends StatelessWidget {
             slot.courses.first.note?.trim().isNotEmpty == true,
         onTap: () => isMulti
             ? _showSlotPicker(context, slot)
-            : CourseDetailSheet.show(context, slot.courses.first),
-        onLongPress: () =>
-            _showMenu(context, slot.courses.first, week, courseOverride),
+            : CourseDetailSheet.show(context, slot.courses.first,
+                allowEdit: editMode),
+        // 非编辑模式长按无反应，防止误触进修改菜单
+        onLongPress: () {
+          if (editMode) {
+            _showMenu(context, slot.courses.first, week, courseOverride);
+          }
+        },
       ),
     );
   }
@@ -938,7 +979,7 @@ class _PositionedCourseCard extends StatelessWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
                   Navigator.pop(ctx);
-                  CourseDetailSheet.show(context, c);
+                  CourseDetailSheet.show(context, c, allowEdit: editMode);
                 },
               ),
             const SizedBox(height: 8),

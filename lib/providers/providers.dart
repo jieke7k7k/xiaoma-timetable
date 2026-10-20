@@ -119,9 +119,58 @@ class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
   Future<void> updateSlot(TimeSlot slot) async {
     await Dao.instance.updateTimeSlot(slot);
     final list = state.value ?? [];
+    // 已有节次替换、没有的新增（导入校准扩出的新节次靠这条进状态）
     state = AsyncData([
       for (final s in list) s.section == slot.section ? slot : s,
-    ]);
+      if (!list.any((s) => s.section == slot.section)) slot,
+    ]..sort((a, b) => a.section.compareTo(b.section)));
+  }
+
+  /// 增加一节（末尾追加）：开始 = 上一节结束 + 10 分钟课间，时长沿用上一节；
+  /// 一节都没有时从第 1 节 08:00-08:40 起步。总节数上限 20。
+  Future<void> addSection() async {
+    final list = <TimeSlot>[...(state.value ?? const <TimeSlot>[])]
+      ..sort((a, b) => a.section.compareTo(b.section));
+    if (list.length >= 20) return;
+    final TimeSlot next;
+    if (list.isEmpty) {
+      next = const TimeSlot(section: 1, startTime: '08:00', endTime: '08:40');
+    } else {
+      final last = list.last;
+      final lastStart = _slotMin(last.startTime) ?? 8 * 60;
+      final lastEnd = _slotMin(last.endTime) ?? lastStart + 40;
+      final duration = lastEnd - lastStart;
+      final start = lastEnd + 10;
+      next = TimeSlot(
+        section: last.section + 1,
+        startTime: _slotHm(start),
+        endTime: _slotHm(start + (duration > 0 ? duration : 40)),
+      );
+    }
+    await Dao.instance.updateTimeSlot(next);
+    state = AsyncData([...list, next]);
+  }
+
+  /// 减少一节（删除最后一节），并把午休/晚餐分段点钳回新范围。总节数下限 4。
+  Future<void> removeLastSection() async {
+    final list = <TimeSlot>[...(state.value ?? const <TimeSlot>[])]
+      ..sort((a, b) => a.section.compareTo(b.section));
+    if (list.length <= 4) return;
+    await Dao.instance.deleteTimeSlot(list.last.section);
+    final rest = list.sublist(0, list.length - 1);
+    state = AsyncData(rest);
+    final seg = ref.read(segmentSettingsProvider).value;
+    if (seg != null) {
+      final n = rest.length;
+      if (seg.lunchAfterSection > n - 2) {
+        await ref
+            .read(segmentSettingsProvider.notifier)
+            .setLunchAfterSection(n - 2 < 1 ? 1 : n - 2);
+      }
+      if (seg.dinnerAfterSection > n) {
+        await ref.read(segmentSettingsProvider.notifier).setDinnerAfterSection(n);
+      }
+    }
   }
 
   /// 一键套用常用大节时间（1-2 节 09:40-12:00，3-4 节 14:00-16:20）
@@ -147,6 +196,17 @@ class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
     state = await AsyncValue.guard(build);
   }
 }
+
+/// "HH:mm" → 当天分钟数（非法返回 null），供节次增减推算时间用
+int? _slotMin(String s) {
+  final m = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(s);
+  if (m == null) return null;
+  return int.parse(m.group(1)!) * 60 + int.parse(m.group(2)!);
+}
+
+/// 当天分钟数 → "HH:mm"
+String _slotHm(int minutes) =>
+    '${(minutes ~/ 60).toString().padLeft(2, '0')}:${(minutes % 60).toString().padLeft(2, '0')}';
 
 final timeSlotsProvider =
     AsyncNotifierProvider<TimeSlotsNotifier, List<TimeSlot>>(
