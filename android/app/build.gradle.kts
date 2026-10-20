@@ -33,6 +33,9 @@ android {
 
     buildTypes {
         release {
+            // 个人自用包：关闭 R8 代码压缩与资源收缩，避免 MLKit 等插件的反射类被裁剪导致构建失败或真机闪退（代价是包体积略大）
+            isMinifyEnabled = false
+            isShrinkResources = false
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
