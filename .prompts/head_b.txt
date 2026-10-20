@@ -1,0 +1,19 @@
+本次只做阶段五中的 (b) JSON 备份恢复 + ICS 导出；(c) 考试倒计时、(d) 节假日单次调课、(e) 视觉打磨 都不要动（也不要动深色模式相关代码）。
+
+
+- 数据库：sqflite 手写 SQL（已装 sqflite ^2.4.2 + path），严禁 isar / build_runner 系。
+- 状态管理：flutter_riverpod ^2.6.1 手写 Notifier，严禁 riverpod_generator / freezed。
+- 中文注释（关键逻辑写清为什么）与中文 UI 文案；异常情况都要给用户看得懂的提示，不许闪退。
+- Android only：不写任何 iOS 目录/代码。
+- 你在此会话中不能执行任何 shell 命令（只能写文件）：改完不要尝试 flutter pub get / analyze / test，由我来跑。
+- 动手前先读项目根目录 ARCHITECTURE.md 与 DEV_STATE.md（数据表结构 v2、Provider 挂点、已踩坑清单），不要重复造轮子。
+- 完成后更新 ARCHITECTURE.md（新增/改动文件表 + 设计决策）与 DEV_STATE.md（做了什么、踩坑、哪些必须等小米 14 真机验证）。
+- 最后用中文总结：改了哪些文件、每个文件职责、我怎么验证；有不确定的先列出，不要自作主张。
+- 新增 pub 依赖需先在总结里说明理由；优先复用 file_picker ^13.1.0（其 saveFile / pickFiles 已在项目使用）。
+
+
+- JSON 备份：全量数据（semesters / time_slots / courses / course_overrides / app_settings）导出为 JSON 文件；选择 JSON 文件可导入恢复。导入前二次确认（会覆盖现有数据），导入失败要有中文提示且不破坏现有数据。可对照 ~/workspace/github-research/SchedU/IMPORT_FORMAT.md 的备份思路，但字段必须按本项目实际数据表设计，不要照搬 SchedU 字段；备份 JSON 要带版本号字段以便未来兼容。
+- ICS 导出：把当前学期课表导出为标准.ics 文件（VEVENT 含 SUMMARY / LOCATION / DTSTART / DTEND；周次展开为单次事件或用 RRULE，二选一、选实现简单可靠的方案），用户选择保存位置，可分享给别人。
+- 入口放在设置页「数据管理」分区。
+
+---

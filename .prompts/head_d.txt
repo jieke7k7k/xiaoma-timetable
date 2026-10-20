@@ -1,0 +1,19 @@
+本次只做阶段五中的 (d) 节假日单次调课；(b) 备份/ICS 导出、(c) 考试倒计时、(e) 视觉打磨 都不要动（也不要动深色模式相关代码）。
+
+
+- 数据库：sqflite 手写 SQL（已装 sqflite ^2.4.2 + path），严禁 isar / build_runner 系。
+- 状态管理：flutter_riverpod ^2.6.1 手写 Notifier，严禁 riverpod_generator / freezed。
+- 中文注释（关键逻辑写清为什么）与中文 UI 文案；异常情况都要给用户看得懂的提示，不许闪退。
+- Android only：不写任何 iOS 目录/代码。
+- 你在此会话中不能执行任何 shell 命令（只能写文件）：改完不要尝试 flutter pub get / analyze / test，由我来跑。
+- 动手前先读项目根目录 ARCHITECTURE.md 与 DEV_STATE.md（数据表结构 v2、Provider 挂点、已踩坑清单），不要重复造轮子。
+- 完成后更新 ARCHITECTURE.md（新增/改动文件表 + 设计决策）与 DEV_STATE.md（做了什么、踩坑、哪些必须等小米 14 真机验证）。
+- 最后用中文总结：改了哪些文件、每个文件职责、我怎么验证；有不确定的先列出，不要自作主张。
+- 新增 pub 依赖需先在总结里说明理由；优先复用已有依赖。
+
+
+- course_overrides 表已建好（见 db_helper.dart，模型见 models/course_override.dart，DAO 有 getOverridesByCourse/insertOverride/deleteOverride）：长按周视图某节课弹出「调整本次」，针对该课在当前浏览周的单次上课做调整：改本次上课时间（星期/节次）和/或教室，或标记「本次停课」；只影响这一次，不影响原上课规律和其他周。
+- 周视图渲染时必须应用 overrides：被调整的那次按新时间/教室显示（可加小标记区分），被停课的那次不显示。
+- 允许撤销/删除某条单次调整（回到原规律）。注意与 slot_layout 三态渲染、冲突检测的衔接：调课后的单次课若与其他课冲突，给用户中文提示。
+
+---

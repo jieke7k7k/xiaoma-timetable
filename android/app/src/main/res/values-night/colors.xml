@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 小组件文字颜色（深色模式 values-night）：浅字配深底，与 App 内深色文字色一致 -->
+<resources>
+    <color name="widget_title_color">#EAE6E0</color>
+    <color name="widget_line_color">#B8B4AE</color>
+</resources>

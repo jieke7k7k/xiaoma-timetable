@@ -1,0 +1,65 @@
+本次只做阶段五中的 (d) 节假日单次调课；(a)(b)(c)(e) 都已完成、不要动（也不要动深色模式相关代码）。
+
+---
+
+## （先发这段）
+
+我要做一个大学生课程表 App，对标"WakeUp 课程表"，但**零广告**、界面简约。
+
+**技术栈**：Flutter（Dart），一套代码同时跑 Android 和 iOS。优先保证 Android 体验（测试机是小米 14）。
+
+**设计语言**：简约干净，大量留白；卡片和图标用圆角；支持深色模式；每门课程可自定义颜色。
+
+**完整功能清单**（分阶段实现，你先通读，后面我会按阶段让你做）：
+
+阶段一（骨架）：Flutter 项目初始化；数据模型（课程、学期、节次时间）；本地数据库（isar 或 sqflite）；基础页面框架（周视图、设置页、课程编辑页）。
+
+阶段二（核心课表）：周视图（7 列 × 节次行，经典格子布局）；课程增删改；单双周支持；开学日期设置（自动计算当前周次）；自定义节次时间（每节课几点到几点可设）；课程详情（课程名、老师、教室、节次、周次范围、备注）；课程颜色自定义。
+
+阶段三（导入）：ICS 文件导入；图片导入（拍照/相册，用 google_mlkit_text_recognition 做 OCR，识别后进入人工核对页，逐条确认修改后再入库）；PDF 导入（pdfx 或 syncfusion 提取文字，同样进人工核对页）；教务官网导入（预留接口，先不实现）。
+
+阶段四（提醒与系统集成）：上课提醒（提前分钟数可设，用 flutter_local_notifications）；桌面小组件（Android 用 home_widget，显示今日课程）；学期管理（多学期创建切换）；今日课程常驻通知栏（Android）。
+
+阶段五（完善）：深色模式；本地备份与导出（含导出 ICS）；考试/作业倒计时（给课程加日期提醒）；节假日手动调课（单次调整某节课时间）；课程时间冲突检测（添加/导入时重叠提示）。
+
+**通用代码要求**（所有阶段遵守）：
+1. Dart 空安全，代码注释用中文，关键逻辑写清楚为什么这么做。
+2. 所有用户可见文案用中文。
+3. 异常情况都要处理（导入文件损坏、OCR 无结果、数据库异常），给用户看得懂的提示，不许闪退。
+4. 状态管理用 Riverpod 或 Bloc，二选一并保持一致。
+5. 单双周、周次计算逻辑集中在一个工具类里，写单元测试。
+
+---
+
+## 完善与打磨
+
+1. 深色模式：跟随系统+手动切换，课程格子颜色在深色下自动降饱和。
+2. 本地备份：导出全部数据为 JSON 文件，可导入恢复；导出 ICS 文件分享给别人。
+3. 考试/作业倒计时：在课程详情里可加"考试日期"，首页或单独一页按时间排序显示倒计时天数。
+4. 节假日调课：长按某节课可"调整本次"，只改这一次的上课时间，不影响原规律。
+5. 整体视觉打磨：圆角卡片、统一间距、空状态插画（用简单的占位图即可）、启动页。
+
+验收标准：开深色模式所有页面无刺眼白色块；备份 JSON 删 App 重装后能完整恢复；加一个 7 天后的考试，倒计时显示"还有 7 天"。
+
+---
+
+## 技术铁律（本会话必须遵守）
+
+- 数据库：sqflite 手写 SQL，严禁 isar / build_runner 系。
+- 状态管理：flutter_riverpod 手写 Notifier（项目已用 flutter_riverpod ^2.6.1 手写 AsyncNotifier/Notifier），严禁 riverpod_generator / freezed。
+- 中文注释（关键逻辑写清为什么）与中文 UI 文案；异常情况给用户看得懂的提示，不许闪退。
+- Android only：不写任何 iOS 目录/代码。
+- 你在此会话中不能执行任何 shell 命令（只能写文件）：改完不要尝试 flutter pub get / analyze / test / build，由我来跑。
+- 动手前先读项目根目录 ARCHITECTURE.md 与 DEV_STATE.md（数据表结构 v2、Provider 挂点、已踩坑清单），不要重复造轮子。
+- 完成后更新 ARCHITECTURE.md（新增/改动文件表 + 设计决策）与 DEV_STATE.md（做了什么、踩坑、哪些必须等小米 14 真机验证，重点记：长按交互、调课后提醒是否准时、小组件/通知文案是否正确，这些都必须等小米 14 真机验证）。
+- 最后用中文总结：改了哪些文件、每个文件职责、我怎么验证；有不确定的先列出，不要自作主张。
+- 新增 pub 依赖需先在总结里说明理由；优先复用已有依赖。
+
+## 本次 (d) 节假日单次调课 具体要求
+
+- `course_overrides` 表已建好（db_helper v2 建表；模型见 `lib/models/course_override.dart`，`CourseOverride.cancelFlag = -1` 表示停课标记；DAO 已有 `getOverridesByCourse` / `insertOverride` / `deleteOverride`，另有备份用的 `getAllOverrides`）。每条 override 针对 `(courseId, originalWeek)` 的单次上课：可改本次上课时间（星期/节次）和/或教室（targetDayOfWeek/targetStartSection/targetEndSection/targetClassroom），或标记「本次停课」（targetWeek=cancelFlag）；只影响这一次，不影响原上课规律和其他周。
+- 交互：周视图**长按某节课**弹出菜单，含「调整本次」选项，进入单次调整页（选择：新星期/新节次范围/新教室，或「本次停课」）；该课已有单次调整时，长按菜单改为「查看/撤销本次调整」，允许删除 override 回到原规律。
+- 周视图渲染时必须应用 overrides：被调整的那次按新时间/教室显示（加小标记区分，如「调」角标，深色模式下也要清晰）；被停课的那次不显示。
+- 提醒联动（重要）：`lib/utils/reminder_plan.dart` 的课程筛选与提醒时刻计算、`lib/services/ongoing_notice_service.dart`（经 `buildOngoingNotice`）的常驻通知文案、`lib/services/widget_service.dart` 的小组件文案，在计算时必须应用 overrides——停课的不再提醒/展示，调课的按新时间提醒；这三处刷新挂点（`switchTo`/`addCourse`/`updateCourse`/`deleteCourse` 末尾）也要在增删 override 后触发。
+- 注意与 slot_layout 三态渲染、冲突检测的衔接：调课后的单次课若与其他课冲突，给用户中文提示。
+- 周次语义：originalWeek 指当前学期开学起算的第几周（与周视图当前浏览周对应）；按当前浏览周 long-press 时，originalWeek = 当前浏览周次。

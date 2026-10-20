@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 今日课程小组件元信息：
+     minWidth=250dp / minHeight=110dp 约等于 4×2 格；
+     updatePeriodMillis=0 表示不靠系统周期轮询，完全由 App 数据变化时推送更新。 -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/course_widget"
+    android:widgetCategory="home_screen" />
