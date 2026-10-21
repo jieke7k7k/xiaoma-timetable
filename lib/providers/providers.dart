@@ -332,14 +332,30 @@ final todayWeekProvider = Provider<int>((ref) {
 });
 
 /// 周视图当前正在浏览的周次（PageView 滑动切换，默认跳到本周）
+///
+/// 1.2.5 修复偶尔停在第一周：旧实现 build 时一次性 read 今天周次，启动
+/// 瞬间学期还没加载完就读到兜底值、之后不再纠正。现改为：用户没手动
+/// 切周前持续 watch 今天的周次（数据一到自动落到本周）；setWeek 定住
+/// 后以用户操作为准；goToday 解除定住重新跟随。
 class DisplayWeekNotifier extends Notifier<int> {
+  /// 用户手动定住的周次；null 表示跟随「今天是第几周」
+  int? _pinned;
+
   @override
-  int build() => ref.read(todayWeekProvider);
+  int build() {
+    final today = ref.watch(todayWeekProvider);
+    final w = _pinned ?? today;
+    return w < 1 ? 1 : w;
+  }
 
-  void setWeek(int week) => state = week < 1 ? 1 : week;
+  void setWeek(int week) {
+    _pinned = week < 1 ? 1 : week;
+    state = _pinned!;
+  }
 
-  /// 回到「本周」；未开学（todayWeek=0，如刚切到下学期）时至少停在第 1 周
+  /// 回到「本周」：解除定住，重新跟随今天
   void goToday() {
+    _pinned = null;
     final w = ref.read(todayWeekProvider);
     state = w < 1 ? 1 : w;
   }

@@ -10,19 +10,19 @@ class UiSettings {
   const UiSettings({
     this.cellHeight = 46,
     this.cornerRadius = 12,
-    this.showGridLines = true,
+    this.showGridLines = false,
     this.borderWidth = 0.0,
     this.axisShowTime = true,
     this.cardTextScale = 1.0,
     this.showClassroom = true,
     this.showTeacher = true,
     this.showNote = true,
-    this.colorSchemeId = 'morandi',
-    this.themePresetId = 'forest',
+    this.colorSchemeId = 'macaron',
+    this.themePresetId = 'cocoa',
     this.themeCustomColor,
     this.fontId = 'system',
     this.showParityLabel = true,
-    this.autoFitHeight = false,
+    this.autoFitHeight = true,
   });
 
   /// 课程格子高度（逻辑像素 px），范围 44~96；默认 46 与旧版按屏均分的手感接近
@@ -31,7 +31,7 @@ class UiSettings {
   /// 课程格子圆角半径，范围 0~20，默认 12（与旧版 AppRadii.card 一致）
   final double cornerRadius;
 
-  /// 是否显示网格线，默认显示
+  /// 是否显示网格线（1.2.5 起默认关，新用户首开更干净）
   final bool showGridLines;
 
   /// 课程格子边框粗细 px（1.2.1 起由「加粗开关」改无极调节）：0~3，默认 0=无边框。
@@ -70,10 +70,10 @@ class UiSettings {
   /// 卡片上是否显示备注文字一行，默认显示
   final bool showNote;
 
-  /// 课程配色方案 id（见 kCourseColorSchemes），默认 morandi
+  /// 课程配色方案 id（见 kCourseColorSchemes），默认 macaron 马卡龙·甜心（1.2.5）
   final String colorSchemeId;
 
-  /// 主题预置 id（见 kThemePresets），默认 forest（雾绿，即原默认种子色）
+  /// 主题预置 id（见 kThemePresets），默认 cocoa 可可棕（1.2.5；此前为 forest 雾绿）
   final String themePresetId;
 
   /// 自定义主题色（ARGB）；非空时优先于主题预置
@@ -87,7 +87,7 @@ class UiSettings {
   final bool showParityLabel;
 
   /// 行高自适应一屏（1.2.3）：开启后按可用高度均分行高、整表恰好一屏，
-  /// 此时格子高度设置不生效，默认关
+  /// 此时格子高度设置不生效；1.2.5 起默认开（新用户首开即一屏）
   final bool autoFitHeight;
 
   /// 实际生效的主题种子色（ARGB）
@@ -183,7 +183,7 @@ class UiSettings {
       return UiSettings(
         cellHeight: dbl('cellHeight', 46, 44, 96),
         cornerRadius: dbl('cornerRadius', 12, 0, 20),
-        showGridLines: bl('showGridLines', true),
+        showGridLines: bl('showGridLines', false),
         // 新键优先；缺失时读旧版加粗开关迁移（开=1.4px，关=无边框）
         borderWidth: (map['borderWidth'] is num)
             ? (map['borderWidth'] as num).toDouble().clamp(
@@ -204,14 +204,14 @@ class UiSettings {
         showClassroom: bl('showClassroom', true),
         showTeacher: bl('showTeacher', true),
         showNote: bl('showNote', true),
-        colorSchemeId: st('colorSchemeId', 'morandi'),
-        themePresetId: st('themePresetId', 'forest'),
+        colorSchemeId: st('colorSchemeId', 'macaron'),
+        themePresetId: st('themePresetId', 'cocoa'),
         themeCustomColor: map['themeCustomColor'] is int
             ? map['themeCustomColor'] as int
             : null,
         fontId: st('fontId', 'system'),
         showParityLabel: bl('showParityLabel', true),
-        autoFitHeight: bl('autoFitHeight', false),
+        autoFitHeight: bl('autoFitHeight', true),
       );
     } catch (_) {
       return const UiSettings();

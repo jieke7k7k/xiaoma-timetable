@@ -968,23 +968,25 @@ class _GridArea extends ConsumerWidget {
                         child: _FullBand(band: b, axisWidth: timeAxisWidth),
                       ),
                     ),
-                  // 中层：全宽横线（1.2.3 统一绘制，见 _FullWidthLinesPainter）
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: totalHeight,
-                    child: IgnorePointer(
-                      child: CustomPaint(
-                        painter: _FullWidthLinesPainter(
-                          rowHeight: rowHeight,
-                          sectionCount: sectionCount,
-                          activeBands: activeBands,
-                          color: Theme.of(context).colorScheme.outlineVariant,
+                  // 中层：全宽横线（1.2.3 统一绘制，见 _FullWidthLinesPainter；
+                  // 1.2.5 起受「显示网格线」开关控制，关掉后横线一起消失）
+                  if (ui.showGridLines)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: totalHeight,
+                      child: IgnorePointer(
+                        child: CustomPaint(
+                          painter: _FullWidthLinesPainter(
+                            rowHeight: rowHeight,
+                            sectionCount: sectionCount,
+                            activeBands: activeBands,
+                            color: Theme.of(context).colorScheme.outlineVariant,
+                          ),
                         ),
                       ),
                     ),
-                  ),
                   // 最上层：时间轴 + 课表
                   Row(
                     children: [
@@ -1406,21 +1408,6 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
       child: Stack(
         children: [
           // 网格背景线（界面设置可关）
-          // 今天整列淡色底（B2）：垫在网格线与卡片之下
-          if (widget.highlightDay != null &&
-              displayDays.contains(widget.highlightDay))
-            Positioned(
-              left: displayDays.indexOf(widget.highlightDay!) * cellWidth,
-              top: 0,
-              width: cellWidth,
-              height: totalHeight,
-              child: IgnorePointer(
-                child: ColoredBox(
-                  color: Theme.of(context).colorScheme.primary
-                      .withValues(alpha: 0.05),
-                ),
-              ),
-            ),
           if (ui.showGridLines)
             _GridLines(
               cellWidth: cellWidth,
@@ -1484,6 +1471,24 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
                   message: editMode
                       ? '点击空白格子新建，或从底部「新建」导入课表'
                       : '点右上角的编辑按钮开启编辑模式后，可添加课程',
+                ),
+              ),
+            ),
+          // 今天整列边框（1.2.5，替代 1.2.3 的淡色底——用户反馈太淡看不见）：
+          // 给今天这一整天画一圈主题色框，压在最上层保证边框连续
+          if (widget.highlightDay != null &&
+              displayDays.contains(widget.highlightDay))
+            Positioned(
+              left: displayDays.indexOf(widget.highlightDay!) * cellWidth,
+              top: 0,
+              width: cellWidth,
+              height: totalHeight,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: scheme.primary, width: 1.5),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
                 ),
               ),
             ),

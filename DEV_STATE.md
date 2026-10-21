@@ -4,6 +4,14 @@
 
 ## 做到哪了
 
+## v1.2.5+11（2026-10-21，真机反馈 4 项，209 测试全绿）
+
+- **横线挂开关**：_GridArea 的 _FullWidthLinesPainter 层加 `if (ui.showGridLines)`（1.2.3 统一横线时漏挂；竖线本来就受控）。轴/网格间的 VerticalDivider 是结构线保留。
+- **新默认值**：UiSettings 构造默认 + fromEncoded 缺失回退同步改为 showGridLines=false、colorSchemeId='macaron'、themePresetId='cocoa'、autoFitHeight=true（已存过键的用户不受影响）。注意连带：themePresetById 的 orElse 回退仍是列表首项 forest（与「默认预置」是两回事，测试分别覆盖）；copyWith 清除自定义色后期望种子 = 可可棕 0xFF8A6A52。
+- **今天列边框**：删 _WeekGrid 的 α0.05 淡色 ColoredBox；在页 Stack 最末加整列边框（primary 1.5 + 圆角 6，top=0 高 totalHeight，IgnorePointer），highlightDay 的计算/传参未动。
+- **当前周跟随**：DisplayWeekNotifier 加 _pinned 机制——未手动切周时 build() watch todayWeekProvider（学期后到自动纠正），setWeek 定住，goToday 解定；主页已有的 displayWeek→PageView 同步监听负责把页面跳过去。根因是旧 build() 一次性 read 撞上学期未加载（todayWeek=0 兜底成第 1 周）。
+
+
 ## v1.2.4+10（2026-10-21，应用完整性补全，209 测试全绿）
 
 - **公开通道**：新建 GitHub 公开仓 jieke7k7k/xiaoma-app-channel（只放 channel.json：latest{versionName,versionCode,notes,downloadUrl,releaseUrl}+announcements[{id,title,body,date,level}]，App 匿名读 raw URL）。源码仓保持私有。发布公告/新版 = 改这个文件推送（本地克隆在 ~/workspace/xiaoma-app-channel）。MCP 建仓 403 无权限，仓库是浏览器建的、文件走 git SSH 推。

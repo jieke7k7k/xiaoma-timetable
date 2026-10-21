@@ -5,22 +5,22 @@ import 'package:xiaoma_timetable/utils/color_schemes.dart';
 /// 界面设置（1.1.1）：默认值、持久化往返、非法值钳制与回退
 void main() {
   group('UiSettings 默认值', () {
-    test('空/缺失一律默认：格高 46、圆角 12、莫兰迪、雾绿、系统字体', () {
+    test('空/缺失一律默认：格高 46、圆角 12、马卡龙、可可棕、系统字体', () {
       final ui = UiSettings.fromEncoded(null);
       expect(ui.cellHeight, 46);
       expect(ui.cornerRadius, 12);
-      expect(ui.showGridLines, isTrue);
+      expect(ui.showGridLines, isFalse); // 1.2.5 起默认关
       expect(ui.borderWidth, 0.0);
       expect(ui.axisShowTime, isTrue);
       expect(ui.cardTextScale, 1.0);
-      expect(ui.colorSchemeId, 'morandi');
-      expect(ui.themePresetId, 'forest');
+      expect(ui.colorSchemeId, 'macaron');
+      expect(ui.themePresetId, 'cocoa');
       expect(ui.themeCustomColor, isNull);
       expect(ui.fontId, 'system');
       expect(ui.fontFamily, isNull);
       // 1.2.3 新增：单双周默认显示、自适应默认关
       expect(ui.showParityLabel, isTrue);
-      expect(ui.autoFitHeight, isFalse);
+      expect(ui.autoFitHeight, isTrue); // 1.2.5 起默认开
       expect(UiSettings.fromEncoded('').cellHeight, 46);
       expect(UiSettings.fromEncoded('坏掉的 json').cellHeight, 46);
     });
@@ -113,7 +113,8 @@ void main() {
       const ui = UiSettings(themeCustomColor: 0xFF111111);
       final cleared = ui.copyWith(clearThemeCustomColor: true);
       expect(cleared.themeCustomColor, isNull);
-      expect(cleared.themeSeedValue, 0xFF6B8E7B);
+      // 1.2.5 起默认预置改为可可棕，清除后回落到可可棕种子色
+      expect(cleared.themeSeedValue, 0xFF8A6A52);
     });
   });
 }
