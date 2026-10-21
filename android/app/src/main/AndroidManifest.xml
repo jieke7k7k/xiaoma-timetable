@@ -19,7 +19,8 @@
         android:label="小马课表"
         android:name="${applicationName}"
         android:enableOnBackInvokedCallback="false"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

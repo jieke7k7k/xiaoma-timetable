@@ -4,6 +4,15 @@
 
 ## 做到哪了
 
+## v1.3.0+14（2026-10-21，教务官网导入，214 测试）
+
+- 新增 webview_flutter ^4.14.1；AndroidManifest 开 usesCleartextTraffic（部分学校教务走 http/混合内容）。
+- WebImportPage（pages/web_import_page.dart）：地址栏（默认 https://jwxt.zjnu.edu.cn/ 可改，该域名未实证、他若打不开在地址栏改）+ 前进/后退/刷新 + 步骤提示 + 悬浮「抓取本页课表」。抓取脚本遍历主文档与同源 iframe 的 table，逐格回传 {t, rs, cs}；Android 回传是 JSON 编码字符串，页面里先解一层再 parse。账号密码只在学校网页输入，App 不碰。
+- WebScheduleParser（utils/web_schedule_parser.dart）：展开 rowspan/colspan → 找含 ≥4 星期名的表头行 → 列=星期、行首标签或顺序推节次、单元格内 (N-M节) 优先 → 行状态机切分一格多课 → WeekParser 落周次（含单/双后缀）→ 字段行与残余文本拆地点/教师（地点词尾防误判）→ 去重。认不出时回 tables/cells 计数供定位。测试 5 项（浙师大式网格/一格两课/跨行/单行+双周/无表头）。
+- 入口：import_page 原「即将上线」占位转正，走 _guardedImport → _importWeb → 核对页（与 ICS/OCR/PDF 同一管线）。
+- 待真机验证：他登录浙师大教务实际抓一次（域名、登录页 WebView 兼容、课表页真实 DOM 三件套都没实证）；不适配就让他发课表页截图，按真实结构迭代解析器。
+
+
 ## v1.2.7+13（2026-10-21，小部件黑框救援，209 测试）
 
 - 背景：他反馈桌面小部件 1.2.2 后变黑框报「载入窗口小部件时出现问题」、内置刷新无效；此前（≤1.2.1 简单版）正常。最初误传为负一屏问题，实为正常桌面。

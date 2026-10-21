@@ -18,7 +18,9 @@ import '../utils/morandi_palette.dart';
 import '../database/dao.dart';
 import '../widgets/semester_form_dialog.dart';
 import '../widgets/semester_start_dialog.dart';
+import '../utils/web_schedule_parser.dart';
 import 'import_review_page.dart';
+import 'web_import_page.dart';
 
 /// 课程导入入口页
 ///
@@ -35,10 +37,10 @@ class ImportPage extends ConsumerStatefulWidget {
 }
 
 class _ImportPageState extends ConsumerState<ImportPage> {
-
   /// 已确认过开学日期的目标学期 id（1.2.1）：同一次导入只弹一次确认，
   /// 切换目标学期后 id 不同会自动重新确认
   int? _startConfirmedForId;
+
   /// 用户在本页选定的目标学期；为空时用当前激活学期
   Semester? _target;
 
@@ -55,9 +57,8 @@ class _ImportPageState extends ConsumerState<ImportPage> {
           const SizedBox(height: 12),
           Text(
             '选择导入方式，解析结果都会先进入核对页，确认后才写入课表。',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
+            style: Theme.of(context).textTheme.bodySmall
+                ?.copyWith(color: Theme.of(context).colorScheme.outline),
           ),
           const SizedBox(height: 16),
           _ImportTile(
@@ -72,7 +73,8 @@ class _ImportPageState extends ConsumerState<ImportPage> {
             color: const Color(0xFFAFC3BB),
             title: '拍照 / 相册识别课表',
             subtitle: '本地 OCR 识别课表截图（中文），支持手动核对修正',
-            onTap: () => _guardedImport(target, (t) => _importImage(context, t)),
+            onTap: () =>
+                _guardedImport(target, (t) => _importImage(context, t)),
           ),
           _ImportTile(
             icon: Icons.picture_as_pdf_outlined,
@@ -85,8 +87,8 @@ class _ImportPageState extends ConsumerState<ImportPage> {
             icon: Icons.cloud_download_outlined,
             color: const Color(0xFFB8BFC7),
             title: '从教务官网导入',
-            subtitle: '即将上线，敬请期待',
-            onTap: () => _comingSoon(context),
+            subtitle: '内置浏览器登录学校教务系统，打开课表页后一键抓取',
+            onTap: () => _guardedImport(target, (t) => _importWeb(context, t)),
           ),
         ],
       ),
@@ -101,11 +103,14 @@ class _ImportPageState extends ConsumerState<ImportPage> {
       color: Theme.of(context).colorScheme.primaryContainer,
       child: ListTile(
         leading: const Icon(Icons.school_outlined),
-        title: Text('导入到：${target.name}',
-            style: const TextStyle(fontWeight: FontWeight.w600)),
+        title: Text(
+          '导入到：${target.name}',
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
         subtitle: Text(
-            '开学 ${target.startDate} · 共 ${target.totalWeeks} 周'
-            '${isCurrent ? " · 当前学期" : ""}'),
+          '开学 ${target.startDate} · 共 ${target.totalWeeks} 周'
+          '${isCurrent ? " · 当前学期" : ""}',
+        ),
         trailing: TextButton(
           onPressed: () => _pickTarget(context),
           child: const Text('更改'),
@@ -124,13 +129,16 @@ class _ImportPageState extends ConsumerState<ImportPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const ListTile(
-              title: Text('这次导入到哪个学期？',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
+              title: Text(
+                '这次导入到哪个学期？',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
             ),
             for (final s in semesters)
               ListTile(
                 leading: Icon(
-                  (_target?.id ?? ref.read(currentSemesterProvider).value?.id) ==
+                  (_target?.id ??
+                              ref.read(currentSemesterProvider).value?.id) ==
                           s.id
                       ? Icons.radio_button_checked
                       : Icons.radio_button_unchecked,
@@ -159,8 +167,9 @@ class _ImportPageState extends ConsumerState<ImportPage> {
     final created = await showSemesterFormDialog(context);
     if (created == null || !context.mounted) return;
     try {
-      final id =
-          await ref.read(semestersProvider.notifier).addSemester(created);
+      final id = await ref
+          .read(semestersProvider.notifier)
+          .addSemester(created);
       await ref.read(semestersProvider.notifier).switchTo(id);
       setState(() => _target = created.copyWith(id: id, isCurrent: true));
       if (context.mounted) {
@@ -179,7 +188,9 @@ class _ImportPageState extends ConsumerState<ImportPage> {
   /// 导入前确认目标学期的开学日期（1.2.1）：未确认先弹窗，
   /// 弹窗里改了日期就直更数据库并同步本地目标；确认过直接放行
   Future<void> _guardedImport(
-      Semester? target, Future<void> Function(Semester?) action) async {
+    Semester? target,
+    Future<void> Function(Semester?) action,
+  ) async {
     if (target == null) {
       await action(null);
       return;
@@ -230,8 +241,13 @@ class _ImportPageState extends ConsumerState<ImportPage> {
         slots: slots,
       );
       if (!context.mounted) return;
-      _openReview(context, parsed.courses, parsed.errors,
-          target: target, timeBlocks: parsed.timeBlocks);
+      _openReview(
+        context,
+        parsed.courses,
+        parsed.errors,
+        target: target,
+        timeBlocks: parsed.timeBlocks,
+      );
     } catch (e) {
       if (!context.mounted) return;
       _showError(context, source: 'ICS 文件导入', message: '$e');
@@ -272,9 +288,10 @@ class _ImportPageState extends ConsumerState<ImportPage> {
       if (!context.mounted) return;
       if (courses.isEmpty) {
         _showError(
-            context,
-            source: '图片 OCR 导入',
-            message: '未识别出课程，请换一张更清晰的课表截图试试');
+          context,
+          source: '图片 OCR 导入',
+          message: '未识别出课程，请换一张更清晰的课表截图试试',
+        );
         return;
       }
       _openReview(context, courses, const [], target: target);
@@ -299,9 +316,10 @@ class _ImportPageState extends ConsumerState<ImportPage> {
       if (!context.mounted) return;
       if (courses.isEmpty) {
         _showError(
-            context,
-            source: 'PDF 文件导入',
-            message: '未从 PDF 中提取到课程，请确认文件是文本型 PDF');
+          context,
+          source: 'PDF 文件导入',
+          message: '未从 PDF 中提取到课程，请确认文件是文本型 PDF',
+        );
         return;
       }
       _openReview(context, courses, const [], target: target);
@@ -311,9 +329,18 @@ class _ImportPageState extends ConsumerState<ImportPage> {
     }
   }
 
-  void _comingSoon(BuildContext context) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('教务官网导入即将上线，敬请期待')));
+  /// 教务网页导入（1.3.0）：打开内置浏览器页，抓到课程后进核对页
+  Future<void> _importWeb(BuildContext context, Semester? target) async {
+    if (target == null || target.id == null) {
+      _showError(context, source: '教务官网导入', message: '学期数据尚未加载完成，请稍候重试');
+      return;
+    }
+    final result = await Navigator.push<WebScheduleResult>(
+      context,
+      MaterialPageRoute(builder: (_) => WebImportPage(semesterId: target.id!)),
+    );
+    if (result == null || !context.mounted) return;
+    _openReview(context, result.courses, result.errors, target: target);
   }
 
   void _openReview(
@@ -332,7 +359,9 @@ class _ImportPageState extends ConsumerState<ImportPage> {
           content: Text(errors.take(5).join('\n')),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text('知道了')),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('知道了'),
+            ),
           ],
         ),
       );
@@ -352,9 +381,13 @@ class _ImportPageState extends ConsumerState<ImportPage> {
   /// 导入失败对话框：失败不是死胡同，提供「复制错误报告 / 重新选择 / 返回」
   ///
   /// 错误报告可复制后发给 AI，请它重新生成导入内容（参考 fkwakeup 的失败闭环）。
-  void _showError(BuildContext context,
-      {required String source, required String message}) {
-    final report = '小马课表导入错误报告\n'
+  void _showError(
+    BuildContext context, {
+    required String source,
+    required String message,
+  }) {
+    final report =
+        '小马课表导入错误报告\n'
         '时间：${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}\n'
         '导入方式：$source\n'
         '错误信息：$message';
@@ -370,7 +403,8 @@ class _ImportPageState extends ConsumerState<ImportPage> {
               if (ctx.mounted) Navigator.pop(ctx);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('错误报告已复制，可发给 AI 重新生成')));
+                  const SnackBar(content: Text('错误报告已复制，可发给 AI 重新生成')),
+                );
               }
             },
             child: const Text('复制错误报告'),
@@ -409,14 +443,14 @@ class _ImportTile extends StatelessWidget {
     // 深色模式下入口图标做同款降饱和（与课程卡片一致），
     // 避免中等亮度色块在深底上形成刺眼对比
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tileColor = isDark
-        ? MorandiPalette.desaturateForDark(color)
-        : color;
+    final tileColor = isDark ? MorandiPalette.desaturateForDark(color) : color;
     return Card(
       margin: const EdgeInsets.only(bottom: AppSpacing.m),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.l, vertical: AppSpacing.s),
+          horizontal: AppSpacing.l,
+          vertical: AppSpacing.s,
+        ),
         leading: Container(
           width: 44,
           height: 44,
