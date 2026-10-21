@@ -21,6 +21,7 @@ void main() {
       // 1.2.3 新增：单双周默认显示、自适应默认关
       expect(ui.showParityLabel, isTrue);
       expect(ui.autoFitHeight, isTrue); // 1.2.5 起默认开
+      expect(ui.highlightTodayColumn, isFalse); // 1.2.6 边框高亮默认关
       expect(UiSettings.fromEncoded('').cellHeight, 46);
       expect(UiSettings.fromEncoded('坏掉的 json').cellHeight, 46);
     });
@@ -42,6 +43,7 @@ void main() {
         fontId: 'lxgw',
         showParityLabel: false,
         autoFitHeight: true,
+        highlightTodayColumn: true,
       );
       final back = UiSettings.fromEncoded(ui.encode());
       expect(back.cellHeight, 64);
@@ -59,6 +61,7 @@ void main() {
       expect(back.fontFamily, 'LXGWWenKai');
       expect(back.showParityLabel, isFalse);
       expect(back.autoFitHeight, isTrue);
+      expect(back.highlightTodayColumn, isTrue);
     });
 
     test('越界值被钳制：格高、圆角、字号系数', () {

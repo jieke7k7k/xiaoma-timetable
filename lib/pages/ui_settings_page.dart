@@ -111,6 +111,12 @@ class UiSettingsPage extends ConsumerWidget {
             value: ui.showParityLabel,
             onChanged: (v) => apply(ui.copyWith(showParityLabel: v)),
           ),
+          SwitchListTile(
+            title: const Text('今天整列边框高亮'),
+            subtitle: const Text('给今天这一整天加一圈主题色边框，默认关'),
+            value: ui.highlightTodayColumn,
+            onChanged: (v) => apply(ui.copyWith(highlightTodayColumn: v)),
+          ),
           const _Header('卡片显示'),
           _SliderRow(
             label: '卡片文字大小',

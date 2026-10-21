@@ -23,6 +23,7 @@ class UiSettings {
     this.fontId = 'system',
     this.showParityLabel = true,
     this.autoFitHeight = true,
+    this.highlightTodayColumn = false,
   });
 
   /// 课程格子高度（逻辑像素 px），范围 44~96；默认 46 与旧版按屏均分的手感接近
@@ -90,6 +91,9 @@ class UiSettings {
   /// 此时格子高度设置不生效；1.2.5 起默认开（新用户首开即一屏）
   final bool autoFitHeight;
 
+  /// 今天整列边框高亮开关（1.2.6）：1.2.5 的整列边框改为可关，默认关
+  final bool highlightTodayColumn;
+
   /// 实际生效的主题种子色（ARGB）
   int get themeSeedValue =>
       themeCustomColor ?? themePresetById(themePresetId).seed;
@@ -123,6 +127,7 @@ class UiSettings {
     String? fontId,
     bool? showParityLabel,
     bool? autoFitHeight,
+    bool? highlightTodayColumn,
   }) {
     return UiSettings(
       cellHeight: cellHeight ?? this.cellHeight,
@@ -142,6 +147,7 @@ class UiSettings {
       fontId: fontId ?? this.fontId,
       showParityLabel: showParityLabel ?? this.showParityLabel,
       autoFitHeight: autoFitHeight ?? this.autoFitHeight,
+      highlightTodayColumn: highlightTodayColumn ?? this.highlightTodayColumn,
     );
   }
 
@@ -161,6 +167,7 @@ class UiSettings {
     'fontId': fontId,
     'showParityLabel': showParityLabel,
     'autoFitHeight': autoFitHeight,
+    'highlightTodayColumn': highlightTodayColumn,
   };
 
   String encode() => jsonEncode(toJson());
@@ -212,6 +219,7 @@ class UiSettings {
         fontId: st('fontId', 'system'),
         showParityLabel: bl('showParityLabel', true),
         autoFitHeight: bl('autoFitHeight', true),
+        highlightTodayColumn: bl('highlightTodayColumn', false),
       );
     } catch (_) {
       return const UiSettings();

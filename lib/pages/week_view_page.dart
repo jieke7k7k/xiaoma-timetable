@@ -891,14 +891,16 @@ class _GridArea extends ConsumerWidget {
     final sectionCount = slots.length;
     final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
     // 分隔带位置由「作息分段设置」驱动；provider 未加载完成时回退默认值（午休 5 / 晚间 9）
-    // 今天列高亮（B2）：正在看的就是本周且今天在显示列里时，整列加淡色底
+    // 今天列高亮：正在看的就是本周且今天在显示列里时才算（开关 1.2.6）
     final nowDate = DateTime.now();
     final thisWeekNo = WeekCalc.currentWeek(
       DateTime.parse(semester.startDate),
       nowDate,
     );
     final highlightDay =
-        (displayWeek == thisWeekNo && displayDays.contains(nowDate.weekday))
+        (ui.highlightTodayColumn &&
+            displayWeek == thisWeekNo &&
+            displayDays.contains(nowDate.weekday))
         ? nowDate.weekday
         : null;
     final seg = ref.watch(segmentSettingsProvider).value;
