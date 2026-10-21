@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/course.dart';
+import '../models/time_slot.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
+import '../ui/grid_metrics.dart';
 import '../utils/color_schemes.dart';
 import '../utils/morandi_palette.dart';
+import '../utils/override_effect.dart';
+import '../utils/slot_layout.dart';
 import '../widgets/course_card.dart';
 
 /// 界面设置页（1.1.1）：格子外观、显示内容、课程配色、主题颜色、显示字体。
@@ -21,12 +25,28 @@ class UiSettingsPage extends ConsumerWidget {
     final notifier = ref.read(uiSettingsProvider.notifier);
     void apply(UiSettings next) => notifier.apply(next);
 
+    // 预览 1:1 所需的真实网格参数：列数与主页当前周完全同源计算，
+    // 节次时间取真实作息，保证预览不是「差不多」而是同一套尺寸
+    final courses = ref.watch(coursesProvider).value ?? const [];
+    final overrides = ref.watch(courseOverridesProvider).value ?? const [];
+    final displayWeek = ref.watch(displayWeekProvider);
+    final showOther = ref.watch(showOtherWeeksProvider);
+    final autoCollapse = ref.watch(autoCollapseWeekendProvider);
+    final previewDays = computeDisplayDays(
+      effectiveCoursesForWeek(
+          courses: courses, overrides: overrides, week: displayWeek),
+      displayWeek,
+      showOther,
+      autoCollapse,
+    );
+    final slots = ref.watch(timeSlotsProvider).value ?? const <TimeSlot>[];
+
     return Scaffold(
       appBar: AppBar(title: const Text('界面设置'), centerTitle: true),
       body: ListView(
         children: [
           const _Header('实时预览'),
-          _Preview(ui: ui),
+          _Preview(ui: ui, columnCount: previewDays.length, slots: slots),
           const _Header('格子外观'),
           _SliderRow(
             label: '课程格子高度',
@@ -64,23 +84,14 @@ class UiSettingsPage extends ConsumerWidget {
             onChanged: (v) => apply(ui.copyWith(axisShowTime: v)),
           ),
           const _Header('卡片显示'),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Row(
-              children: [
-                const Expanded(child: Text('卡片文字大小')),
-                SegmentedButton<int>(
-                  segments: const [
-                    ButtonSegment(value: 0, label: Text('小')),
-                    ButtonSegment(value: 1, label: Text('中')),
-                    ButtonSegment(value: 2, label: Text('大')),
-                  ],
-                  selected: {ui.cardTextSize},
-                  onSelectionChanged: (s) =>
-                      apply(ui.copyWith(cardTextSize: s.first)),
-                ),
-              ],
-            ),
+          _SliderRow(
+            label: '卡片文字大小',
+            valueText: '${(ui.cardTextScale * 100).round()}%',
+            value: ui.cardTextScale,
+            min: UiSettings.textScaleMin,
+            max: UiSettings.textScaleMax,
+            divisions: 50,
+            onChanged: (v) => apply(ui.copyWith(cardTextScale: v)),
           ),
           SwitchListTile(
             title: const Text('显示教室'),
@@ -422,12 +433,24 @@ class _HsvPickerDialogState extends State<_HsvPickerDialog> {
   }
 }
 
-/// 实时预览：3 列 × 4 节的迷你课表，全部参数与真实课表共用同一套渲染
-/// （CourseCard + 当前界面设置），调什么样就长什么样。
+/// 实时预览（1.2.0 改 1:1）：从真实课表「截一角」出来渲染——
+/// 格高 = 真实格高、列宽 =（屏宽 − 节次栏宽）÷ 主页当前列数、
+/// 表头高/节次栏宽/字号全部与主界面同一套常量和组件，
+/// 所见即所得，不再有缩放比例差。
 class _Preview extends StatelessWidget {
-  const _Preview({required this.ui});
+  const _Preview({
+    required this.ui,
+    required this.columnCount,
+    required this.slots,
+  });
 
   final UiSettings ui;
+
+  /// 主页当前实际显示的列数（与主页同源计算），决定真实列宽
+  final int columnCount;
+
+  /// 真实作息（节次栏时间文案与主页一致）
+  final List<TimeSlot> slots;
 
   static final _sampleA = Course(
     semesterId: 0,
@@ -453,13 +476,18 @@ class _Preview extends StatelessWidget {
     weeks: const [1],
   );
 
+  static const _rows = 3;
+  static const _showCols = 3;
+  static const _sampleDays = [('一', '7'), ('二', '8'), ('三', '9')];
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    // 预览按 0.62 比例缩放格高，避免设置页被预览占满
-    final rowH = ui.cellHeight * 0.62;
-    const rows = 4;
-    const axisW = 34.0;
+    final screenW = MediaQuery.sizeOf(context).width;
+    // 与主页完全相同的列宽公式（主页网格占满屏宽）
+    final colW = (screenW - kTimeAxisWidth) / columnCount;
+    final rowH = ui.cellHeight;
+    final contentW = kTimeAxisWidth + colW * _showCols;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
@@ -469,77 +497,104 @@ class _Preview extends StatelessWidget {
           color: scheme.surface,
         ),
         clipBehavior: Clip.antiAlias,
-        child: Column(
-          children: [
-            // 预览表头
-            Container(
-              height: 26,
-              color: scheme.surfaceContainerLow,
-              child: Row(
-                children: [
-                  const SizedBox(
-                    width: axisW,
-                    child: Center(
-                        child: Text('10月', style: TextStyle(fontSize: 9))),
-                  ),
-                  for (final d in const ['一', '二', '三'])
-                    Expanded(
-                      child: Center(
-                        child: Text(d,
-                            style: TextStyle(
-                                fontSize: 10, color: scheme.outline)),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            SizedBox(
-              height: rowH * rows,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final gridW = constraints.maxWidth - axisW;
-                  final colW = gridW / 3;
-                  return Row(
+        // 窄屏时从右侧裁切，如同透过窗口看真实课表的一角
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: SizedBox(
+            width: contentW,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 表头：与主页同高、同字号（月份 + 星期/日期）
+                Container(
+                  height: kGridHeaderHeight,
+                  color: scheme.surfaceContainerLow,
+                  child: Row(
                     children: [
-                      // 节数栏
                       SizedBox(
-                        width: axisW,
+                        width: kTimeAxisWidth,
+                        child: Center(
+                          child: Text('9月',
+                              style: TextStyle(
+                                  fontSize: 11, color: scheme.outline)),
+                        ),
+                      ),
+                      for (final d in _sampleDays)
+                        SizedBox(
+                          width: colW,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(d.$1,
+                                  style: TextStyle(
+                                      fontSize: 10, color: scheme.outline)),
+                              const SizedBox(height: 2),
+                              SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: Center(
+                                  child: Text(d.$2,
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: scheme.onSurfaceVariant)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: rowH * _rows,
+                  child: Row(
+                    children: [
+                      // 节次栏：与主页同宽、同字号（节次 12 号、时间 8 号）
+                      SizedBox(
+                        width: kTimeAxisWidth,
                         child: Column(
                           children: [
-                            for (var i = 1; i <= rows; i++)
+                            for (var i = 0; i < _rows; i++)
                               SizedBox(
                                 height: rowH,
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Text('$i',
-                                        style: const TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w600)),
-                                    if (ui.axisShowTime)
-                                      Text(
-                                        i.isOdd ? '08:00' : '08:50',
+                                    Text('${i + 1}',
                                         style: TextStyle(
-                                            fontSize: 7,
-                                            color: scheme.outline),
-                                      ),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: scheme.onSurfaceVariant)),
+                                    if (ui.axisShowTime &&
+                                        slots.length > i) ...[
+                                      Text(slots[i].startTime,
+                                          style: TextStyle(
+                                              fontSize: 8,
+                                              color: scheme.outline)),
+                                      Text(slots[i].endTime,
+                                          style: TextStyle(
+                                              fontSize: 8,
+                                              color: scheme.outline)),
+                                    ],
                                   ],
                                 ),
                               ),
                           ],
                         ),
                       ),
-                      // 网格 + 示例卡片
-                      Expanded(
+                      // 网格 + 示例卡片（卡片内边距与主页同为 1.5）
+                      SizedBox(
+                        width: colW * _showCols,
                         child: Stack(
                           children: [
                             if (ui.showGridLines)
                               CustomPaint(
-                                size: Size(gridW, rowH * rows),
+                                size: Size(colW * _showCols, rowH * _rows),
                                 painter: _PreviewGridPainter(
                                   colW: colW,
                                   rowH: rowH,
-                                  rows: rows,
+                                  rows: _rows,
+                                  cols: _showCols,
                                   color: scheme.outlineVariant,
                                 ),
                               ),
@@ -549,11 +604,11 @@ class _Preview extends StatelessWidget {
                         ),
                       ),
                     ],
-                  );
-                },
-              ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -574,7 +629,7 @@ class _Preview extends StatelessWidget {
         displayColorValue: mapCourseColor(course.colorValue, ui.colorScheme),
         cornerRadius: ui.cornerRadius,
         boldBorder: ui.boldBorder,
-        textSizeLevel: ui.cardTextSize,
+        textScale: ui.cardTextScale,
         showClassroom: ui.showClassroom,
         showTeacher: ui.showTeacher,
         showNote: ui.showNote,
@@ -588,12 +643,14 @@ class _PreviewGridPainter extends CustomPainter {
     required this.colW,
     required this.rowH,
     required this.rows,
+    required this.cols,
     required this.color,
   });
 
   final double colW;
   final double rowH;
   final int rows;
+  final int cols;
   final Color color;
 
   @override
@@ -604,12 +661,12 @@ class _PreviewGridPainter extends CustomPainter {
     for (var r = 1; r < rows; r++) {
       canvas.drawLine(Offset(0, r * rowH), Offset(size.width, r * rowH), paint);
     }
-    for (var c = 1; c < 3; c++) {
+    for (var c = 1; c < cols; c++) {
       canvas.drawLine(Offset(c * colW, 0), Offset(c * colW, size.height), paint);
     }
   }
 
   @override
   bool shouldRepaint(_PreviewGridPainter old) =>
-      old.colW != colW || old.rowH != rowH || old.color != color;
+      old.colW != colW || old.rowH != rowH || old.cols != cols || old.color != color;
 }

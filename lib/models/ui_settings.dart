@@ -13,7 +13,7 @@ class UiSettings {
     this.showGridLines = true,
     this.boldBorder = false,
     this.axisShowTime = true,
-    this.cardTextSize = 1,
+    this.cardTextScale = 1.0,
     this.showClassroom = true,
     this.showTeacher = true,
     this.showNote = true,
@@ -38,8 +38,17 @@ class UiSettings {
   /// 左侧节数栏是否显示每节起止时间，默认显示；关掉只留节次数字
   final bool axisShowTime;
 
-  /// 卡片文字大小档位：0 小 / 1 中（默认）/ 2 大
-  final int cardTextSize;
+  /// 卡片文字缩放系数（1.2.0 起由三档改无极调节）：0.8~1.3，默认 1.0。
+  /// 课名基准 12、副文本基准 10，实际字号 = 基准 × 系数。
+  final double cardTextScale;
+
+  /// 字号缩放系数范围
+  static const double textScaleMin = 0.8;
+  static const double textScaleMax = 1.3;
+
+  /// 旧版三档（小/中/大）迁移到最接近的缩放系数
+  static double scaleFromLegacyLevel(int level) =>
+      switch (level.clamp(0, 2)) { 0 => 0.92, 2 => 1.08, _ => 1.0 };
 
   /// 卡片上是否显示教室，默认显示
   final bool showClassroom;
@@ -82,7 +91,7 @@ class UiSettings {
     bool? showGridLines,
     bool? boldBorder,
     bool? axisShowTime,
-    int? cardTextSize,
+    double? cardTextScale,
     bool? showClassroom,
     bool? showTeacher,
     bool? showNote,
@@ -98,7 +107,7 @@ class UiSettings {
       showGridLines: showGridLines ?? this.showGridLines,
       boldBorder: boldBorder ?? this.boldBorder,
       axisShowTime: axisShowTime ?? this.axisShowTime,
-      cardTextSize: cardTextSize ?? this.cardTextSize,
+      cardTextScale: cardTextScale ?? this.cardTextScale,
       showClassroom: showClassroom ?? this.showClassroom,
       showTeacher: showTeacher ?? this.showTeacher,
       showNote: showNote ?? this.showNote,
@@ -116,7 +125,7 @@ class UiSettings {
         'showGridLines': showGridLines,
         'boldBorder': boldBorder,
         'axisShowTime': axisShowTime,
-        'cardTextSize': cardTextSize,
+        'cardTextScale': cardTextScale,
         'showClassroom': showClassroom,
         'showTeacher': showTeacher,
         'showNote': showNote,
@@ -149,9 +158,14 @@ class UiSettings {
         showGridLines: bl('showGridLines', true),
         boldBorder: bl('boldBorder', false),
         axisShowTime: bl('axisShowTime', true),
-        cardTextSize: (map['cardTextSize'] is int)
-            ? (map['cardTextSize'] as int).clamp(0, 2)
-            : 1,
+        // 新键优先；缺失时读旧版三档并迁移，老设置不丢
+        cardTextScale: (map['cardTextScale'] is num)
+            ? (map['cardTextScale'] as num)
+                .toDouble()
+                .clamp(textScaleMin, textScaleMax)
+            : (map['cardTextSize'] is int)
+                ? scaleFromLegacyLevel(map['cardTextSize'] as int)
+                : 1.0,
         showClassroom: bl('showClassroom', true),
         showTeacher: bl('showTeacher', true),
         showNote: bl('showNote', true),

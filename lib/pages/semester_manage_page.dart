@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../models/semester.dart';
 import '../providers/providers.dart';
 import '../ui/app_styles.dart';
-import '../utils/week_calc.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/semester_form_dialog.dart';
 
 /// 学期管理页
 ///
@@ -155,10 +154,7 @@ class SemesterManagePage extends ConsumerWidget {
 
   /// 新建学期：表单含名称、开学日期（日期选择器）、总周数（默认 20）
   Future<void> _createSemester(BuildContext context, WidgetRef ref) async {
-    final created = await showDialog<Semester>(
-      context: context,
-      builder: (ctx) => const _SemesterFormDialog(),
-    );
+    final created = await showSemesterFormDialog(context);
     if (created == null) return;
     try {
       await ref.read(semestersProvider.notifier).addSemester(created);
@@ -250,111 +246,5 @@ class SemesterManagePage extends ConsumerWidget {
             .showSnackBar(SnackBar(content: Text('删除失败：$e')));
       }
     }
-  }
-}
-
-/// 新建学期表单对话框
-class _SemesterFormDialog extends ConsumerStatefulWidget {
-  const _SemesterFormDialog();
-
-  @override
-  ConsumerState<_SemesterFormDialog> createState() =>
-      _SemesterFormDialogState();
-}
-
-class _SemesterFormDialogState extends ConsumerState<_SemesterFormDialog> {
-  final _nameController = TextEditingController();
-  final _weeksController = TextEditingController(text: '20');
-  DateTime? _startDate;
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _weeksController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _startDate ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2035),
-      helpText: '选择开学日期',
-    );
-    if (picked == null) return;
-    // 与全局约定一致：开学日期自动对齐到所在周的周一
-    setState(() => _startDate = WeekCalc.alignToMonday(picked));
-  }
-
-  void _submit() {
-    final name = _nameController.text.trim();
-    if (name.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请填写学期名称')));
-      return;
-    }
-    final weeks = int.tryParse(_weeksController.text.trim());
-    if (weeks == null || weeks < 1 || weeks > 30) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请输入 1~30 之间的周数')));
-      return;
-    }
-    // 默认开学日期：今天对齐到周一（用户没选就给一个合理初值）
-    final start =
-        WeekCalc.alignToMonday(_startDate ?? DateTime.now());
-    Navigator.pop(
-      context,
-      Semester(
-        name: name,
-        startDate: DateFormat('yyyy-MM-dd').format(start),
-        totalWeeks: weeks,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dateText = _startDate == null
-        ? '默认从本周开始'
-        : '${DateFormat('yyyy-MM-dd').format(_startDate!)}（周一）';
-    return AlertDialog(
-      title: const Text('新建学期'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _nameController,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: '学期名称',
-              hintText: '如：大三下学期',
-            ),
-          ),
-          const SizedBox(height: 8),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.event_outlined),
-            title: const Text('开学日期'),
-            subtitle: Text(dateText),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _pickDate,
-          ),
-          TextField(
-            controller: _weeksController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: '总周数',
-              suffixText: '周',
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(context), child: const Text('取消')),
-        FilledButton(onPressed: _submit, child: const Text('创建')),
-      ],
-    );
   }
 }

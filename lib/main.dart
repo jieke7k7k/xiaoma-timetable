@@ -6,7 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models/ui_settings.dart';
 import 'pages/course_edit_page.dart';
 import 'pages/course_override_page.dart';
+import 'pages/course_search_page.dart';
 import 'pages/exam_countdown_page.dart';
+import 'pages/free_time_page.dart';
+import 'pages/share_image_page.dart';
 import 'pages/import_page.dart';
 import 'pages/semester_manage_page.dart';
 import 'pages/settings_page.dart';
@@ -105,6 +108,12 @@ class SimpleTimetableApp extends ConsumerWidget {
         '/semester-manage': (context) => const SemesterManagePage(),
         // 考试倒计时（当前学期设置了考试日期的课程，按日期升序）
         '/exam-countdown': (context) => const ExamCountdownPage(),
+        // 课程搜索（1.2.0：按课名/老师/教室搜当前学期课程，点结果跳周）
+        '/course-search': (context) => const CourseSearchPage(),
+        // 空闲时段（1.2.0：按周列出每天没课的时段）
+        '/free-time': (context) => const FreeTimePage(),
+        // 课表导出图片（1.2.0：当前浏览周渲染成图走系统分享）
+        '/share-image': (context) => const ShareImagePage(),
         // 节假日单次调课：arguments = {'courseId': int, 'week': int（originalWeek）}
         '/course-override': (context) => const CourseOverridePage(),
       },

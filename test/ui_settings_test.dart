@@ -12,7 +12,7 @@ void main() {
       expect(ui.showGridLines, isTrue);
       expect(ui.boldBorder, isFalse);
       expect(ui.axisShowTime, isTrue);
-      expect(ui.cardTextSize, 1);
+      expect(ui.cardTextScale, 1.0);
       expect(ui.colorSchemeId, 'morandi');
       expect(ui.themePresetId, 'forest');
       expect(ui.themeCustomColor, isNull);
@@ -29,7 +29,7 @@ void main() {
         showGridLines: false,
         boldBorder: true,
         axisShowTime: false,
-        cardTextSize: 2,
+        cardTextScale: 1.2,
         showClassroom: false,
         showTeacher: true,
         showNote: false,
@@ -44,7 +44,7 @@ void main() {
       expect(back.showGridLines, isFalse);
       expect(back.boldBorder, isTrue);
       expect(back.axisShowTime, isFalse);
-      expect(back.cardTextSize, 2);
+      expect(back.cardTextScale, 1.2);
       expect(back.showClassroom, isFalse);
       expect(back.showNote, isFalse);
       expect(back.colorSchemeId, 'grape');
@@ -54,14 +54,29 @@ void main() {
       expect(back.fontFamily, 'LXGWWenKai');
     });
 
-    test('越界值被钳制：格高、圆角、字号档位', () {
+    test('越界值被钳制：格高、圆角、字号系数', () {
       final ui = UiSettings.fromEncoded(
-          '{"cellHeight": 200, "cornerRadius": -3, "cardTextSize": 9}');
+          '{"cellHeight": 200, "cornerRadius": -3, "cardTextScale": 9}');
       expect(ui.cellHeight, 96);
       expect(ui.cornerRadius, 0);
-      expect(ui.cardTextSize, 2);
+      expect(ui.cardTextScale, UiSettings.textScaleMax);
       final low = UiSettings.fromEncoded('{"cellHeight": 10}');
       expect(low.cellHeight, 44);
+      final lowScale = UiSettings.fromEncoded('{"cardTextScale": 0.1}');
+      expect(lowScale.cardTextScale, UiSettings.textScaleMin);
+    });
+
+    test('旧版三档字号自动迁移为缩放系数，老设置不丢', () {
+      expect(UiSettings.fromEncoded('{"cardTextSize": 0}').cardTextScale, 0.92);
+      expect(UiSettings.fromEncoded('{"cardTextSize": 1}').cardTextScale, 1.0);
+      expect(UiSettings.fromEncoded('{"cardTextSize": 2}').cardTextScale, 1.08);
+      // 旧档越界先钳档位再迁移
+      expect(UiSettings.fromEncoded('{"cardTextSize": 9}').cardTextScale, 1.08);
+      // 新键存在时优先于旧键
+      expect(
+          UiSettings.fromEncoded('{"cardTextScale": 1.25, "cardTextSize": 0}')
+              .cardTextScale,
+          1.25);
     });
 
     test('主题种子：自定义色优先于预置；预置查不到回退雾绿', () {

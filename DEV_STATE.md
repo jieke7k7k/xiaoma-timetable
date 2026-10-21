@@ -4,6 +4,18 @@
 
 ## 做到哪了
 
+## v1.2.0+6（2026-10-21，用户确认的 12 项方案，188 测试全绿）
+
+- **导入目标学期显式化**：ImportPage 改 Stateful，顶部目标学期卡（默认当前学期；「更改」底部弹层选已有/当场新建，新建走共享 `widgets/semester_form_dialog.dart` 的 `showSemesterFormDialog`，建好 addSemester+switchTo 并设为目标）。目标以参数传 ImportReviewPage（必填 targetSemester），ICS 解析用目标开学日，核对页横幅明示，`_importAll` 只查 `getCoursesBySemester(target.id)`。学期管理页的私有表单对话框已抽到共享组件。
+- **冲突批量化**：`utils/import_planner.dart`（ImportPlanner.preScan/buildPlan 纯函数）+ `pages/import_conflicts_page.dart` 清单页（默认全跳过、顶部全部同选、底部实时计数）。ConflictResolution 枚举移到 conflict_detector.dart，旧 widgets/conflict_dialog.dart 已删除（全仓无其他引用）。语义：任一冲突选跳过→整条跳过且不带删除；覆盖对方分已有课程 id / 本批草稿下标两路，执行端用 insertedIds 映射。跨学期回归测试在 import_planner_test（契约：池子只装目标学期）。校准差异：核对页收集 diff 文案，完成弹窗与计数一并展示。
+- **下一节课焦点**：`utils/next_class.dart` computeClassFocus（向前 9 天生成课次；注意 effectiveCoursesForWeek 不过滤周次，必须再 isActiveInWeek 过滤）。主页 _ClassFocusBar 在 body 顶部，30 秒 Timer 刷新；焦点签名变化时顺带 OngoingNoticeService.refresh()。buildOngoingNotice 已改焦点模式（标题=当前课/下一节，静态文案不带倒计时），旧「今日剩余/明日预告」契约废弃，相关测试已改写。
+- **更多菜单**：主页 AppBar 考试图标换 PopupMenuButton（搜索/空闲时段/导出图/学期管理/考试倒计时/导入）。week_view 新增 ref.listen(displayWeekProvider) 同步 PageView（搜索跳周靠它；守卫 page.round() 防与滑动打架）。
+- **新页面**：course_search_page（点结果 setWeek(_targetWeek)+popUntil 首页）、free_time_page + utils/free_time.dart（节次全集减占用求连续区间）、share_image_page（固定 720 宽浅色渲染，SlotLayout.layoutDay 复用，RepaintBoundary 2x 出图，share_plus 13 的 XFile.fromData 分享；注意 share_plus 12 与 file_picker 13 的 win32 约束冲突，必须用 ^13）。导出图无分隔带（已知简化）。
+- **考试红点**：week_view 按 courses.examDate 聚合 examsByDay 传 _HeaderRow/_DayCell（日期圆右上角 7px error 色点，Stack 叠加不占高），点有考试的表头弹当天考试列表。
+- **字号无极调节**：UiSettings.cardTextSize(int) → cardTextScale(double 0.8~1.3)，JSON 新键 cardTextScale，旧键迁移 0→0.92/1→1.0/2→1.08。CourseCard 参数 textSizeLevel → textScale（课名 12×、副文本 10×、角标钳 8~13）。
+- **预览 1:1**：新增 ui/grid_metrics.dart（kTimeAxisWidth=50、kGridHeaderHeight=46），week_view 与预览共用；预览列宽=（屏宽−50）÷主页同源列数（页面 watch 课程/调课/显示周等 provider 算 computeDisplayDays，该函数已从 week_view 移到 utils/slot_layout.dart），节次栏时间取真实作息。
+
+
 - **阶段六·作息时间三段化**（2026-10-20，规格第 1、2 项）：
   1. **分段点设置**：`lib/providers/providers.dart` 新增 `SegmentSettings` + `SegmentSettingsNotifier`/`segmentSettingsProvider`（AsyncNotifier，仿 `ReminderSettingsNotifier`），键名 `lunch_after_section`（默认 5）/`dinner_after_section`（默认 9）存进现有 `app_settings` 键值表；`setLunchAfterSection` 钳到 [1, 晚餐点-1]、`setDinnerAfterSection` 钳到 [午休点+1, +∞)，保证午休点 < 晚餐点。
   2. **作息时间页三段化**：`lib/pages/time_settings_page.dart` 逐节列表改「上午/下午/晚上」三段分组（段标题 + 各节卡片，`showTimePicker` 交互与一键套用卡片保留）；顶部新增「分段设置」卡片（两个步进器，晚餐上限按当前最大节次钳制）；段间插入间隔信息行（`_minutesBetween`/`_formatDuration` 自动算「午休 12:00 – 14:00 · 约 2 小时」）。

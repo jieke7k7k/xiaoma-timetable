@@ -4,12 +4,12 @@ import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/models/time_slot.dart';
 import 'package:xiaoma_timetable/utils/ongoing_notice.dart';
 
-/// 今日课程常驻通知纯逻辑测试
+/// 常驻通知纯逻辑测试（1.2.0 焦点模式）
 ///
-/// 覆盖：B 决策（今日有未下课课程 → 显示今日剩余，哪怕已过 20:00；
-/// 今日课程全部下课 → 切明日预告）、行格式（有/无教室）、明日无课兜底。
+/// 与主页状态条共用 computeClassFocus：上课中挂当前课 + 下一节预告，
+/// 课前/课间挂下一节，今天没课看明天，近期无课给兜底文案。
 void main() {
-  // 2026-09-07 是周一（与 reminder_plan_test 一致）
+  // 2026-09-07 是周一
   const semester =
       Semester(name: '默认学期', startDate: '2026-09-07', totalWeeks: 20);
   const slots = [
@@ -39,80 +39,116 @@ void main() {
         weekType: weekType,
       );
 
-  group('buildOngoingNotice', () {
-    test('今日还有未下课课程 → 显示今日剩余，行含教室', () {
-      final notice = buildOngoingNotice(
-        now: DateTime(2026, 9, 7, 10, 0), // 周一 10:00
-        semester: semester,
-        courses: [
-          // 14:00-15:30 未下课
-          course(
-              startSection: 2, endSection: 2, name: '大学物理', classroom: 'B202'),
-          // 08:00-08:45 已下课
-          course(startSection: 1, endSection: 1, classroom: 'A101'),
-        ],
-        timeSlots: slots,
-      );
-      expect(notice.title, '今日剩余课程（共 1 节）');
-      expect(notice.lines, ['14:00-15:30 大学物理 B202']);
-    });
-
-    test('今日课程 16:00 前全部结束、20:30 时切明日预告（B 决策）', () {
-      final notice = buildOngoingNotice(
-        now: DateTime(2026, 9, 7, 20, 30), // 周一 20:30
-        semester: semester,
-        courses: [
-          // 08:00-08:45 已结束
-          course(startSection: 1, endSection: 1, classroom: 'A101'),
-          // 14:00-15:30 已结束
-          course(
-              startSection: 2, endSection: 2, name: '大学物理', classroom: 'B202'),
-          // 周二 08:00-08:45
-          course(dayOfWeek: 2, startSection: 1, endSection: 1, classroom: 'A101'),
-        ],
-        timeSlots: slots,
-      );
-      expect(notice.title, '明日课程预告（共 1 节）');
-      expect(notice.lines, ['08:00-08:45 高等数学 A101']);
-    });
-
-    test('已过 20:00 但今日仍有未下课课程 → 仍显示今日剩余', () {
-      final notice = buildOngoingNotice(
-        now: DateTime(2026, 9, 7, 20, 30), // 周一 20:30
-        semester: semester,
-        courses: [
-          // 20:00-21:30 未下课
-          course(startSection: 3, endSection: 3, classroom: 'C303'),
-        ],
-        timeSlots: slots,
-      );
-      expect(notice.title, '今日剩余课程（共 1 节）');
-      expect(notice.lines, ['20:00-21:30 高等数学 C303']);
-    });
-
-    test('无教室时行格式省略教室', () {
+  group('buildOngoingNotice 焦点模式', () {
+    test('课间：标题是下一节课，行给时间与教室', () {
       final notice = buildOngoingNotice(
         now: DateTime(2026, 9, 7, 10, 0),
         semester: semester,
         courses: [
-          course(startSection: 2, endSection: 2), // 无教室
+          course(
+              startSection: 2, endSection: 2, name: '大学物理', classroom: 'B202'),
+          course(startSection: 1, endSection: 1, classroom: 'A101'),
         ],
         timeSlots: slots,
       );
-      expect(notice.lines, ['14:00-15:30 高等数学']);
+      expect(notice.title, '下一节：大学物理');
+      expect(notice.lines, ['14:00–15:30 · B202']);
     });
 
-    test('明日无课 → 预告 0 节并给兜底文案', () {
+    test('上课中：标题是当前课，第二行预告下一节', () {
+      final notice = buildOngoingNotice(
+        now: DateTime(2026, 9, 7, 8, 20),
+        semester: semester,
+        courses: [
+          course(startSection: 1, endSection: 1, classroom: 'A101'),
+          course(
+              startSection: 2, endSection: 2, name: '大学物理', classroom: 'B202'),
+        ],
+        timeSlots: slots,
+      );
+      expect(notice.title, '正在上课：高等数学');
+      expect(notice.lines, [
+        '08:00–08:45 · 08:45 下课 · A101',
+        '下一节：大学物理 · 今天 14:00 · B202',
+      ]);
+    });
+
+    test('上课中且是当天最后一节：第二行提示没有其他课', () {
       final notice = buildOngoingNotice(
         now: DateTime(2026, 9, 7, 20, 30),
         semester: semester,
         courses: [
-          course(startSection: 1, endSection: 1), // 周一已结束，周二无课
+          // 只在第 1 周有这一次课：9 天窗口内再无下一节，才会走「没有其他课」
+          course(startSection: 3, endSection: 3, classroom: 'C303',
+              weeks: const [1]),
         ],
         timeSlots: slots,
       );
-      expect(notice.title, '明日课程预告（共 0 节）');
-      expect(notice.lines, ['明天暂无课程']);
+      expect(notice.title, '正在上课：高等数学');
+      expect(notice.lines, [
+        '20:00–21:30 · 21:30 下课 · C303',
+        '今天没有其他课了',
+      ]);
+    });
+
+    test('今天课已上完：下一节是明天的课，行内带「明天」', () {
+      final notice = buildOngoingNotice(
+        now: DateTime(2026, 9, 7, 20, 30),
+        semester: semester,
+        courses: [
+          course(startSection: 1, endSection: 1, classroom: 'A101'),
+          course(dayOfWeek: 2, startSection: 1, endSection: 1,
+              classroom: 'A101'),
+        ],
+        timeSlots: slots,
+      );
+      expect(notice.title, '下一节：高等数学');
+      expect(notice.lines, ['明天 08:00–08:45 · A101']);
+    });
+
+    test('下一节之后今天还有课 → 附带计数提示', () {
+      final notice = buildOngoingNotice(
+        now: DateTime(2026, 9, 7, 7, 0),
+        semester: semester,
+        courses: [
+          course(startSection: 1, endSection: 1),
+          course(startSection: 2, endSection: 2, name: '大学物理'),
+          course(startSection: 3, endSection: 3, name: '晚自习课'),
+        ],
+        timeSlots: slots,
+      );
+      expect(notice.title, '下一节：高等数学');
+      expect(notice.lines, ['08:00–08:45', '今天后面还有 2 节课']);
+    });
+
+    test('无教室时省略教室后缀', () {
+      final notice = buildOngoingNotice(
+        now: DateTime(2026, 9, 7, 10, 0),
+        semester: semester,
+        courses: [course(startSection: 2, endSection: 2)],
+        timeSlots: slots,
+      );
+      expect(notice.lines, ['14:00–15:30']);
+    });
+
+    test('近期无课 → 兜底文案', () {
+      final notice = buildOngoingNotice(
+        now: DateTime(2026, 9, 7, 20, 30),
+        semester: semester,
+        courses: [course(startSection: 1, endSection: 1)],
+        timeSlots: slots,
+      );
+      // 该课第 1 周的已结束，但第 2 周同一时间（7 天后）在 9 天窗口内，仍有下一节
+      // ——再用学期结束之后的时间验证彻底无课的兜底
+      final after = buildOngoingNotice(
+        now: DateTime(2027, 2, 1, 8, 0),
+        semester: semester,
+        courses: [course(startSection: 1, endSection: 1)],
+        timeSlots: slots,
+      );
+      expect(after.title, '暂无课程安排');
+      expect(after.lines, ['近期没有要上的课，好好休息']);
+      expect(notice.title, isNot('暂无课程安排'));
     });
   });
 }

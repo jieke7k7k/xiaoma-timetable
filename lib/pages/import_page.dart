@@ -8,28 +8,45 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../models/course.dart';
+import '../models/semester.dart';
 import '../providers/providers.dart';
 import '../services/ocr_service.dart';
 import '../services/pdf_import.dart';
 import '../ui/app_styles.dart';
 import '../utils/ics_parser.dart';
 import '../utils/morandi_palette.dart';
+import '../widgets/semester_form_dialog.dart';
 import 'import_review_page.dart';
 
-/// 课程导入入口页（阶段三）
+/// 课程导入入口页
 ///
-/// 三种导入方式：ICS 文件、图片 OCR、PDF 文件；教务官网导入预留入口。
-/// 所有导入结果均先进入人工核对页，不直接入库。
-class ImportPage extends ConsumerWidget {
+/// 1.2.0 起导入先定「目标学期」：页面顶部明示课程将导入到哪个学期，
+/// 可更改到已有学期、也可当场新建（新建后自动切换为当前学期）。
+/// 目标学期显式贯穿解析（ICS 按目标学期开学日算周次）、核对与入库——
+/// 不再中途偷读全局状态，杜绝「以为导进新学期、实际撞上旧学期课程」的误报。
+/// 三种导入方式：ICS 文件、图片 OCR、PDF 文件；结果先进核对页，不直接入库。
+class ImportPage extends ConsumerStatefulWidget {
   const ImportPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ImportPage> createState() => _ImportPageState();
+}
+
+class _ImportPageState extends ConsumerState<ImportPage> {
+  /// 用户在本页选定的目标学期；为空时用当前激活学期
+  Semester? _target;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = ref.watch(currentSemesterProvider).value;
+    final target = _target ?? current;
     return Scaffold(
       appBar: AppBar(title: const Text('导入课表')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (target != null) _targetCard(context, target, current),
+          const SizedBox(height: 12),
           Text(
             '选择导入方式，解析结果都会先进入核对页，确认后才写入课表。',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -42,21 +59,21 @@ class ImportPage extends ConsumerWidget {
             color: const Color(0xFF8FA3B0),
             title: '导入 ICS 日历文件',
             subtitle: '从教务系统导出的 .ics 文件，自动匹配星期/节次/周次',
-            onTap: () => _importIcs(context, ref),
+            onTap: () => _importIcs(context, target),
           ),
           _ImportTile(
             icon: Icons.photo_camera_outlined,
             color: const Color(0xFFAFC3BB),
             title: '拍照 / 相册识别课表',
             subtitle: '本地 OCR 识别课表截图（中文），支持手动核对修正',
-            onTap: () => _importImage(context, ref),
+            onTap: () => _importImage(context, target),
           ),
           _ImportTile(
             icon: Icons.picture_as_pdf_outlined,
             color: const Color(0xFFC4B8A8),
             title: '导入 PDF 课表文件',
             subtitle: '提取 PDF 文本后复用相同解析流程',
-            onTap: () => _importPdf(context, ref),
+            onTap: () => _importPdf(context, target),
           ),
           _ImportTile(
             icon: Icons.cloud_download_outlined,
@@ -70,7 +87,94 @@ class ImportPage extends ConsumerWidget {
     );
   }
 
-  Future<void> _importIcs(BuildContext context, WidgetRef ref) async {
+  /// 目标学期卡：明示导入去向 + 「更改」入口（是否新学期在这里回答）
+  Widget _targetCard(BuildContext context, Semester target, Semester? current) {
+    final isCurrent = current != null && target.id == current.id;
+    return Card(
+      margin: EdgeInsets.zero,
+      color: Theme.of(context).colorScheme.primaryContainer,
+      child: ListTile(
+        leading: const Icon(Icons.school_outlined),
+        title: Text('导入到：${target.name}',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(
+            '开学 ${target.startDate} · 共 ${target.totalWeeks} 周'
+            '${isCurrent ? " · 当前学期" : ""}'),
+        trailing: TextButton(
+          onPressed: () => _pickTarget(context),
+          child: const Text('更改'),
+        ),
+      ),
+    );
+  }
+
+  /// 选目标学期：已有学期列表 + 当场新建（新建即切换为当前学期并设为目标）
+  Future<void> _pickTarget(BuildContext context) async {
+    final semesters = ref.read(semestersProvider).value ?? const <Semester>[];
+    final picked = await showModalBottomSheet<Object>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text('这次导入到哪个学期？',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+            for (final s in semesters)
+              ListTile(
+                leading: Icon(
+                  (_target?.id ?? ref.read(currentSemesterProvider).value?.id) ==
+                          s.id
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                ),
+                title: Text(s.name),
+                subtitle: Text('开学 ${s.startDate} · 共 ${s.totalWeeks} 周'),
+                onTap: () => Navigator.pop(ctx, s),
+              ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.add_circle_outline),
+              title: const Text('新建学期（新学期的课表选这个）'),
+              onTap: () => Navigator.pop(ctx, #createNew),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !context.mounted) return;
+    if (picked is Semester) {
+      setState(() => _target = picked);
+      return;
+    }
+    // 新建学期：建好 → 切换为当前学期 → 设为本次目标
+    final created = await showSemesterFormDialog(context);
+    if (created == null || !context.mounted) return;
+    try {
+      final id =
+          await ref.read(semestersProvider.notifier).addSemester(created);
+      await ref.read(semestersProvider.notifier).switchTo(id);
+      setState(() => _target = created.copyWith(id: id, isCurrent: true));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已新建并切换到「${created.name}」，课表将导入到这里')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('新建学期失败：$e')));
+      }
+    }
+  }
+
+  Future<void> _importIcs(BuildContext context, Semester? target) async {
+    if (target == null) {
+      _showError(context, source: 'ICS 文件导入', message: '学期数据尚未加载完成，请稍候重试');
+      return;
+    }
     try {
       final files = await FilePicker.pickFiles(
         type: FileType.custom,
@@ -78,23 +182,26 @@ class ImportPage extends ConsumerWidget {
       );
       if (files.isEmpty || files.first.path == null) return;
       final content = await File(files.first.path!).readAsString();
-      final semester = ref.read(currentSemesterProvider).value!;
       final slots = ref.read(timeSlotsProvider).value ?? [];
       final parsed = IcsParser.parse(
         content,
-        semesterStart: DateTime.parse(semester.startDate),
+        semesterStart: DateTime.parse(target.startDate),
         slots: slots,
       );
       if (!context.mounted) return;
       _openReview(context, parsed.courses, parsed.errors,
-          timeBlocks: parsed.timeBlocks);
+          target: target, timeBlocks: parsed.timeBlocks);
     } catch (e) {
       if (!context.mounted) return;
       _showError(context, source: 'ICS 文件导入', message: '$e');
     }
   }
 
-  Future<void> _importImage(BuildContext context, WidgetRef ref) async {
+  Future<void> _importImage(BuildContext context, Semester? target) async {
+    if (target == null) {
+      _showError(context, source: '图片 OCR 导入', message: '学期数据尚未加载完成，请稍候重试');
+      return;
+    }
     // 让用户选择拍照还是相册
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
@@ -129,14 +236,18 @@ class ImportPage extends ConsumerWidget {
             message: '未识别出课程，请换一张更清晰的课表截图试试');
         return;
       }
-      _openReview(context, courses, const []);
+      _openReview(context, courses, const [], target: target);
     } catch (e) {
       if (!context.mounted) return;
       _showError(context, source: '图片 OCR 导入', message: '$e');
     }
   }
 
-  Future<void> _importPdf(BuildContext context, WidgetRef ref) async {
+  Future<void> _importPdf(BuildContext context, Semester? target) async {
+    if (target == null) {
+      _showError(context, source: 'PDF 文件导入', message: '学期数据尚未加载完成，请稍候重试');
+      return;
+    }
     try {
       final files = await FilePicker.pickFiles(
         type: FileType.custom,
@@ -152,7 +263,7 @@ class ImportPage extends ConsumerWidget {
             message: '未从 PDF 中提取到课程，请确认文件是文本型 PDF');
         return;
       }
-      _openReview(context, courses, const []);
+      _openReview(context, courses, const [], target: target);
     } catch (e) {
       if (!context.mounted) return;
       _showError(context, source: 'PDF 文件导入', message: '$e');
@@ -168,6 +279,7 @@ class ImportPage extends ConsumerWidget {
     BuildContext context,
     List<Course> courses,
     List<String> errors, {
+    required Semester target,
     List<IcsTimeBlock> timeBlocks = const [],
   }) {
     // 先提示解析失败条目
@@ -189,6 +301,7 @@ class ImportPage extends ConsumerWidget {
       MaterialPageRoute(
         builder: (_) => ImportReviewPage(
           drafts: courses,
+          targetSemester: target,
           timeBlocks: timeBlocks,
         ),
       ),

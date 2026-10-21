@@ -150,3 +150,18 @@ class _SectionState {
   final List<Course> courses;
   final bool dimmed;
 }
+
+/// 当前浏览周实际显示的星期列表（7 列或 5 列）
+///
+/// 开启「周末无课时自动收起」且周六日均无任何需显示课程时，只显示周一~周五。
+/// 表头、日列、列宽、点击列号全部由该列表驱动。
+List<int> computeDisplayDays(
+    List<Course> courses, int week, bool showOther, bool autoCollapse) {
+  const all = [1, 2, 3, 4, 5, 6, 7];
+  if (!autoCollapse) return all;
+  final visible =
+      showOther ? courses : courses.where((c) => c.isActiveInWeek(week));
+  if (visible.any((c) => c.dayOfWeek == 6 || c.dayOfWeek == 7)) return all;
+  return const [1, 2, 3, 4, 5];
+}
+

@@ -25,7 +25,7 @@ class CourseCard extends StatelessWidget {
     this.displayColorValue,
     this.cornerRadius = 12,
     this.boldBorder = false,
-    this.textSizeLevel = 1,
+    this.textScale = 1.0,
     this.showClassroom = true,
     this.showTeacher = true,
     this.showNote = true,
@@ -50,16 +50,16 @@ class CourseCard extends StatelessWidget {
   /// 是否加粗边框：边框取格子色加深版（界面设置）
   final bool boldBorder;
 
-  /// 文字大小档位：0 小 / 1 中 / 2 大（界面设置）
-  final int textSizeLevel;
+  /// 文字缩放系数（界面设置）：实际字号 = 基准字号 × 系数
+  final double textScale;
 
   /// 是否显示教室 / 老师 / 备注（界面设置）
   final bool showClassroom;
   final bool showTeacher;
   final bool showNote;
 
-  double get _nameSize => switch (textSizeLevel) { 0 => 11, 2 => 13, _ => 12 };
-  double get _subSize => switch (textSizeLevel) { 0 => 9, 2 => 11, _ => 10 };
+  double get _nameSize => 12 * textScale;
+  double get _subSize => 10 * textScale;
 
   @override
   Widget build(BuildContext context) {
@@ -174,7 +174,7 @@ class CourseCard extends StatelessWidget {
                       badgeText!,
                       style: TextStyle(
                         color: badgeFg,
-                        fontSize: 10,
+                        fontSize: (10 * textScale).clamp(8.0, 13.0),
                         fontWeight: FontWeight.bold,
                         height: 1.2,
                       ),

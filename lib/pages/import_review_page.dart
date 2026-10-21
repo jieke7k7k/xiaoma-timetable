@@ -3,29 +3,37 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../database/dao.dart';
 import '../models/course.dart';
+import '../models/semester.dart';
 import '../models/time_slot.dart';
 import '../providers/providers.dart';
 import '../utils/conflict_detector.dart';
 import '../utils/ics_parser.dart';
+import '../utils/import_planner.dart';
 import '../utils/morandi_palette.dart';
 import '../utils/slot_calibrator.dart';
 import '../utils/week_parser.dart';
-import '../widgets/conflict_dialog.dart';
 import '../widgets/draft_edit_dialog.dart';
 import '../widgets/empty_state.dart';
+import 'import_conflicts_page.dart';
 
 /// 导入人工核对页
 ///
 /// 展示导入解析出的草稿课程，逐条可编辑字段、删除误识别项、手动补录漏识别项。
-/// 点击「确认导入」经过冲突检测后才正式写入数据库。
+/// 目标学期由导入页显式传入（[targetSemester]），页头横幅明示去向；
+/// 点击「确认导入」先用 [ImportPlanner] 全量预检冲突——有冲突进批量清单页
+/// 统一决策（1.2.0 起取代逐条弹窗），无冲突直接按计划写入数据库。
 class ImportReviewPage extends ConsumerStatefulWidget {
   const ImportReviewPage({
     super.key,
     required this.drafts,
+    required this.targetSemester,
     this.timeBlocks = const [],
   });
 
   final List<Course> drafts;
+
+  /// 本次导入的目标学期：冲突检测与入库都严格限定在它之内
+  final Semester targetSemester;
 
   /// ICS 导入解析出的作息校准块；图片/PDF 等路径不传、保持空列表
   final List<IcsTimeBlock> timeBlocks;
@@ -58,8 +66,8 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
   }
 
   Future<void> _addDraft() async {
-    // 手动补录默认填满整学期周次：空周次会导致课程永久不显示且无报错
-    final totalWeeks = ref.read(currentSemesterProvider).value?.totalWeeks ?? 20;
+    // 手动补录默认填满目标学期总周次：空周次会导致课程永久不显示且无报错
+    final totalWeeks = widget.targetSemester.totalWeeks;
     final blank = Course(
       semesterId: 0,
       name: '新课程',
@@ -95,48 +103,57 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
     setState(() => _importing = true);
     try {
       final dao = Dao.instance;
-      final semester = ref.read(currentSemesterProvider).value!;
-      final existing = await dao.getCoursesBySemester(semester.id!);
+      final target = widget.targetSemester;
+      // 冲突池严格限定目标学期：其它学期的课程永远不会进来（跨学期误报的根源修复）
+      final existing = await dao.getCoursesBySemester(target.id!);
 
+      // 全量预检冲突；有冲突先进批量清单页统一决策，不再逐条弹窗
+      final items = ImportPlanner.preScan(_drafts, existing);
+      var choices = List<ConflictResolution>.filled(
+          items.length, ConflictResolution.keepBoth);
+      if (items.isNotEmpty) {
+        if (!mounted) return;
+        final result = await Navigator.push<List<ConflictResolution>>(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                ImportConflictsPage(drafts: _drafts, items: items),
+          ),
+        );
+        if (result == null) {
+          // 用户在清单页返回 = 取消本次导入，停留在核对页
+          if (mounted) setState(() => _importing = false);
+          return;
+        }
+        choices = result;
+      }
+
+      // 照计划落库：删除覆盖对象 → 插入保留的草稿（盖上目标学期 id）
+      final plan = ImportPlanner.buildPlan(_drafts, items, choices);
+      final insertedIds = <int, int>{};
       var imported = 0;
       var skipped = 0;
       var overwritten = 0;
-
-      for (final draft in _drafts) {
-        final conflicts = ConflictDetector.detect(draft, existing);
-        var shouldImport = true;
-        // 覆盖的旧课先收集，等该草稿全部冲突确认且决定导入后再统一删除，
-        // 避免中途选了跳过时前面已删的旧课无法恢复
-        final toDelete = <Course>[];
-
-        for (final conflict in conflicts) {
-          if (!mounted) return;
-          final resolution = await showConflictDialog(context, conflict);
-          if (resolution == null || resolution == ConflictResolution.skip) {
-            shouldImport = false;
-            skipped++;
-            break;
-          }
-          if (resolution == ConflictResolution.overwrite) {
-            toDelete.add(conflict.courseB);
-          }
-          // keepBoth：不做特殊处理，继续导入
+      for (final p in plan) {
+        if (!p.shouldImport) {
+          skipped++;
+          continue;
         }
-
-        if (shouldImport) {
-          for (final old in toDelete) {
-            if (old.id != null) {
-              await dao.deleteCourse(old.id!);
-              existing.removeWhere((c) => c.id == old.id);
-              overwritten++;
-            }
-          }
-          final newId =
-              await dao.insertCourse(draft.copyWith(semesterId: semester.id!));
-          // 同步加入内存，让同批后续草稿能与这门刚入库的课冲突检测
-          existing.add(draft.copyWith(id: newId, semesterId: semester.id!));
-          imported++;
+        for (final id in p.deleteExistingIds) {
+          await dao.deleteCourse(id);
+          overwritten++;
         }
+        for (final di in p.deleteDraftIndexes) {
+          final nid = insertedIds[di];
+          if (nid != null) {
+            await dao.deleteCourse(nid);
+            overwritten++;
+          }
+        }
+        final newId = await dao
+            .insertCourse(_drafts[p.draftIndex].copyWith(semesterId: target.id!));
+        insertedIds[p.draftIndex] = newId;
+        imported++;
       }
 
       // 刷新 provider 让周视图同步
@@ -144,7 +161,8 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
 
       // 课程全部导入成功后，按课表文件校准作息时间。
       // 校准失败（异常）不回滚已导入的课程，仅静默记录日志。
-      var calibrated = false;
+      // 1.2.0：校准差异逐条记下，随完成弹窗一起给用户看，不再只有一句笼统提示。
+      final calibrationDiffs = <String>[];
       if (widget.timeBlocks.isNotEmpty) {
         try {
           final currentSlots = ref.read(timeSlotsProvider).value ?? const [];
@@ -152,7 +170,6 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
               SlotCalibrator.calibrate(currentSlots, widget.timeBlocks);
           final notifier = ref.read(timeSlotsProvider.notifier);
           for (final ns in newSlots) {
-            // 校准可能扩出原作息没有的新节次（如第 13 节），找不到旧值时直接新增
             TimeSlot? old;
             for (final s in currentSlots) {
               if (s.section == ns.section) {
@@ -160,28 +177,54 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
                 break;
               }
             }
-            if (old == null ||
-                old.startTime != ns.startTime ||
+            if (old == null) {
+              calibrationDiffs
+                  .add('新增第 ${ns.section} 节 ${ns.startTime}–${ns.endTime}');
+              await notifier.updateSlot(ns);
+            } else if (old.startTime != ns.startTime ||
                 old.endTime != ns.endTime) {
+              calibrationDiffs.add('第 ${ns.section} 节 '
+                  '${old.startTime}–${old.endTime} → ${ns.startTime}–${ns.endTime}');
               await notifier.updateSlot(ns);
             }
           }
-          calibrated = true;
         } catch (e) {
           debugPrint('作息时间校准失败：$e');
+          calibrationDiffs.clear();
         }
       }
 
       if (mounted) {
-        _done = true; // 导入完成，直接返回不再弹确认
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('导入完成：新增 $imported 门，覆盖 $overwritten 门，跳过 $skipped 门'),
-        ));
-        if (calibrated) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('已按课表文件校准作息时间')));
-        }
+        _done = true; // 导入完成，弹窗关闭后直接返回，不再弹「放弃核对」
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('导入完成'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('已导入到《${target.name}》：\n'
+                      '新增 $imported 门，覆盖 $overwritten 门，跳过 $skipped 门'),
+                  if (calibrationDiffs.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    const Text('作息已按课表文件校准：',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 4),
+                    for (final d in calibrationDiffs) Text('· $d'),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('好的')),
+            ],
+          ),
+        );
+        if (mounted) Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
@@ -223,28 +266,46 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
         appBar: AppBar(
           title: Text('核对导入结果（${_drafts.length} 门）'),
         ),
-      body: _drafts.isEmpty
-          // 统一空状态占位（阶段五·视觉打磨）：图标 + 文案 + 手动补录入口
-          ? EmptyState(
-              icon: Icons.inbox_outlined,
-              title: '没有解析出课程',
-              message: '可以手动补录，或返回重新导入',
-              actionLabel: '手动补录',
-              onAction: _addDraft,
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: _drafts.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final draft = _drafts[index];
-                return _DraftCard(
-                  course: draft,
-                  onTap: () => _editDraft(index),
-                  onDelete: () => _removeDraft(index),
-                );
-              },
+        body: Column(
+          children: [
+            // 目标学期横幅：导入去向全程可见，导错学期当场能发现
+            Container(
+              width: double.infinity,
+              color: Theme.of(context).colorScheme.primaryContainer,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                '导入到《${widget.targetSemester.name}》 · '
+                '开学 ${widget.targetSemester.startDate} · '
+                '共 ${widget.targetSemester.totalWeeks} 周',
+                style: const TextStyle(fontSize: 13),
+              ),
             ),
+            Expanded(
+              child: _drafts.isEmpty
+                  // 统一空状态占位（阶段五·视觉打磨）：图标 + 文案 + 手动补录入口
+                  ? EmptyState(
+                      icon: Icons.inbox_outlined,
+                      title: '没有解析出课程',
+                      message: '可以手动补录，或返回重新导入',
+                      actionLabel: '手动补录',
+                      onAction: _addDraft,
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(12),
+                      itemCount: _drafts.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final draft = _drafts[index];
+                        return _DraftCard(
+                          course: draft,
+                          onTap: () => _editDraft(index),
+                          onDelete: () => _removeDraft(index),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
         bottomNavigationBar: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(12),

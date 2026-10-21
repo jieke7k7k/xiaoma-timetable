@@ -321,9 +321,11 @@ void main() {
         timeSlots: slots,
         overrides: overrides,
       );
-      expect(notice.title, '今日剩余课程（共 1 节）');
-      expect(notice.lines.length, 1);
-      expect(notice.lines.first, contains('课程B'));
+      // 焦点模式（1.2.0）：10:30 课程B（10:00-11:40）正在上；
+      // 课程A 本周这次已停课——今天不再出现，只在下周（9月14日）作为下一节预告
+      expect(notice.title, '正在上课：课程B');
+      expect(notice.lines.first, contains('11:40 下课'));
+      expect(notice.lines.join(), contains('课程A · 周一（9月14日）'));
     });
 
     test('调课的课程按新时间展示', () {
@@ -347,8 +349,9 @@ void main() {
         timeSlots: slots,
         overrides: overrides,
       );
-      expect(notice.title, '明日课程预告（共 1 节）');
-      expect(notice.lines, ['10:00-10:45 课程A C305']);
+      // 焦点模式（1.2.0）：下一节就是调到周二的课程A，按新时间/新教室展示
+      expect(notice.title, '下一节：课程A');
+      expect(notice.lines, ['明天 10:00–10:45 · C305']);
     });
   });
 
