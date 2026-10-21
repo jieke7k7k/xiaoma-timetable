@@ -8,8 +8,11 @@ void main() {
   group('配色方案完整性', () {
     test('每套方案都与莫兰迪同为 16 色（色位一一对应）', () {
       for (final s in kCourseColorSchemes) {
-        expect(s.colors.length, MorandiPalette.colors.length,
-            reason: '方案 ${s.id} 颜色数必须与莫兰迪一致');
+        expect(
+          s.colors.length,
+          MorandiPalette.colors.length,
+          reason: '方案 ${s.id} 颜色数必须与莫兰迪一致',
+        );
       }
     });
 
@@ -17,8 +20,11 @@ void main() {
       final ids = kCourseColorSchemes.map((s) => s.id).toSet();
       expect(ids.length, kCourseColorSchemes.length);
       for (final s in kCourseColorSchemes) {
-        expect(kThemePresets.any((p) => p.id == s.recommendedThemeId), isTrue,
-            reason: '方案 ${s.id} 的推荐主题 ${s.recommendedThemeId} 必须存在');
+        expect(
+          kThemePresets.any((p) => p.id == s.recommendedThemeId),
+          isTrue,
+          reason: '方案 ${s.id} 的推荐主题 ${s.recommendedThemeId} 必须存在',
+        );
       }
     });
   });
@@ -34,8 +40,10 @@ void main() {
     test('其他方案按同下标映射', () {
       final macaron = courseSchemeById('macaron');
       for (var i = 0; i < MorandiPalette.colors.length; i++) {
-        expect(mapCourseColor(MorandiPalette.colors[i], macaron),
-            macaron.colors[i]);
+        expect(
+          mapCourseColor(MorandiPalette.colors[i], macaron),
+          macaron.colors[i],
+        );
       }
     });
 
@@ -56,6 +64,15 @@ void main() {
         expect(mapCourseColor(c, morandi), c);
         expect(shown, grape.colors[MorandiPalette.colors.indexOf(c)]);
       }
+    });
+  });
+
+  group('lightenColor（1.2.3 深底提亮）', () {
+    test('提亮后亮度上升且不改变色相方向', () {
+      const base = Color(0xFF1F3A5F); // 深蓝
+      final light = lightenColor(base);
+      expect(light.computeLuminance(), greaterThan(base.computeLuminance()));
+      expect(light.computeLuminance(), lessThan(1.0));
     });
   });
 

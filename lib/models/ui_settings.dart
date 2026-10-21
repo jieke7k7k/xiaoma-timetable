@@ -21,6 +21,8 @@ class UiSettings {
     this.themePresetId = 'forest',
     this.themeCustomColor,
     this.fontId = 'system',
+    this.showParityLabel = true,
+    this.autoFitHeight = false,
   });
 
   /// 课程格子高度（逻辑像素 px），范围 44~96；默认 46 与旧版按屏均分的手感接近
@@ -53,8 +55,11 @@ class UiSettings {
   static const double textScaleMax = 1.3;
 
   /// 旧版三档（小/中/大）迁移到最接近的缩放系数
-  static double scaleFromLegacyLevel(int level) =>
-      switch (level.clamp(0, 2)) { 0 => 0.92, 2 => 1.08, _ => 1.0 };
+  static double scaleFromLegacyLevel(int level) => switch (level.clamp(0, 2)) {
+    0 => 0.92,
+    2 => 1.08,
+    _ => 1.0,
+  };
 
   /// 卡片上是否显示教室，默认显示
   final bool showClassroom;
@@ -78,18 +83,25 @@ class UiSettings {
   /// smiley 得意黑 / noto 思源黑体；imp_ 开头为用户导入字体（见 FontsService）
   final String fontId;
 
+  /// 标题是否显示单双周（1.2.3）：关掉后左上角只显示「第 X 周」，默认显示
+  final bool showParityLabel;
+
+  /// 行高自适应一屏（1.2.3）：开启后按可用高度均分行高、整表恰好一屏，
+  /// 此时格子高度设置不生效，默认关
+  final bool autoFitHeight;
+
   /// 实际生效的主题种子色（ARGB）
   int get themeSeedValue =>
       themeCustomColor ?? themePresetById(themePresetId).seed;
 
   /// 实际生效的字体 family（系统默认返回 null，走系统字体）
   String? get fontFamily => switch (fontId) {
-        'lxgw' => 'LXGWWenKai',
-        'zcool' => 'ZCOOLKuaiLe',
-        'smiley' => 'SmileySans',
-        'noto' => 'NotoSansSC',
-        _ => null,
-      };
+    'lxgw' => 'LXGWWenKai',
+    'zcool' => 'ZCOOLKuaiLe',
+    'smiley' => 'SmileySans',
+    'noto' => 'NotoSansSC',
+    _ => null,
+  };
 
   /// 当前课程配色方案
   CourseColorScheme get colorScheme => courseSchemeById(colorSchemeId);
@@ -109,6 +121,8 @@ class UiSettings {
     int? themeCustomColor,
     bool clearThemeCustomColor = false,
     String? fontId,
+    bool? showParityLabel,
+    bool? autoFitHeight,
   }) {
     return UiSettings(
       cellHeight: cellHeight ?? this.cellHeight,
@@ -122,27 +136,32 @@ class UiSettings {
       showNote: showNote ?? this.showNote,
       colorSchemeId: colorSchemeId ?? this.colorSchemeId,
       themePresetId: themePresetId ?? this.themePresetId,
-      themeCustomColor:
-          clearThemeCustomColor ? null : (themeCustomColor ?? this.themeCustomColor),
+      themeCustomColor: clearThemeCustomColor
+          ? null
+          : (themeCustomColor ?? this.themeCustomColor),
       fontId: fontId ?? this.fontId,
+      showParityLabel: showParityLabel ?? this.showParityLabel,
+      autoFitHeight: autoFitHeight ?? this.autoFitHeight,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'cellHeight': cellHeight,
-        'cornerRadius': cornerRadius,
-        'showGridLines': showGridLines,
-        'borderWidth': borderWidth,
-        'axisShowTime': axisShowTime,
-        'cardTextScale': cardTextScale,
-        'showClassroom': showClassroom,
-        'showTeacher': showTeacher,
-        'showNote': showNote,
-        'colorSchemeId': colorSchemeId,
-        'themePresetId': themePresetId,
-        'themeCustomColor': themeCustomColor,
-        'fontId': fontId,
-      };
+    'cellHeight': cellHeight,
+    'cornerRadius': cornerRadius,
+    'showGridLines': showGridLines,
+    'borderWidth': borderWidth,
+    'axisShowTime': axisShowTime,
+    'cardTextScale': cardTextScale,
+    'showClassroom': showClassroom,
+    'showTeacher': showTeacher,
+    'showNote': showNote,
+    'colorSchemeId': colorSchemeId,
+    'themePresetId': themePresetId,
+    'themeCustomColor': themeCustomColor,
+    'fontId': fontId,
+    'showParityLabel': showParityLabel,
+    'autoFitHeight': autoFitHeight,
+  };
 
   String encode() => jsonEncode(toJson());
 
@@ -167,27 +186,32 @@ class UiSettings {
         showGridLines: bl('showGridLines', true),
         // 新键优先；缺失时读旧版加粗开关迁移（开=1.4px，关=无边框）
         borderWidth: (map['borderWidth'] is num)
-            ? (map['borderWidth'] as num)
-                .toDouble()
-                .clamp(borderWidthMin, borderWidthMax)
+            ? (map['borderWidth'] as num).toDouble().clamp(
+                borderWidthMin,
+                borderWidthMax,
+              )
             : (bl('boldBorder', false) ? legacyBoldBorderWidth : 0.0),
         axisShowTime: bl('axisShowTime', true),
         // 新键优先；缺失时读旧版三档并迁移，老设置不丢
         cardTextScale: (map['cardTextScale'] is num)
-            ? (map['cardTextScale'] as num)
-                .toDouble()
-                .clamp(textScaleMin, textScaleMax)
+            ? (map['cardTextScale'] as num).toDouble().clamp(
+                textScaleMin,
+                textScaleMax,
+              )
             : (map['cardTextSize'] is int)
-                ? scaleFromLegacyLevel(map['cardTextSize'] as int)
-                : 1.0,
+            ? scaleFromLegacyLevel(map['cardTextSize'] as int)
+            : 1.0,
         showClassroom: bl('showClassroom', true),
         showTeacher: bl('showTeacher', true),
         showNote: bl('showNote', true),
         colorSchemeId: st('colorSchemeId', 'morandi'),
         themePresetId: st('themePresetId', 'forest'),
-        themeCustomColor:
-            map['themeCustomColor'] is int ? map['themeCustomColor'] as int : null,
+        themeCustomColor: map['themeCustomColor'] is int
+            ? map['themeCustomColor'] as int
+            : null,
         fontId: st('fontId', 'system'),
+        showParityLabel: bl('showParityLabel', true),
+        autoFitHeight: bl('autoFitHeight', false),
       );
     } catch (_) {
       return const UiSettings();

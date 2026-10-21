@@ -38,7 +38,10 @@ class UiSettingsPage extends ConsumerWidget {
     final autoCollapse = ref.watch(autoCollapseWeekendProvider);
     final previewDays = computeDisplayDays(
       effectiveCoursesForWeek(
-          courses: courses, overrides: overrides, week: displayWeek),
+        courses: courses,
+        overrides: overrides,
+        week: displayWeek,
+      ),
       displayWeek,
       showOther,
       autoCollapse,
@@ -52,14 +55,24 @@ class UiSettingsPage extends ConsumerWidget {
           const _Header('实时预览'),
           _Preview(ui: ui, columnCount: previewDays.length, slots: slots),
           const _Header('格子外观'),
+          SwitchListTile(
+            title: const Text('行高自适应一屏'),
+            subtitle: const Text('按屏幕高度均分行高，整张课表不用上下滚'),
+            value: ui.autoFitHeight,
+            onChanged: (v) => apply(ui.copyWith(autoFitHeight: v)),
+          ),
           _SliderRow(
             label: '课程格子高度',
-            valueText: '${ui.cellHeight.round()} px',
+            valueText: ui.autoFitHeight
+                ? '自适应中'
+                : '${ui.cellHeight.round()} px',
             value: ui.cellHeight,
             min: 44,
             max: 96,
             divisions: 26,
-            onChanged: (v) => apply(ui.copyWith(cellHeight: v)),
+            onChanged: ui.autoFitHeight
+                ? (_) {}
+                : (v) => apply(ui.copyWith(cellHeight: v)),
           ),
           _SliderRow(
             label: '格子圆角半径',
@@ -77,8 +90,9 @@ class UiSettingsPage extends ConsumerWidget {
           ),
           _SliderRow(
             label: '格子边框粗细',
-            valueText:
-                ui.borderWidth <= 0 ? '无边框' : '${ui.borderWidth.toStringAsFixed(1)} px',
+            valueText: ui.borderWidth <= 0
+                ? '无边框'
+                : '${ui.borderWidth.toStringAsFixed(1)} px',
             value: ui.borderWidth,
             min: UiSettings.borderWidthMin,
             max: UiSettings.borderWidthMax,
@@ -90,6 +104,12 @@ class UiSettingsPage extends ConsumerWidget {
             subtitle: const Text('关掉后左侧只显示节次数字'),
             value: ui.axisShowTime,
             onChanged: (v) => apply(ui.copyWith(axisShowTime: v)),
+          ),
+          SwitchListTile(
+            title: const Text('标题显示单双周'),
+            subtitle: const Text('关掉后左上角只显示「第 X 周」'),
+            value: ui.showParityLabel,
+            onChanged: (v) => apply(ui.copyWith(showParityLabel: v)),
           ),
           const _Header('卡片显示'),
           _SliderRow(
@@ -118,16 +138,33 @@ class UiSettingsPage extends ConsumerWidget {
             onChanged: (v) => apply(ui.copyWith(showNote: v)),
           ),
           const _Header('课程配色'),
-          for (final scheme in kCourseColorSchemes)
-            ListTile(
-              leading: _ColorStrip(colors: scheme.colors),
-              title: Text(scheme.name),
-              trailing: ui.colorSchemeId == scheme.id
-                  ? Icon(Icons.check_circle,
-                      color: Theme.of(context).colorScheme.primary)
-                  : null,
-              onTap: () => apply(ui.copyWith(colorSchemeId: scheme.id)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: DropdownButtonFormField<String>(
+              key: ValueKey('scheme_${ui.colorSchemeId}'),
+              initialValue: ui.colorSchemeId,
+              decoration: const InputDecoration(
+                labelText: '课程配色',
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                for (final scheme in kCourseColorSchemes)
+                  DropdownMenuItem(
+                    value: scheme.id,
+                    child: Row(
+                      children: [
+                        _ColorStrip(colors: scheme.colors),
+                        const SizedBox(width: 10),
+                        Text(scheme.name),
+                      ],
+                    ),
+                  ),
+              ],
+              onChanged: (v) {
+                if (v != null) apply(ui.copyWith(colorSchemeId: v));
+              },
             ),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Align(
@@ -135,11 +172,14 @@ class UiSettingsPage extends ConsumerWidget {
               child: TextButton.icon(
                 icon: const Icon(Icons.palette_outlined, size: 18),
                 label: Text(
-                    '顺带应用推荐主题色「${themePresetById(ui.colorScheme.recommendedThemeId).name}」'),
-                onPressed: () => apply(ui.copyWith(
-                  themePresetId: ui.colorScheme.recommendedThemeId,
-                  clearThemeCustomColor: true,
-                )),
+                  '顺带应用推荐主题色「${themePresetById(ui.colorScheme.recommendedThemeId).name}」',
+                ),
+                onPressed: () => apply(
+                  ui.copyWith(
+                    themePresetId: ui.colorScheme.recommendedThemeId,
+                    clearThemeCustomColor: true,
+                  ),
+                ),
               ),
             ),
           ),
@@ -154,12 +194,15 @@ class UiSettingsPage extends ConsumerWidget {
                   _ThemeChip(
                     name: preset.name,
                     color: Color(preset.seed),
-                    selected: ui.themeCustomColor == null &&
+                    selected:
+                        ui.themeCustomColor == null &&
                         ui.themePresetId == preset.id,
-                    onTap: () => apply(ui.copyWith(
-                      themePresetId: preset.id,
-                      clearThemeCustomColor: true,
-                    )),
+                    onTap: () => apply(
+                      ui.copyWith(
+                        themePresetId: preset.id,
+                        clearThemeCustomColor: true,
+                      ),
+                    ),
                   ),
                 _ThemeChip(
                   name: '自定义',
@@ -171,13 +214,11 @@ class UiSettingsPage extends ConsumerWidget {
                   onTap: () async {
                     final picked = await showDialog<Color>(
                       context: context,
-                      builder: (_) => _HsvPickerDialog(
-                        initial: Color(ui.themeSeedValue),
-                      ),
+                      builder: (_) =>
+                          _HsvPickerDialog(initial: Color(ui.themeSeedValue)),
                     );
                     if (picked != null) {
-                      apply(ui.copyWith(
-                          themeCustomColor: picked.toARGB32()));
+                      apply(ui.copyWith(themeCustomColor: picked.toARGB32()));
                     }
                   },
                 ),
@@ -379,31 +420,51 @@ class _HsvPickerDialogState extends State<_HsvPickerDialog> {
             child: Text(
               '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
               style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.bold),
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
           const SizedBox(height: 8),
-          _hsvSlider('色相', _hsv.hue, 360,
-              (v) => setState(() => _hsv = _hsv.withHue(v))),
-          _hsvSlider('饱和', _hsv.saturation, 1,
-              (v) => setState(() => _hsv = _hsv.withSaturation(v))),
-          _hsvSlider('明度', _hsv.value, 1,
-              (v) => setState(() => _hsv = _hsv.withValue(v))),
+          _hsvSlider(
+            '色相',
+            _hsv.hue,
+            360,
+            (v) => setState(() => _hsv = _hsv.withHue(v)),
+          ),
+          _hsvSlider(
+            '饱和',
+            _hsv.saturation,
+            1,
+            (v) => setState(() => _hsv = _hsv.withSaturation(v)),
+          ),
+          _hsvSlider(
+            '明度',
+            _hsv.value,
+            1,
+            (v) => setState(() => _hsv = _hsv.withValue(v)),
+          ),
         ],
       ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消')),
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
         FilledButton(
-            onPressed: () => Navigator.pop(context, color),
-            child: const Text('应用')),
+          onPressed: () => Navigator.pop(context, color),
+          child: const Text('应用'),
+        ),
       ],
     );
   }
 
   Widget _hsvSlider(
-      String label, double value, double max, ValueChanged<double> onChanged) {
+    String label,
+    double value,
+    double max,
+    ValueChanged<double> onChanged,
+  ) {
     return Row(
       children: [
         SizedBox(width: 36, child: Text(label)),
@@ -501,9 +562,13 @@ class _Preview extends StatelessWidget {
                       SizedBox(
                         width: kTimeAxisWidth,
                         child: Center(
-                          child: Text('9月',
-                              style: TextStyle(
-                                  fontSize: 11, color: scheme.outline)),
+                          child: Text(
+                            '9月',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: scheme.outline,
+                            ),
+                          ),
                         ),
                       ),
                       for (final d in _sampleDays)
@@ -512,18 +577,25 @@ class _Preview extends StatelessWidget {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Text(d.$1,
-                                  style: TextStyle(
-                                      fontSize: 10, color: scheme.outline)),
+                              Text(
+                                d.$1,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: scheme.outline,
+                                ),
+                              ),
                               const SizedBox(height: 2),
                               SizedBox(
                                 width: 22,
                                 height: 22,
                                 child: Center(
-                                  child: Text(d.$2,
-                                      style: TextStyle(
-                                          fontSize: 12,
-                                          color: scheme.onSurfaceVariant)),
+                                  child: Text(
+                                    d.$2,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ],
@@ -547,21 +619,30 @@ class _Preview extends StatelessWidget {
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Text('${i + 1}',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                            color: scheme.onSurfaceVariant)),
+                                    Text(
+                                      '${i + 1}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: scheme.onSurfaceVariant,
+                                      ),
+                                    ),
                                     if (ui.axisShowTime &&
                                         slots.length > i) ...[
-                                      Text(slots[i].startTime,
-                                          style: TextStyle(
-                                              fontSize: 8,
-                                              color: scheme.outline)),
-                                      Text(slots[i].endTime,
-                                          style: TextStyle(
-                                              fontSize: 8,
-                                              color: scheme.outline)),
+                                      Text(
+                                        slots[i].startTime,
+                                        style: TextStyle(
+                                          fontSize: 8,
+                                          color: scheme.outline,
+                                        ),
+                                      ),
+                                      Text(
+                                        slots[i].endTime,
+                                        style: TextStyle(
+                                          fontSize: 8,
+                                          color: scheme.outline,
+                                        ),
+                                      ),
                                     ],
                                   ],
                                 ),
@@ -602,7 +683,13 @@ class _Preview extends StatelessWidget {
   }
 
   Widget _previewCard(
-      Course course, int col, int row, int span, double colW, double rowH) {
+    Course course,
+    int col,
+    int row,
+    int span,
+    double colW,
+    double rowH,
+  ) {
     const pad = 1.5;
     return Positioned(
       left: col * colW + pad,
@@ -649,13 +736,20 @@ class _PreviewGridPainter extends CustomPainter {
       canvas.drawLine(Offset(0, r * rowH), Offset(size.width, r * rowH), paint);
     }
     for (var c = 1; c < cols; c++) {
-      canvas.drawLine(Offset(c * colW, 0), Offset(c * colW, size.height), paint);
+      canvas.drawLine(
+        Offset(c * colW, 0),
+        Offset(c * colW, size.height),
+        paint,
+      );
     }
   }
 
   @override
   bool shouldRepaint(_PreviewGridPainter old) =>
-      old.colW != colW || old.rowH != rowH || old.cols != cols || old.color != color;
+      old.colW != colW ||
+      old.rowH != rowH ||
+      old.cols != cols ||
+      old.color != color;
 }
 
 /// 显示字体区（1.2.1）：内置五款单选 + 用户导入字体（列表/导入/删除）。
@@ -673,28 +767,6 @@ class _FontSection extends StatefulWidget {
 class _FontSectionState extends State<_FontSection> {
   bool _importing = false;
 
-  Widget _fontTile({
-    required bool selected,
-    required String name,
-    required String? family,
-    required VoidCallback onTap,
-    Widget? trailing,
-  }) {
-    return ListTile(
-      leading: Icon(
-        selected ? Icons.radio_button_checked : Icons.radio_button_off,
-        color: selected ? Theme.of(context).colorScheme.primary : null,
-      ),
-      title: Text(
-        '小马课表 · 药理学',
-        style: TextStyle(fontFamily: family, fontSize: 16),
-      ),
-      subtitle: Text(name),
-      trailing: trailing,
-      onTap: onTap,
-    );
-  }
-
   Future<void> _importFont() async {
     final picked = await FilePicker.pickFiles(
       type: FileType.custom,
@@ -705,20 +777,25 @@ class _FontSectionState extends State<_FontSection> {
     if (path == null) return;
     final baseName = path.split('/').last;
     final name = baseName.replaceAll(
-        RegExp(r'\.(ttf|otf)$', caseSensitive: false), '');
+      RegExp(r'\.(ttf|otf)$', caseSensitive: false),
+      '',
+    );
     setState(() => _importing = true);
     try {
       final font = await FontsService.importFont(
-          File(path), name.isEmpty ? '导入字体' : name);
+        File(path),
+        name.isEmpty ? '导入字体' : name,
+      );
       widget.apply(widget.ui.copyWith(fontId: font.id));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已导入并应用「${font.name}」')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('已导入并应用「${font.name}」')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('导入失败：这个文件不是有效的字体文件（仅支持 TTF / OTF）')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('导入失败：这个文件不是有效的字体文件（仅支持 TTF / OTF）')),
+        );
       }
     } finally {
       if (mounted) setState(() => _importing = false);
@@ -733,11 +810,13 @@ class _FontSectionState extends State<_FontSection> {
         content: Text('确定删除「${font.name}」吗？删除后使用该字体的设置会回到系统默认。'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('删除')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
         ],
       ),
     );
@@ -752,46 +831,93 @@ class _FontSectionState extends State<_FontSection> {
   @override
   Widget build(BuildContext context) {
     final ui = widget.ui;
+    final imported = FontsService.fonts;
+    final selectedImported = imported
+        .where((f) => f.id == ui.fontId)
+        .firstOrNull;
+    const builtins = [
+      (id: 'system', name: '系统默认', family: null),
+      (id: 'lxgw', name: '霞鹜文楷', family: 'LXGWWenKai'),
+      (id: 'zcool', name: '站酷快乐体', family: 'ZCOOLKuaiLe'),
+      (id: 'smiley', name: '得意黑', family: 'SmileySans'),
+      (id: 'noto', name: '思源黑体', family: 'NotoSansSC'),
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _Header('显示字体'),
-        for (final font in const [
-          (id: 'system', name: '系统默认', family: null),
-          (id: 'lxgw', name: '霞鹜文楷', family: 'LXGWWenKai'),
-          (id: 'zcool', name: '站酷快乐体', family: 'ZCOOLKuaiLe'),
-          (id: 'smiley', name: '得意黑', family: 'SmileySans'),
-          (id: 'noto', name: '思源黑体', family: 'NotoSansSC'),
-        ])
-          _fontTile(
-            selected: ui.fontId == font.id,
-            name: font.name,
-            family: font.family,
-            onTap: () => widget.apply(ui.copyWith(fontId: font.id)),
-          ),
-        for (final font in FontsService.fonts)
-          _fontTile(
-            selected: ui.fontId == font.id,
-            name: '${font.name}（导入）',
-            family: font.family,
-            onTap: () => widget.apply(ui.copyWith(fontId: font.id)),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline),
-              tooltip: '删除这款导入字体',
-              onPressed: () => _removeFont(font),
+        // 当前字体预览（下拉项本身也各自用自己的字体渲染）
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          child: Text(
+            '小马课表 · 药理学',
+            style: TextStyle(
+              fontSize: 17,
+              fontFamily: FontsService.resolveFamily(ui),
             ),
           ),
-        ListTile(
-          leading: const Icon(Icons.add_circle_outline),
-          title: const Text('导入字体文件'),
-          subtitle: const Text('从手机里选 TTF / OTF 字体，导入后立即全 App 生效'),
-          trailing: _importing
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : null,
-          onTap: _importing ? null : _importFont,
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: DropdownButtonFormField<String>(
+            key: ValueKey('font_${ui.fontId}'),
+            initialValue: ui.fontId,
+            decoration: const InputDecoration(
+              labelText: '显示字体',
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              for (final f in builtins)
+                DropdownMenuItem(
+                  value: f.id,
+                  child: Text(f.name, style: TextStyle(fontFamily: f.family)),
+                ),
+              for (final f in imported)
+                DropdownMenuItem(
+                  value: f.id,
+                  child: Text(
+                    '${f.name}（导入）',
+                    style: TextStyle(fontFamily: f.family),
+                  ),
+                ),
+            ],
+            onChanged: (v) {
+              if (v != null) widget.apply(ui.copyWith(fontId: v));
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Row(
+            children: [
+              OutlinedButton.icon(
+                icon: _importing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.add_circle_outline, size: 18),
+                label: const Text('导入字体文件'),
+                onPressed: _importing ? null : _importFont,
+              ),
+              if (selectedImported != null) ...[
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('删除所选字体'),
+                  onPressed: () => _removeFont(selectedImported),
+                ),
+              ],
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Text(
+            '从手机里选 TTF / OTF 字体，导入后立即全 App 生效',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ),
       ],
     );

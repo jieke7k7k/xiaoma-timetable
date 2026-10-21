@@ -4,6 +4,18 @@
 
 ## 做到哪了
 
+## v1.2.3+9（2026-10-21，反馈 4 项 + 优化 3 项，205 测试全绿）
+
+- **图层重排（A1+A2)**：_GridArea 的 Stack 改为 分隔带（最下）→ _FullWidthLinesPainter 全宽横线（中）→ Row 轴+课表（最上）。横线收归一层统一绘制（行界 + 分隔带上下边，0.5/outlineVariant/drawLine)——此前轴单元格用控件 Border（实心偏粗）与网格 CustomPaint 描线（抗锯齿偏虚）同宽不同貌，接缝如错位（用户纠正：非位置错位、是线宽不一）。_TimeAxis 单元格已删自带底边框；_GridPainter 只剩竖线。带子沉底后跨带长卡（周六实验室）完整压住带体。
+- **设置下拉化（A3)**：课程配色与显示字体改 DropdownButtonFormField（key 绑当前值防 FormField 状态不刷新；字体项各自以自身 family 渲染 + 顶部当前字体预览行；导入/删除按钮保留在下拉下方，删除仅当选中导入字体时出现）。
+- **单双周开关（A4)**：UiSettings.showParityLabel（默认 true)，主页标题关时只显示「第 X 周」。
+- **自适应行高（B1)**：UiSettings.autoFitHeight（默认 false);_GridArea 在 LayoutBuilder 内按 (可用高-带总高）/节数 均分行高（下限 24)，设置页开关开启时高度滑杆停用显示「自适应中」。导出图仍用固定 cellHeight（屏幕概念不入图）。
+- **今天列高亮（B2)**:_GridArea 按 displayWeek==本周且今天在 displayDays 内算 highlightDay，只传给本周页 _WeekGrid；页内 Stack 首子层整列 primary α0.05。
+- **深色卡浅字（B4)**：CourseCard 的 useLightText = 深色模式 || cardColor.computeLuminance()<0.42；边框深底改 lightenColor（color_schemes 新增，向白混合 0.35；注意该文件只有 dart:ui Color、无 material Colors）。
+- **B3 导出图标题行**：核实后发现早已具备（title=「学期名 · 第 X 周课表」+ 日期范围行），本版未动，如实告知用户。
+- 待真机验：接缝线宽观感、长卡压带、下拉手感、单双周开关、自适应行高、今天列高亮、深色卡文字。
+
+
 ## v1.2.1+7（2026-10-21，七项：五项确认方案 + 导出改版 + 小部件修复，192 测试全绿）
 
 - **开学日期确认**：新组件 `widgets/semester_start_dialog.dart`（showSemesterStartConfirmDialog：大字日期+第 1 周范围+总周数，改日期在弹窗内完成并自动对齐周一，返回最终 DateTime/取消 null）。SemesterFormDialog._submit 改异步：校验后先弹确认，确认才 pop 学期（学期管理与导入页新建共用此对话框，一处覆盖两入口）。ImportPage 加 `_guardedImport`（按目标学期 id 记忆 `_startConfirmedForId`，同次导入只弹一次）：弹窗改期后走 **Dao 直更**（注意 CurrentSemesterNotifier.updateSemester 会把当前学期整体替换成参数，非当前目标禁用），是当前学期则 setDirectly 同步 + invalidate semestersProvider；动作闭包必须用更新后的 target（ICS 按 startDate 算周次，捕获旧对象会算错）。

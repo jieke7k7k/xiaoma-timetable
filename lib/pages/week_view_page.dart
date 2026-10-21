@@ -181,6 +181,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
     }
     final displayWeek = ref.watch(displayWeekProvider);
     final todayWeek = ref.watch(todayWeekProvider);
+    final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
     final courses = ref.watch(coursesProvider).value ?? [];
     final overrides = ref.watch(courseOverridesProvider).value ?? [];
     final showOther = ref.watch(showOtherWeeksProvider);
@@ -273,7 +274,9 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      WeekCalc.weekTitle(displayWeek),
+                      ui.showParityLabel
+                          ? WeekCalc.weekTitle(displayWeek)
+                          : '第 $displayWeek 周',
                       style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
@@ -730,6 +733,16 @@ class _GridArea extends ConsumerWidget {
     final sectionCount = slots.length;
     final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
     // 分隔带位置由「作息分段设置」驱动；provider 未加载完成时回退默认值（午休 5 / 晚间 9）
+    // 今天列高亮（B2）：正在看的就是本周且今天在显示列里时，整列加淡色底
+    final nowDate = DateTime.now();
+    final thisWeekNo = WeekCalc.currentWeek(
+      DateTime.parse(semester.startDate),
+      nowDate,
+    );
+    final highlightDay =
+        (displayWeek == thisWeekNo && displayDays.contains(nowDate.weekday))
+        ? nowDate.weekday
+        : null;
     final seg = ref.watch(segmentSettingsProvider).value;
     final lunchAfter = seg?.lunchAfterSection ?? 5;
     final dinnerAfter = seg?.dinnerAfterSection ?? 9;
@@ -749,16 +762,22 @@ class _GridArea extends ConsumerWidget {
       (after: lunchAfter, label: '午休', interval: bandInterval(lunchAfter)),
       (after: dinnerAfter, label: '晚间', interval: bandInterval(dinnerAfter)),
     ].where((b) => b.after < sectionCount).toList();
-    // 固定行高（界面设置）；总高 = 节次行高之和 + 分隔带
-    final rowHeight = ui.cellHeight;
-    final totalHeight =
-        sectionCount * rowHeight + activeBands.length * kBandHeight;
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final columnCount = displayDays.length;
         final cellWidth =
             (constraints.maxWidth - timeAxisWidth - 1) / columnCount;
+        // 行高：默认用界面设置的固定格子高度；开启「自适应一屏」（B1）时
+        // 按可用高度均分（分隔带高度固定扣除），整表恰好一屏
+        var rowHeight = ui.cellHeight;
+        if (ui.autoFitHeight && constraints.maxHeight.isFinite) {
+          final fit =
+              (constraints.maxHeight - activeBands.length * kBandHeight) /
+              sectionCount;
+          rowHeight = fit < 24 ? 24 : fit;
+        }
+        final totalHeight =
+            sectionCount * rowHeight + activeBands.length * kBandHeight;
         // 内容不足一屏时按可视高撑满（格子保持设定高度，空白留在底部）
         final contentHeight = totalHeight < constraints.maxHeight
             ? constraints.maxHeight
@@ -776,6 +795,39 @@ class _GridArea extends ConsumerWidget {
               height: contentHeight,
               child: Stack(
                 children: [
+                  // 最下层：单条通栏分隔带（1.2.2 通栏化，1.2.3 沉底——
+                  // 跨带长卡要完整压住带子，见 A2）
+                  for (final b in activeBands)
+                    Positioned(
+                      top:
+                          b.after * rowHeight +
+                          activeBands.where((o) => o.after < b.after).length *
+                              kBandHeight,
+                      left: 0,
+                      right: 0,
+                      height: kBandHeight,
+                      child: IgnorePointer(
+                        child: _FullBand(band: b, axisWidth: timeAxisWidth),
+                      ),
+                    ),
+                  // 中层：全宽横线（1.2.3 统一绘制，见 _FullWidthLinesPainter）
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: totalHeight,
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _FullWidthLinesPainter(
+                          rowHeight: rowHeight,
+                          sectionCount: sectionCount,
+                          activeBands: activeBands,
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                  // 最上层：时间轴 + 课表
                   Row(
                     children: [
                       // 左侧时间轴（与网格共用行高 + 分隔带占位，随网格一起滚动）
@@ -812,27 +864,15 @@ class _GridArea extends ConsumerWidget {
                               activeBands: activeBands,
                               editMode: editMode,
                               onScrollLockChanged: onScrollLockChanged,
+                              highlightDay: week == thisWeekNo
+                                  ? highlightDay
+                                  : null,
                             );
                           },
                         ),
                       ),
                     ],
                   ),
-                  // 单条通栏分隔带（1.2.2）：整行只画一条带子横贯时间轴与网格，
-                  // 左右各画一半的拼法会在接缝处错位（用户圈图反馈）
-                  for (final b in activeBands)
-                    Positioned(
-                      top:
-                          b.after * rowHeight +
-                          activeBands.where((o) => o.after < b.after).length *
-                              kBandHeight,
-                      left: 0,
-                      right: 0,
-                      height: kBandHeight,
-                      child: IgnorePointer(
-                        child: _FullBand(band: b, axisWidth: timeAxisWidth),
-                      ),
-                    ),
                 ],
               ),
             ),
@@ -939,14 +979,7 @@ class _TimeAxis extends StatelessWidget {
               height: rowHeight,
               child: Container(
                 alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: colorScheme.outlineVariant,
-                      width: 0.5,
-                    ),
-                  ),
-                ),
+                // 底边横线由全宽线网层统一绘制（1.2.3），单元格不再自带边框
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -1007,6 +1040,7 @@ class _WeekGrid extends ConsumerStatefulWidget {
     required this.activeBands,
     required this.editMode,
     required this.onScrollLockChanged,
+    required this.highlightDay,
   });
 
   final int week;
@@ -1017,6 +1051,9 @@ class _WeekGrid extends ConsumerStatefulWidget {
   final List<GridBand> activeBands;
   final bool editMode;
   final ValueChanged<bool> onScrollLockChanged;
+
+  /// 今天所在的星期列（B2 整列淡色高亮）；非本周或今天不在显示列时为 null
+  final int? highlightDay;
 
   @override
   ConsumerState<_WeekGrid> createState() => _WeekGridState();
@@ -1211,6 +1248,21 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
       child: Stack(
         children: [
           // 网格背景线（界面设置可关）
+          // 今天整列淡色底（B2）：垫在网格线与卡片之下
+          if (widget.highlightDay != null &&
+              displayDays.contains(widget.highlightDay))
+            Positioned(
+              left: displayDays.indexOf(widget.highlightDay!) * cellWidth,
+              top: 0,
+              width: cellWidth,
+              height: totalHeight,
+              child: IgnorePointer(
+                child: ColoredBox(
+                  color: Theme.of(context).colorScheme.primary
+                      .withValues(alpha: 0.05),
+                ),
+              ),
+            ),
           if (ui.showGridLines)
             _GridLines(
               cellWidth: cellWidth,
@@ -1318,6 +1370,51 @@ class _GridLines extends StatelessWidget {
   }
 }
 
+/// 全宽横线层（1.2.3）：整张课表的行界线（含分隔带上下边）由这一位画笔
+/// 统一绘制——此前时间轴用控件边框（实心、偏粗偏深）、网格用画布描线
+/// （抗锯齿、偏虚），标称同宽却看着粗细不一，接缝处像没对齐（用户反馈）。
+/// 现在全表横线同宽、同色、同画法；竖线仍由 _GridPainter 绘制（同一参数）。
+class _FullWidthLinesPainter extends CustomPainter {
+  const _FullWidthLinesPainter({
+    required this.rowHeight,
+    required this.sectionCount,
+    required this.activeBands,
+    required this.color,
+  });
+
+  final double rowHeight;
+  final int sectionCount;
+  final List<GridBand> activeBands;
+  final Color color;
+
+  double _topOf(int section) =>
+      yOffsetTop(section, rowHeight, bandsBefore(section, activeBands));
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 0.5;
+    // 每节底边（最后一节即整表底边）；第 after 节的底边正是分隔带顶边
+    for (var r = 1; r <= sectionCount; r++) {
+      final y = _topOf(r) + rowHeight;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+    // 分隔带底边
+    for (final b in activeBands) {
+      final y = _topOf(b.after + 1);
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_FullWidthLinesPainter old) =>
+      old.rowHeight != rowHeight ||
+      old.sectionCount != sectionCount ||
+      old.activeBands != activeBands ||
+      old.color != color;
+}
+
 class _GridPainter extends CustomPainter {
   _GridPainter({
     required this.cellWidth,
@@ -1335,20 +1432,12 @@ class _GridPainter extends CustomPainter {
   final List<GridBand> activeBands;
   final Color color;
 
-  double _topOf(int section) =>
-      yOffsetTop(section, rowHeight, bandsBefore(section, activeBands));
-
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = color
       ..strokeWidth = 0.5;
-    // 横线（每节一条，分隔带处由分隔带覆盖故跳过）
-    for (var r = 1; r < sectionCount; r++) {
-      if (activeBands.any((b) => b.after == r)) continue;
-      final y = _topOf(r + 1);
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
+    // 横线已改由 _FullWidthLinesPainter 全宽统一绘制（1.2.3），此处只画竖线
     // 竖线（列分隔）
     for (var c = 1; c < columnCount; c++) {
       final x = c * cellWidth;

@@ -18,6 +18,9 @@ void main() {
       expect(ui.themeCustomColor, isNull);
       expect(ui.fontId, 'system');
       expect(ui.fontFamily, isNull);
+      // 1.2.3 新增：单双周默认显示、自适应默认关
+      expect(ui.showParityLabel, isTrue);
+      expect(ui.autoFitHeight, isFalse);
       expect(UiSettings.fromEncoded('').cellHeight, 46);
       expect(UiSettings.fromEncoded('坏掉的 json').cellHeight, 46);
     });
@@ -37,6 +40,8 @@ void main() {
         themePresetId: 'ocean',
         themeCustomColor: 0xFF123456,
         fontId: 'lxgw',
+        showParityLabel: false,
+        autoFitHeight: true,
       );
       final back = UiSettings.fromEncoded(ui.encode());
       expect(back.cellHeight, 64);
@@ -52,11 +57,14 @@ void main() {
       expect(back.themeCustomColor, 0xFF123456);
       expect(back.fontId, 'lxgw');
       expect(back.fontFamily, 'LXGWWenKai');
+      expect(back.showParityLabel, isFalse);
+      expect(back.autoFitHeight, isTrue);
     });
 
     test('越界值被钳制：格高、圆角、字号系数', () {
       final ui = UiSettings.fromEncoded(
-          '{"cellHeight": 200, "cornerRadius": -3, "cardTextScale": 9}');
+        '{"cellHeight": 200, "cornerRadius": -3, "cardTextScale": 9}',
+      );
       expect(ui.cellHeight, 96);
       expect(ui.cornerRadius, 0);
       expect(ui.cardTextScale, UiSettings.textScaleMax);
@@ -74,9 +82,10 @@ void main() {
       expect(UiSettings.fromEncoded('{"cardTextSize": 9}').cardTextScale, 1.08);
       // 新键存在时优先于旧键
       expect(
-          UiSettings.fromEncoded('{"cardTextScale": 1.25, "cardTextSize": 0}')
-              .cardTextScale,
-          1.25);
+        UiSettings.fromEncoded('{"cardTextScale": 1.25, "cardTextSize": 0}')
+            .cardTextScale,
+        1.25,
+      );
     });
 
     test('旧版加粗边框开关自动迁移为边框粗细（1.2.1）', () {
@@ -84,9 +93,10 @@ void main() {
       expect(UiSettings.fromEncoded('{"boldBorder": false}').borderWidth, 0.0);
       // 新键优先于旧键，越界钳到 3
       expect(
-          UiSettings.fromEncoded('{"borderWidth": 2.2, "boldBorder": false}')
-              .borderWidth,
-          2.2);
+        UiSettings.fromEncoded('{"borderWidth": 2.2, "boldBorder": false}')
+            .borderWidth,
+        2.2,
+      );
       expect(UiSettings.fromEncoded('{"borderWidth": 9}').borderWidth, 3.0);
     });
 

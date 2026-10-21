@@ -67,25 +67,39 @@ class CourseCard extends StatelessWidget {
     // 深色模式：底色降饱和降明度 + 浅色文字；浅色模式：原色 + 深色文字
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final baseColor = Color(displayColorValue ?? course.colorValue);
-    final cardColor =
-        isDark ? MorandiPalette.desaturateForDark(baseColor) : baseColor;
+    final cardColor = isDark
+        ? MorandiPalette.desaturateForDark(baseColor)
+        : baseColor;
+    // B4：卡片底色本身偏深时（自选了深色课程色），即便浅色模式也改用
+    // 浅色文字/角标，边框改提亮一档——避免深底深字看不清
+    final useLightText = isDark || cardColor.computeLuminance() < 0.42;
     final titleColor = Color(
-        isDark ? MorandiPalette.darkTextColor : MorandiPalette.textColor);
-    final subtitleColor = Color(isDark
-        ? MorandiPalette.darkSubTextColor
-        : MorandiPalette.subTextColor);
-    // 角标在深色下反色为浅色块+深字，浅色下保持深色块+白字
-    final badgeBg = Color(isDark
-        ? MorandiPalette.darkBadgeBackground
-        : MorandiPalette.textColor);
-    final badgeFg = isDark
+      useLightText ? MorandiPalette.darkTextColor : MorandiPalette.textColor,
+    );
+    final subtitleColor = Color(
+      useLightText
+          ? MorandiPalette.darkSubTextColor
+          : MorandiPalette.subTextColor,
+    );
+    // 角标在浅字模式下反色为浅色块+深字，否则保持深色块+白字
+    final badgeBg = Color(
+      useLightText
+          ? MorandiPalette.darkBadgeBackground
+          : MorandiPalette.textColor,
+    );
+    final badgeFg = useLightText
         ? Color(MorandiPalette.darkBadgeTextColor)
         : Colors.white;
-    // 边框：取「实际显示底色」加深一档，同色系描边不跳色；粗细无极可调
+    // 边框：取「实际显示底色」同色系描边（浅底加深、深底提亮）；粗细无极可调
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(cornerRadius),
       side: borderWidth > 0
-          ? BorderSide(color: darkenColor(cardColor), width: borderWidth)
+          ? BorderSide(
+              color: useLightText
+                  ? lightenColor(cardColor)
+                  : darkenColor(cardColor),
+              width: borderWidth,
+            )
           : BorderSide.none,
     );
     final noteText = course.note?.trim() ?? '';
@@ -152,10 +166,9 @@ class CourseCard extends StatelessWidget {
                         ),
                     ],
                   ),
-                  maxLines:
-                      (course.endSection - course.startSection + 1) == 1
-                          ? 4
-                          : 8,
+                  maxLines: (course.endSection - course.startSection + 1) == 1
+                      ? 4
+                      : 8,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -165,8 +178,10 @@ class CourseCard extends StatelessWidget {
                   top: 4,
                   right: 4,
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
                     decoration: BoxDecoration(
                       color: badgeBg,
                       borderRadius: BorderRadius.circular(6),
