@@ -3,4 +3,5 @@
 <resources>
     <color name="widget_title_color">#EAE6E0</color>
     <color name="widget_line_color">#B8B4AE</color>
+    <color name="widget_sub_color">#8F8B85</color>
 </resources>

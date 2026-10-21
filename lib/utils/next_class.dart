@@ -83,32 +83,17 @@ ClassFocus computeClassFocus({
   required List<TimeSlot> timeSlots,
   List<CourseOverride> overrides = const [],
 }) {
-  final semesterStart = DateTime.parse(semester.startDate);
-  final slotMap = {for (final s in timeSlots) s.section: s};
   final today = DateTime(now.year, now.month, now.day);
-  final sessions = <ClassSession>[];
-  for (var offset = 0; offset <= 8; offset++) {
-    final date = today.add(Duration(days: offset));
-    final week = WeekCalc.currentWeek(semesterStart, date);
-    if (week < 1 || week > semester.totalWeeks) continue;
-    // effectiveCoursesForWeek 按约定不做周次过滤，调用方必须再按
-    // isActiveInWeek 过滤（单双周/周次范围），否则单双周课会误报
-    final effective = effectiveCoursesForWeek(
-            courses: courses, overrides: overrides, week: week)
-        .where((c) => c.isActiveInWeek(week));
-    for (final c in effective) {
-      if (c.dayOfWeek != date.weekday) continue;
-      final sSlot = slotMap[c.startSection];
-      final eSlot = slotMap[c.endSection];
-      if (sSlot == null || eSlot == null) continue;
-      final start = combineDateAndTime(date, sSlot.startTime);
-      final end = combineDateAndTime(date, eSlot.endTime);
-      if (start == null || end == null) continue;
-      sessions.add(
-          ClassSession(course: c, date: date, start: start, end: end));
-    }
-  }
-  sessions.sort((a, b) => a.start.compareTo(b.start));
+  final sessions = <ClassSession>[
+    for (var offset = 0; offset <= 8; offset++)
+      ...sessionsOnDay(
+        date: today.add(Duration(days: offset)),
+        semester: semester,
+        courses: courses,
+        timeSlots: timeSlots,
+        overrides: overrides,
+      ),
+  ]..sort((a, b) => a.start.compareTo(b.start));
 
   ClassSession? current;
   for (final s in sessions) {
@@ -131,4 +116,40 @@ ClassFocus computeClassFocus({
         .length;
   }
   return ClassFocus(current: current, next: next, laterTodayCount: later);
+}
+
+/// 某一天的具体课次（1.2.2 从 computeClassFocus 抽出，桌面小部件共用同一口径）
+///
+/// 已应用单次调课（overrides）与单双周/周次过滤，按开始时间排序；
+/// 日期不在学期范围内返回空列表。
+/// 注意：effectiveCoursesForWeek 按约定不做周次过滤，这里统一补上 isActiveInWeek。
+List<ClassSession> sessionsOnDay({
+  required DateTime date,
+  required Semester semester,
+  required List<Course> courses,
+  required List<TimeSlot> timeSlots,
+  List<CourseOverride> overrides = const [],
+}) {
+  final day = DateTime(date.year, date.month, date.day);
+  final week = WeekCalc.currentWeek(DateTime.parse(semester.startDate), day);
+  if (week < 1 || week > semester.totalWeeks) return const [];
+  final slotMap = {for (final s in timeSlots) s.section: s};
+  final out = <ClassSession>[];
+  final effective = effectiveCoursesForWeek(
+    courses: courses,
+    overrides: overrides,
+    week: week,
+  ).where((c) => c.isActiveInWeek(week));
+  for (final c in effective) {
+    if (c.dayOfWeek != day.weekday) continue;
+    final sSlot = slotMap[c.startSection];
+    final eSlot = slotMap[c.endSection];
+    if (sSlot == null || eSlot == null) continue;
+    final start = combineDateAndTime(day, sSlot.startTime);
+    final end = combineDateAndTime(day, eSlot.endTime);
+    if (start == null || end == null) continue;
+    out.add(ClassSession(course: c, date: day, start: start, end: end));
+  }
+  out.sort((a, b) => a.start.compareTo(b.start));
+  return out;
 }

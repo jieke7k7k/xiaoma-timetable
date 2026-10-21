@@ -42,8 +42,7 @@ OngoingNotice buildOngoingNotice({
     return OngoingNotice(
       title: '正在上课：${cur.course.name}',
       lines: [
-        '${cur.timeRange} · ${fmtHhmm(cur.end)} 下课'
-            '${_roomSuffix(cur.course)}',
+        '${cur.timeRange}${_roomSuffix(cur.course)}',
         if (nxt != null)
           '下一节：${nxt.course.name} · ${dayLabel(nxt.date, now)} '
               '${fmtHhmm(nxt.start)}${_roomSuffix(nxt.course)}'

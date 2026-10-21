@@ -6,9 +6,9 @@
      1.2.1 起 updatePeriodMillis=1800000（30 分钟）：App 推送更新为主，系统周期重绘为兜底——个别厂商省电策略会吞掉应用广播，靠周期重绘读最新数据自愈。 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="250dp"
-    android:minHeight="110dp"
+    android:minHeight="150dp"
     android:targetCellWidth="4"
-    android:targetCellHeight="2"
+    android:targetCellHeight="3"
     android:minResizeWidth="180dp"
     android:minResizeHeight="110dp"
     android:resizeMode="horizontal|vertical"

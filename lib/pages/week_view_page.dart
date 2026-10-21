@@ -111,7 +111,10 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
 
   /// 表头某天有考试时点开看详情（考试红点配套）
   void _showDayExams(
-      BuildContext context, DateTime date, List<Course> dayCourses) {
+    BuildContext context,
+    DateTime date,
+    List<Course> dayCourses,
+  ) {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -138,7 +141,8 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
                     Text(
                       _examTimeText(c.examDate!),
                       style: TextStyle(
-                          color: Theme.of(ctx).colorScheme.outline),
+                        color: Theme.of(ctx).colorScheme.outline,
+                      ),
                     ),
                   ],
                 ),
@@ -149,12 +153,14 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
           TextButton(
             onPressed: () =>
                 Navigator.pushNamed(context, '/exam-countdown').then((_) {
-              if (ctx.mounted) Navigator.pop(ctx);
-            }),
+                  if (ctx.mounted) Navigator.pop(ctx);
+                }),
             child: const Text('全部考试倒计时'),
           ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('好的')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('好的'),
+          ),
         ],
       ),
     );
@@ -181,19 +187,26 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
     final autoCollapse = ref.watch(autoCollapseWeekendProvider);
     // 周末自适应收起也要看调课结果：某节课被单次调到周六/周日时不能收起
     final displayWeekCourses = effectiveCoursesForWeek(
-        courses: courses, overrides: overrides, week: displayWeek);
+      courses: courses,
+      overrides: overrides,
+      week: displayWeek,
+    );
     final displayDays = computeDisplayDays(
-        displayWeekCourses, displayWeek, showOther, autoCollapse);
-    final dates =
-        WeekCalc.weekDatesOf(DateTime.parse(semester.startDate), displayWeek);
+      displayWeekCourses,
+      displayWeek,
+      showOther,
+      autoCollapse,
+    );
+    final dates = WeekCalc.weekDatesOf(
+      DateTime.parse(semester.startDate),
+      displayWeek,
+    );
     // 本周考试标记（1.2.0）：按日期聚合设置了考试日期的课程，表头打红点
     final examsByDay = <String, List<Course>>{};
     for (final c in courses) {
       if (c.examDate == null) continue;
       final d = DateTime.fromMillisecondsSinceEpoch(c.examDate!);
-      examsByDay
-          .putIfAbsent('${d.year}-${d.month}-${d.day}', () => [])
-          .add(c);
+      examsByDay.putIfAbsent('${d.year}-${d.month}-${d.day}', () => []).add(c);
     }
     // 顶部状态条焦点（与常驻通知共用同一套计算）；焦点变化时顺手刷新常驻通知，
     // 保证通知栏里的「下一节」跟主页状态条同步切换
@@ -210,7 +223,8 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
     if (focusSig != _focusSig) {
       _focusSig = focusSig;
       WidgetsBinding.instance.addPostFrameCallback(
-          (_) => OngoingNoticeService.instance.refresh());
+        (_) => OngoingNoticeService.instance.refresh(),
+      );
     }
 
     // 学期切换联动：semester 变化时把 PageController 跳到新学期的「本周」，
@@ -218,9 +232,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
     ref.listen(currentSemesterProvider, (prev, next) {
       final prevId = prev?.value?.id;
       final nextSemester = next.value;
-      if (prevId == null ||
-          nextSemester == null ||
-          prevId == nextSemester.id) {
+      if (prevId == null || nextSemester == null || prevId == nextSemester.id) {
         return;
       }
       final w = ref.read(todayWeekProvider);
@@ -240,6 +252,11 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
 
     return Scaffold(
       appBar: AppBar(
+        // 恒色（1.2.2）：默认 AppBar 在内容滚动/回弹时会自动切换表面着色，
+        // 下拉瞬间顶部发白（用户实测对比图）。钉死背景色并关掉自动着色。
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+        surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 0,
         // 周数标题靠左上角（用户要求）；主页是根页面，显式关掉系统自动
         // 生成的返回箭头（首次使用经导入流程进入时曾出现无用返回按钮）
         automaticallyImplyLeading: false,
@@ -255,9 +272,13 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(WeekCalc.weekTitle(displayWeek),
-                        style: const TextStyle(
-                            fontSize: 17, fontWeight: FontWeight.bold)),
+                    Text(
+                      WeekCalc.weekTitle(displayWeek),
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     Text(
                       '${dates.first.month}月${dates.first.day}日 - '
                       '${dates.last.month}月${dates.last.day}日',
@@ -285,10 +306,12 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
               onPressed: () {
                 HapticFeedback.lightImpact();
                 setState(() => _editMode = true);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('编辑模式已开启：点击空白处新建课程，长按课程可编辑'),
-                  duration: Duration(seconds: 2),
-                ));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('编辑模式已开启：点击空白处新建课程，长按课程可编辑'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
               },
             ),
           // 「更多」菜单（1.2.0）：顶栏只留铅笔（状态按钮）在外，
@@ -433,21 +456,23 @@ class _SundayEndBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Row(
         children: [
-          Icon(Icons.weekend_outlined,
-              size: 18, color: scheme.onSecondaryContainer),
+          Icon(
+            Icons.weekend_outlined,
+            size: 18,
+            color: scheme.onSecondaryContainer,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               '今天是周日，本周已结束',
-              style:
-                  TextStyle(fontSize: 13, color: scheme.onSecondaryContainer),
+              style: TextStyle(
+                fontSize: 13,
+                color: scheme.onSecondaryContainer,
+              ),
             ),
           ),
           if (onNextWeek != null)
-            TextButton(
-              onPressed: onNextWeek,
-              child: const Text('看下周'),
-            ),
+            TextButton(onPressed: onNextWeek, child: const Text('看下周')),
         ],
       ),
     );
@@ -495,10 +520,7 @@ class _HeaderRow extends StatelessWidget {
             child: Center(
               child: Text(
                 '${dates.first.month}月',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: colorScheme.outline,
-                ),
+                style: TextStyle(fontSize: 11, color: colorScheme.outline),
               ),
             ),
           ),
@@ -511,10 +533,9 @@ class _HeaderRow extends StatelessWidget {
                     child: _DayCell(
                       date: dates[d - 1],
                       isToday: _isSameDay(dates[d - 1], today),
-                      examCourses: examsByDay[
-                          '${dates[d - 1].year}-${dates[d - 1].month}-${dates[d - 1].day}'],
-                      onTap: (dayCourses) =>
-                          onDayTap(dates[d - 1], dayCourses),
+                      examCourses:
+                          examsByDay['${dates[d - 1].year}-${dates[d - 1].month}-${dates[d - 1].day}'],
+                      onTap: (dayCourses) => onDayTap(dates[d - 1], dayCourses),
                     ),
                   ),
               ],
@@ -607,10 +628,7 @@ class _DayCell extends StatelessWidget {
       ],
     );
     if (!hasExam || onTap == null) return cell;
-    return InkWell(
-      onTap: () => onTap!(examCourses!),
-      child: cell,
-    );
+    return InkWell(onTap: () => onTap!(examCourses!), child: cell);
   }
 }
 
@@ -654,8 +672,8 @@ class _WeekJumper extends StatelessWidget {
                   color: w == currentWeek
                       ? colorScheme.primary
                       : (w == todayWeek
-                          ? colorScheme.primaryContainer
-                          : colorScheme.surfaceContainerHighest),
+                            ? colorScheme.primaryContainer
+                            : colorScheme.surfaceContainerHighest),
                   borderRadius: BorderRadius.circular(AppRadii.chip),
                 ),
                 child: Text(
@@ -742,8 +760,9 @@ class _GridArea extends ConsumerWidget {
         final cellWidth =
             (constraints.maxWidth - timeAxisWidth - 1) / columnCount;
         // 内容不足一屏时按可视高撑满（格子保持设定高度，空白留在底部）
-        final contentHeight =
-            totalHeight < constraints.maxHeight ? constraints.maxHeight : totalHeight;
+        final contentHeight = totalHeight < constraints.maxHeight
+            ? constraints.maxHeight
+            : totalHeight;
         return MediaQuery(
           // 降灵敏：子树手势触发距离 18 → 30，静置手指不再拖动课表
           data: MediaQuery.of(context).copyWith(
@@ -755,52 +774,137 @@ class _GridArea extends ConsumerWidget {
                 : const ClampingScrollPhysics(),
             child: SizedBox(
               height: contentHeight,
-              child: Row(
+              child: Stack(
                 children: [
-                  // 左侧时间轴（与网格共用行高 + 分隔带占位，随网格一起滚动）
-                  _TimeAxis(
-                    slots: slots,
-                    width: timeAxisWidth,
-                    rowHeight: rowHeight,
-                    activeBands: activeBands,
-                    showTime: ui.axisShowTime,
+                  Row(
+                    children: [
+                      // 左侧时间轴（与网格共用行高 + 分隔带占位，随网格一起滚动）
+                      _TimeAxis(
+                        slots: slots,
+                        width: timeAxisWidth,
+                        rowHeight: rowHeight,
+                        activeBands: activeBands,
+                        showTime: ui.axisShowTime,
+                      ),
+                      const VerticalDivider(width: 1),
+                      // 右侧周网格（可左右滑动）
+                      Expanded(
+                        child: PageView.builder(
+                          controller: pageController,
+                          // 翻页判定（1.2.1）：默认物理在松手速度 >约7px/s 时就翻页，
+                          // 改用明确滑动才翻周的自定义物理（见 deliberate_page_physics）
+                          physics: const DeliberatePagePhysics(),
+                          onPageChanged: (page) {
+                            // 切周成功的轻触感反馈
+                            HapticFeedback.lightImpact();
+                            onWeekChanged(page);
+                          },
+                          itemCount: semester.totalWeeks,
+                          itemBuilder: (context, index) {
+                            final week = index + 1;
+                            return _WeekGrid(
+                              key: ValueKey(week),
+                              week: week,
+                              sectionCount: sectionCount,
+                              displayDays: displayDays,
+                              cellWidth: cellWidth,
+                              rowHeight: rowHeight,
+                              activeBands: activeBands,
+                              editMode: editMode,
+                              onScrollLockChanged: onScrollLockChanged,
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-                  const VerticalDivider(width: 1),
-                  // 右侧周网格（可左右滑动）
-                  Expanded(
-                    child: PageView.builder(
-                      controller: pageController,
-                      // 翻页判定（1.2.1）：默认物理在松手速度 >约7px/s 时就翻页，
-                      // 改用明确滑动才翻周的自定义物理（见 deliberate_page_physics）
-                      physics: const DeliberatePagePhysics(),
-                      onPageChanged: (page) {
-                        // 切周成功的轻触感反馈
-                        HapticFeedback.lightImpact();
-                        onWeekChanged(page);
-                      },
-                      itemCount: semester.totalWeeks,
-                      itemBuilder: (context, index) {
-                        final week = index + 1;
-                        return _WeekGrid(
-                          key: ValueKey(week),
-                          week: week,
-                          sectionCount: sectionCount,
-                          displayDays: displayDays,
-                          cellWidth: cellWidth,
-                          rowHeight: rowHeight,
-                          activeBands: activeBands,
-                          editMode: editMode,
-                          onScrollLockChanged: onScrollLockChanged,
-                        );
-                      },
+                  // 单条通栏分隔带（1.2.2）：整行只画一条带子横贯时间轴与网格，
+                  // 左右各画一半的拼法会在接缝处错位（用户圈图反馈）
+                  for (final b in activeBands)
+                    Positioned(
+                      top:
+                          b.after * rowHeight +
+                          activeBands.where((o) => o.after < b.after).length *
+                              kBandHeight,
+                      left: 0,
+                      right: 0,
+                      height: kBandHeight,
+                      child: IgnorePointer(
+                        child: _FullBand(band: b, axisWidth: timeAxisWidth),
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+/// 单条通栏分隔带（1.2.2）：左侧时间轴段写名称，右侧居中显示名称 + 时间段，
+/// 整行同一个容器绘制，与网格/时间轴之间不存在接缝。
+class _FullBand extends StatelessWidget {
+  const _FullBand({required this.band, required this.axisWidth});
+
+  final GridBand band;
+  final double axisWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final bg = scheme.surfaceContainerHighest.withValues(alpha: 0.6);
+    final divider = scheme.outlineVariant.withValues(alpha: 0.6);
+    return Container(
+      height: kBandHeight,
+      color: bg,
+      child: Row(
+        children: [
+          SizedBox(
+            width: axisWidth,
+            child: Center(
+              child: Text(
+                band.label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.outline.withValues(alpha: 0.9),
+                ),
+              ),
+            ),
+          ),
+          Container(width: 1, color: divider),
+          Expanded(
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    band.label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.outline.withValues(alpha: 0.8),
+                      letterSpacing: 4,
+                    ),
+                  ),
+                  if (band.interval.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      band.interval,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: scheme.outline.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -837,48 +941,48 @@ class _TimeAxis extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   border: Border(
-                    bottom:
-                        BorderSide(color: colorScheme.outlineVariant, width: 0.5),
+                    bottom: BorderSide(
+                      color: colorScheme.outlineVariant,
+                      width: 0.5,
+                    ),
                   ),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('${slots[i].section}',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.onSurfaceVariant)),
+                    Text(
+                      '${slots[i].section}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                     if (showTime) ...[
-                      Text(slots[i].startTime,
-                          style: TextStyle(
-                              fontSize: 8, color: colorScheme.outline)),
-                      Text(slots[i].endTime,
-                          style: TextStyle(
-                              fontSize: 8, color: colorScheme.outline)),
+                      Text(
+                        slots[i].startTime,
+                        style: TextStyle(
+                          fontSize: 8,
+                          color: colorScheme.outline,
+                        ),
+                      ),
+                      Text(
+                        slots[i].endTime,
+                        style: TextStyle(
+                          fontSize: 8,
+                          color: colorScheme.outline,
+                        ),
+                      ),
                     ],
                   ],
                 ),
               ),
             ),
-            // 分隔带左段（1.2.1 通栏化）：与右侧网格同底色，写名称，
-            // 左侧时间轴不再是一截空白——休息时段独立成段
+            // 分隔带占位（高度与网格一致即可）：带子本体由 _GridArea 顶层
+            // 以「单条通栏」绘制（1.2.2）——左右各画一半会在接缝处错位
             for (final b in activeBands)
               if (b.after == slots[i].section)
-                Container(
-                  height: kBandHeight,
-                  color: colorScheme.surfaceContainerHighest
-                      .withValues(alpha: 0.6),
-                  alignment: Alignment.center,
-                  child: Text(
-                    b.label,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.outline.withValues(alpha: 0.9),
-                    ),
-                  ),
-                ),
+                const SizedBox(height: kBandHeight),
           ],
         ],
       ),
@@ -926,12 +1030,18 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
   int? _anchorRow;
 
   double _topOf(int section) => yOffsetTop(
-      section, widget.rowHeight, bandsBefore(section, widget.activeBands));
+    section,
+    widget.rowHeight,
+    bandsBefore(section, widget.activeBands),
+  );
 
   /// 段内第一门课在该周的单次调课记录。
   /// 草稿课（无 id）或该周本就不上课的课程（调课记录无效）返回 null。
   CourseOverride? _overrideForSlot(
-      Map<int, CourseOverride> overrideMap, DisplaySlot slot, int week) {
+    Map<int, CourseOverride> overrideMap,
+    DisplaySlot slot,
+    int week,
+  ) {
     final first = slot.courses.first;
     if (first.id == null || !first.isActiveInWeek(week)) return null;
     return overrideMap[first.id];
@@ -939,7 +1049,9 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
 
   /// 坐标 → （星期， 节次）；点在分隔带上或越界返回 null
   ({int day, int row})? _cellAt(
-      Offset pos, Map<int, List<DisplaySlot>> daySlots) {
+    Offset pos,
+    Map<int, List<DisplaySlot>> daySlots,
+  ) {
     final col = (pos.dx / widget.cellWidth).floor();
     if (col < 0 || col >= widget.displayDays.length) return null;
     for (var s = 1; s <= widget.sectionCount; s++) {
@@ -952,8 +1064,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
   }
 
   /// 某格是否无课（可高亮/新建）
-  bool _isEmptyCell(
-      Map<int, List<DisplaySlot>> daySlots, int day, int row) {
+  bool _isEmptyCell(Map<int, List<DisplaySlot>> daySlots, int day, int row) {
     for (final slot in daySlots[day] ?? const <DisplaySlot>[]) {
       if (!slot.isEmpty && row >= slot.startSection && row <= slot.endSection) {
         return false;
@@ -964,7 +1075,10 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
 
   /// 锚点所在「连续无课区间」：从锚点上下扩展，遇已有课程或边界止步
   ({int lo, int hi}) _freeRange(
-      Map<int, List<DisplaySlot>> daySlots, int day, int anchor) {
+    Map<int, List<DisplaySlot>> daySlots,
+    int day,
+    int anchor,
+  ) {
     final occupied = <int>{};
     for (final slot in daySlots[day] ?? const <DisplaySlot>[]) {
       if (slot.isEmpty) continue;
@@ -999,7 +1113,10 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
     // 应用单次调课（阶段五）：停课的本次不显示，调课的按新时间/教室显示。
     // 调课副本保留原 course id 与 weeks，三态布局与详情页无需感知差异。
     final effective = effectiveCoursesForWeek(
-        courses: allCourses, overrides: overrides, week: week);
+      courses: allCourses,
+      overrides: overrides,
+      week: week,
+    );
     // 需显示的课程：本周课 +（开关开时）非本周课
     final visible = showOther
         ? effective
@@ -1023,10 +1140,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
     };
 
     // 分隔带顶部坐标
-    final bandTops = [
-      for (final b in activeBands)
-        b.after * rowHeight + bandsBefore(b.after, activeBands) * kBandHeight,
-    ];
+
     final totalHeight =
         sectionCount * rowHeight + activeBands.length * kBandHeight;
     final scheme = Theme.of(context).colorScheme;
@@ -1043,11 +1157,15 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
               cell.row >= hl.start &&
               cell.row <= hl.end) {
             setState(() => _highlight = null);
-            Navigator.pushNamed(context, '/course-edit', arguments: {
-              'dayOfWeek': hl.day,
-              'startSection': hl.start,
-              'endSection': hl.end,
-            });
+            Navigator.pushNamed(
+              context,
+              '/course-edit',
+              arguments: {
+                'dayOfWeek': hl.day,
+                'startSection': hl.start,
+                'endSection': hl.end,
+              },
+            );
           } else {
             setState(() => _highlight = null);
           }
@@ -1055,10 +1173,11 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
         }
         if (!editMode) return;
         if (!_isEmptyCell(daySlots, cell.day, cell.row)) return;
-        Navigator.pushNamed(context, '/course-edit', arguments: {
-          'dayOfWeek': cell.day,
-          'startSection': cell.row,
-        });
+        Navigator.pushNamed(
+          context,
+          '/course-edit',
+          arguments: {'dayOfWeek': cell.day, 'startSection': cell.row},
+        );
       },
       // 长按空白格：起高亮（编辑模式开不开都行，这是防误触之外的第二入口）
       onLongPressStart: (details) {
@@ -1100,18 +1219,6 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
               columnCount: displayDays.length,
               activeBands: activeBands,
               totalHeight: totalHeight,
-            ),
-          // 午休 / 晚间分隔带
-          for (var i = 0; i < activeBands.length; i++)
-            Positioned(
-              top: bandTops[i],
-              left: 0,
-              right: 0,
-              height: kBandHeight,
-              child: _DividerBand(
-                label: activeBands[i].label,
-                interval: activeBands[i].interval,
-              ),
             ),
           // 长按高亮选区：主题色描边 + 浅填充 + 中央加号（再次单击进新建页）
           if (_highlight != null && displayDays.contains(_highlight!.day))
@@ -1170,48 +1277,6 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
                 ),
               ),
             ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 午休 / 晚间分隔带：浅色通栏，名称 + 时间段（如「午休 12:00–14:00」），
-/// 与左侧时间轴的同名色段连成整条（1.2.1 通栏化）
-class _DividerBand extends StatelessWidget {
-  const _DividerBand({required this.label, required this.interval});
-
-  final String label;
-
-  /// 时间段文本（如 12:00–14:00），算不出时为空
-  final String interval;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final color = colorScheme.outline.withValues(alpha: 0.8);
-    return Container(
-      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-      alignment: Alignment.center,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: color,
-              letterSpacing: 4,
-            ),
-          ),
-          if (interval.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            Text(
-              interval,
-              style: TextStyle(fontSize: 11, color: color),
-            ),
-          ],
         ],
       ),
     );
@@ -1346,11 +1411,11 @@ class _PositionedCourseCard extends StatelessWidget {
       child: CourseCard(
         course: slot.courses.first,
         dimmed: slot.dimmed,
-        badgeText: isMulti
-            ? '+${slot.extraCount}'
-            : (isMoved ? '调' : null),
-        displayColorValue:
-            mapCourseColor(slot.courses.first.colorValue, ui.colorScheme),
+        badgeText: isMulti ? '+${slot.extraCount}' : (isMoved ? '调' : null),
+        displayColorValue: mapCourseColor(
+          slot.courses.first.colorValue,
+          ui.colorScheme,
+        ),
         cornerRadius: ui.cornerRadius,
         borderWidth: ui.borderWidth,
         textScale: ui.cardTextScale,
@@ -1383,9 +1448,8 @@ class _PositionedCourseCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
               child: Text(
                 '该时段有 ${slot.courses.length} 门课程',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                style: Theme.of(context).textTheme.titleSmall
+                    ?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             ),
             for (final c in slot.courses)
@@ -1424,8 +1488,12 @@ class _PositionedCourseCard extends StatelessWidget {
   ///
   /// [courseOverride] 非空表示该课在 [week] 周已有单次调整，
   /// 菜单项变为「查看/撤销本次调整」；否则为「调整本次」。
-  void _showMenu(BuildContext context, Course course, int week,
-      CourseOverride? courseOverride) {
+  void _showMenu(
+    BuildContext context,
+    Course course,
+    int week,
+    CourseOverride? courseOverride,
+  ) {
     // 长按弹出菜单的中触感反馈
     HapticFeedback.mediumImpact();
     // 草稿课程（id 为空）没有落库，无法建立调课关联
@@ -1438,12 +1506,12 @@ class _PositionedCourseCard extends StatelessWidget {
           children: [
             if (canOverride)
               ListTile(
-                leading: Icon(courseOverride == null
-                    ? Icons.event_repeat_outlined
-                    : Icons.visibility_outlined),
-                title: Text(courseOverride == null
-                    ? '调整本次'
-                    : '查看/撤销本次调整'),
+                leading: Icon(
+                  courseOverride == null
+                      ? Icons.event_repeat_outlined
+                      : Icons.visibility_outlined,
+                ),
+                title: Text(courseOverride == null ? '调整本次' : '查看/撤销本次调整'),
                 subtitle: Text(
                   courseOverride == null
                       ? '只改这一节课的时间/教室，不影响其他周'
@@ -1451,8 +1519,11 @@ class _PositionedCourseCard extends StatelessWidget {
                 ),
                 onTap: () {
                   Navigator.pop(ctx);
-                  Navigator.pushNamed(context, '/course-override',
-                      arguments: {'courseId': course.id, 'week': week});
+                  Navigator.pushNamed(
+                    context,
+                    '/course-override',
+                    arguments: {'courseId': course.id, 'week': week},
+                  );
                 },
               ),
             ListTile(
@@ -1460,8 +1531,11 @@ class _PositionedCourseCard extends StatelessWidget {
               title: const Text('编辑课程'),
               onTap: () {
                 Navigator.pop(ctx);
-                Navigator.pushNamed(context, '/course-edit',
-                    arguments: course.id);
+                Navigator.pushNamed(
+                  context,
+                  '/course-edit',
+                  arguments: course.id,
+                );
               },
             ),
             Consumer(
@@ -1477,11 +1551,13 @@ class _PositionedCourseCard extends StatelessWidget {
                       content: Text('确定删除《${course.name}》吗？'),
                       actions: [
                         TextButton(
-                            onPressed: () => Navigator.pop(d, false),
-                            child: const Text('取消')),
+                          onPressed: () => Navigator.pop(d, false),
+                          child: const Text('取消'),
+                        ),
                         FilledButton(
-                            onPressed: () => Navigator.pop(d, true),
-                            child: const Text('删除')),
+                          onPressed: () => Navigator.pop(d, true),
+                          child: const Text('删除'),
+                        ),
                       ],
                     ),
                   );
@@ -1492,11 +1568,12 @@ class _PositionedCourseCard extends StatelessWidget {
                           .deleteCourse(course.id!);
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('已删除《${course.name}》')));
+                        SnackBar(content: Text('已删除《${course.name}》')),
+                      );
                     } catch (e) {
                       if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('删除失败：$e')));
+                      ScaffoldMessenger.of(context)
+                          .showSnackBar(SnackBar(content: Text('删除失败：$e')));
                     }
                   }
                 },
@@ -1511,7 +1588,7 @@ class _PositionedCourseCard extends StatelessWidget {
 
 /// 当前 / 下一节课状态条（1.2.0）：数据与常驻通知共用 [computeClassFocus]，
 /// 每 30 秒由页面计时器触发重算，倒计时与上下课切换自动推进。
-/// - 上课中：「正在上课 · 摘要 · HH:MM 下课 ｜ 下一节 X HH:MM」
+/// - 上课中：「正在上课 · 摘要 ｜ 下一节 X HH:MM」（摘要自带时间段，不再重复下课时间）
 /// - 课前/课间：「下一节 · 摘要 · 还有多久」（未来的课带日期标签）
 /// - 无课：「近期暂无课程」
 /// 点击回到本周。
@@ -1544,10 +1621,11 @@ class _ClassFocusBar extends StatelessWidget {
     final String text;
     if (cur != null) {
       icon = Icons.play_circle_outline;
-      var t = '正在上课 · ${cur.summary} · ${fmtHhmm(cur.end)} 下课';
+      var t = '正在上课 · ${cur.summary}';
       if (nxt != null) {
         final dl = dayLabel(nxt.date, now);
-        t += ' ｜ 下一节 ${nxt.course.name} '
+        t +=
+            ' ｜ 下一节 ${nxt.course.name} '
             '${dl == '今天' ? '' : '$dl '}${fmtHhmm(nxt.start)}';
       }
       text = t;
@@ -1574,8 +1652,10 @@ class _ClassFocusBar extends StatelessWidget {
               Expanded(
                 child: Text(
                   text,
-                  style:
-                      TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: scheme.onSurfaceVariant,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

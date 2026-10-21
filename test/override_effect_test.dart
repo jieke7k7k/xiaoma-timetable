@@ -324,7 +324,7 @@ void main() {
       // 焦点模式（1.2.0）：10:30 课程B（10:00-11:40）正在上；
       // 课程A 本周这次已停课——今天不再出现，只在下周（9月14日）作为下一节预告
       expect(notice.title, '正在上课：课程B');
-      expect(notice.lines.first, contains('11:40 下课'));
+      expect(notice.lines.first, '10:00–11:40 · A101');
       expect(notice.lines.join(), contains('课程A · 周一（9月14日）'));
     });
 
