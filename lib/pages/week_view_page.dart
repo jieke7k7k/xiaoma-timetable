@@ -12,6 +12,7 @@ import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../services/ongoing_notice_service.dart';
 import '../utils/color_schemes.dart';
+import '../utils/deliberate_page_physics.dart';
 import '../utils/next_class.dart';
 import '../utils/override_effect.dart';
 import '../utils/slot_layout.dart';
@@ -679,8 +680,9 @@ class _WeekJumper extends StatelessWidget {
 /// 1.1.1 布局变更：行高不再按屏均分，改用「界面设置」的固定格子高度（px）；
 /// 总高超过可视区时整块（时间轴 + 网格）可纵向滚动，两者共用同一滚动体
 /// 保证分隔带两侧严格对齐。高亮拖动建课期间经 [scrollLocked] 锁住纵向滚动。
-/// 左右滑切周降灵敏：子树统一把手势触发距离（touchSlop）调大到 30，
-/// 手指静置/微动不再拖动课表（用户反馈）。
+/// 左右滑切周降灵敏（两层）：手势触发距离（touchSlop）30  管「拖动何时开始」；
+/// 翻页结算由 DeliberatePagePhysics 管「松手后翻不翻页」——框架默认物理在
+/// 松手速度超过约 7px/s 时就把目标页偏半页，是 1.1.1 只调 touchSlop 没治好的根因。
 class _GridArea extends ConsumerWidget {
   const _GridArea({
     required this.pageController,
@@ -768,6 +770,9 @@ class _GridArea extends ConsumerWidget {
                   Expanded(
                     child: PageView.builder(
                       controller: pageController,
+                      // 翻页判定（1.2.1）：默认物理在松手速度 >约7px/s 时就翻页，
+                      // 改用明确滑动才翻周的自定义物理（见 deliberate_page_physics）
+                      physics: const DeliberatePagePhysics(),
                       onPageChanged: (page) {
                         // 切周成功的轻触感反馈
                         HapticFeedback.lightImpact();
