@@ -14,9 +14,11 @@
     <!-- 阶段四：今日课程常驻通知前台服务所需权限（Android 14+ specialUse） -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <!-- 1.2.1：关闭安卓 14+ 预见式返回动画（侧滑预窥上一页），回到经典即时返回 -->
     <application
         android:label="小马课表"
         android:name="${applicationName}"
+        android:enableOnBackInvokedCallback="false"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

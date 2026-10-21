@@ -18,6 +18,7 @@ import 'pages/splash_page.dart';
 import 'pages/time_settings_page.dart';
 import 'pages/week_view_page.dart';
 import 'providers/providers.dart';
+import 'services/fonts_service.dart';
 import 'services/notification_service.dart';
 import 'services/ongoing_notice_service.dart';
 import 'services/widget_service.dart';
@@ -27,6 +28,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // 初始化本地通知（时区 + 插件 + 渠道）；失败仅打日志，不影响 App 启动
   await NotificationService.instance.initialize();
+  // 载入用户导入的字体（1.2.1）：runApp 前完成注册，主题首帧即生效、无闪烁
+  await FontsService.init();
   runApp(const ProviderScope(child: SimpleTimetableApp()));
 }
 
@@ -51,7 +54,7 @@ class SimpleTimetableApp extends ConsumerWidget {
       seedColor: seed,
       brightness: Brightness.dark,
     );
-    final fontFamily = uiSettings.fontFamily;
+    final fontFamily = FontsService.resolveFamily(uiSettings);
     // 全局统一圆角/弹层形状（阶段五·视觉打磨）：卡片 12px、BottomSheet 顶部 16px，
     // 具体常量见 ui/app_styles.dart，页面内不要再各自硬编码
     return MaterialApp(

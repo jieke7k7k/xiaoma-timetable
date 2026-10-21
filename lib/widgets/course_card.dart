@@ -24,7 +24,7 @@ class CourseCard extends StatelessWidget {
     this.badgeText,
     this.displayColorValue,
     this.cornerRadius = 12,
-    this.boldBorder = false,
+    this.borderWidth = 0.0,
     this.textScale = 1.0,
     this.showClassroom = true,
     this.showTeacher = true,
@@ -48,7 +48,8 @@ class CourseCard extends StatelessWidget {
   final double cornerRadius;
 
   /// 是否加粗边框：边框取格子色加深版（界面设置）
-  final bool boldBorder;
+  /// 边框粗细 px（0=无边框；颜色取卡片色加深版）
+  final double borderWidth;
 
   /// 文字缩放系数（界面设置）：实际字号 = 基准字号 × 系数
   final double textScale;
@@ -80,11 +81,11 @@ class CourseCard extends StatelessWidget {
     final badgeFg = isDark
         ? Color(MorandiPalette.darkBadgeTextColor)
         : Colors.white;
-    // 加粗边框：取「实际显示底色」加深一档，同色系描边不跳色
+    // 边框：取「实际显示底色」加深一档，同色系描边不跳色；粗细无极可调
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(cornerRadius),
-      side: boldBorder
-          ? BorderSide(color: darkenColor(cardColor), width: 1.4)
+      side: borderWidth > 0
+          ? BorderSide(color: darkenColor(cardColor), width: borderWidth)
           : BorderSide.none,
     );
     final noteText = course.note?.trim() ?? '';

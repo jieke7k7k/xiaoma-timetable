@@ -10,7 +10,7 @@ void main() {
       expect(ui.cellHeight, 46);
       expect(ui.cornerRadius, 12);
       expect(ui.showGridLines, isTrue);
-      expect(ui.boldBorder, isFalse);
+      expect(ui.borderWidth, 0.0);
       expect(ui.axisShowTime, isTrue);
       expect(ui.cardTextScale, 1.0);
       expect(ui.colorSchemeId, 'morandi');
@@ -27,7 +27,7 @@ void main() {
         cellHeight: 64,
         cornerRadius: 4,
         showGridLines: false,
-        boldBorder: true,
+        borderWidth: 1.4,
         axisShowTime: false,
         cardTextScale: 1.2,
         showClassroom: false,
@@ -42,7 +42,7 @@ void main() {
       expect(back.cellHeight, 64);
       expect(back.cornerRadius, 4);
       expect(back.showGridLines, isFalse);
-      expect(back.boldBorder, isTrue);
+      expect(back.borderWidth, 1.4);
       expect(back.axisShowTime, isFalse);
       expect(back.cardTextScale, 1.2);
       expect(back.showClassroom, isFalse);
@@ -77,6 +77,17 @@ void main() {
           UiSettings.fromEncoded('{"cardTextScale": 1.25, "cardTextSize": 0}')
               .cardTextScale,
           1.25);
+    });
+
+    test('旧版加粗边框开关自动迁移为边框粗细（1.2.1）', () {
+      expect(UiSettings.fromEncoded('{"boldBorder": true}').borderWidth, 1.4);
+      expect(UiSettings.fromEncoded('{"boldBorder": false}').borderWidth, 0.0);
+      // 新键优先于旧键，越界钳到 3
+      expect(
+          UiSettings.fromEncoded('{"borderWidth": 2.2, "boldBorder": false}')
+              .borderWidth,
+          2.2);
+      expect(UiSettings.fromEncoded('{"borderWidth": 9}').borderWidth, 3.0);
     });
 
     test('主题种子：自定义色优先于预置；预置查不到回退雾绿', () {

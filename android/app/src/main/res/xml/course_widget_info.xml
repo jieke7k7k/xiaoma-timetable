@@ -3,7 +3,7 @@
      实际尺寸 4×2 格（minWidth=250dp / minHeight=110dp）；
      targetCellWidth/Height 与 previewLayout 是 Android 12+ 小组件选择器
      决定预览大小与样子的依据，缺了它们预览会退化成 1×1 的应用图标；
-     updatePeriodMillis=0 表示不靠系统周期轮询，完全由 App 数据变化时推送更新。 -->
+     1.2.1 起 updatePeriodMillis=1800000（30 分钟）：App 推送更新为主，系统周期重绘为兜底——个别厂商省电策略会吞掉应用广播，靠周期重绘读最新数据自愈。 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="250dp"
     android:minHeight="110dp"
@@ -14,6 +14,6 @@
     android:resizeMode="horizontal|vertical"
     android:previewLayout="@layout/course_widget"
     android:description="@string/widget_description"
-    android:updatePeriodMillis="0"
+    android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/course_widget"
     android:widgetCategory="home_screen" />

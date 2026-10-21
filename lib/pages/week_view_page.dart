@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/course.dart';
 import '../models/course_override.dart';
+import '../models/time_slot.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../services/ongoing_notice_service.dart';
@@ -38,15 +39,12 @@ class WeekViewPage extends ConsumerStatefulWidget {
   ConsumerState<WeekViewPage> createState() => _WeekViewPageState();
 }
 
-/// 分隔带高度（参与总高度计算，高度守恒）
-const _bandHeight = 20.0;
-
 /// 第 [section] 节卡片顶部的纵向偏移（含之前分隔带的累计高度）
 double yOffsetTop(int section, double rowHeight, int bandCountBefore) =>
-    (section - 1) * rowHeight + bandCountBefore * _bandHeight;
+    (section - 1) * rowHeight + bandCountBefore * kBandHeight;
 
 /// 第 [section] 节之前有几条分隔带
-int bandsBefore(int section, List<({int after, String label})> activeBands) {
+int bandsBefore(int section, List<GridBand> activeBands) {
   var n = 0;
   for (final b in activeBands) {
     if (section > b.after) n++;
@@ -715,15 +713,26 @@ class _GridArea extends ConsumerWidget {
     final seg = ref.watch(segmentSettingsProvider).value;
     final lunchAfter = seg?.lunchAfterSection ?? 5;
     final dinnerAfter = seg?.dinnerAfterSection ?? 9;
+    // 分隔带的时间段文本：第 after 节下课 → 下一节上课（如 12:00–14:00）
+    String bandInterval(int after) {
+      TimeSlot? cur, nxt;
+      for (final t in slots) {
+        if (t.section == after) cur = t;
+        if (t.section == after + 1) nxt = t;
+      }
+      if (cur == null || nxt == null) return '';
+      return '${cur.endTime}–${nxt.startTime}';
+    }
+
     // 生效的分隔带：只保留落在节次范围内的（after < sectionCount）
     final activeBands = [
-      (after: lunchAfter, label: '午休'),
-      (after: dinnerAfter, label: '晚间'),
+      (after: lunchAfter, label: '午休', interval: bandInterval(lunchAfter)),
+      (after: dinnerAfter, label: '晚间', interval: bandInterval(dinnerAfter)),
     ].where((b) => b.after < sectionCount).toList();
     // 固定行高（界面设置）；总高 = 节次行高之和 + 分隔带
     final rowHeight = ui.cellHeight;
     final totalHeight =
-        sectionCount * rowHeight + activeBands.length * _bandHeight;
+        sectionCount * rowHeight + activeBands.length * kBandHeight;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -804,7 +813,7 @@ class _TimeAxis extends StatelessWidget {
   final List<dynamic> slots;
   final double width;
   final double rowHeight;
-  final List<({int after, String label})> activeBands;
+  final List<GridBand> activeBands;
 
   /// 是否显示每节起止时间（界面设置）；关时只显示节次数字
   final bool showTime;
@@ -847,9 +856,24 @@ class _TimeAxis extends StatelessWidget {
                 ),
               ),
             ),
-            // 分隔带占位（与右侧网格的午休/晚间带对齐）
-            if (activeBands.any((b) => b.after == slots[i].section))
-              const SizedBox(height: _bandHeight),
+            // 分隔带左段（1.2.1 通栏化）：与右侧网格同底色，写名称，
+            // 左侧时间轴不再是一截空白——休息时段独立成段
+            for (final b in activeBands)
+              if (b.after == slots[i].section)
+                Container(
+                  height: kBandHeight,
+                  color: colorScheme.surfaceContainerHighest
+                      .withValues(alpha: 0.6),
+                  alignment: Alignment.center,
+                  child: Text(
+                    b.label,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.outline.withValues(alpha: 0.9),
+                    ),
+                  ),
+                ),
           ],
         ],
       ),
@@ -881,7 +905,7 @@ class _WeekGrid extends ConsumerStatefulWidget {
   final List<int> displayDays;
   final double cellWidth;
   final double rowHeight;
-  final List<({int after, String label})> activeBands;
+  final List<GridBand> activeBands;
   final bool editMode;
   final ValueChanged<bool> onScrollLockChanged;
 
@@ -996,10 +1020,10 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
     // 分隔带顶部坐标
     final bandTops = [
       for (final b in activeBands)
-        b.after * rowHeight + bandsBefore(b.after, activeBands) * _bandHeight,
+        b.after * rowHeight + bandsBefore(b.after, activeBands) * kBandHeight,
     ];
     final totalHeight =
-        sectionCount * rowHeight + activeBands.length * _bandHeight;
+        sectionCount * rowHeight + activeBands.length * kBandHeight;
     final scheme = Theme.of(context).colorScheme;
 
     return GestureDetector(
@@ -1078,8 +1102,11 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
               top: bandTops[i],
               left: 0,
               right: 0,
-              height: _bandHeight,
-              child: _DividerBand(label: activeBands[i].label),
+              height: kBandHeight,
+              child: _DividerBand(
+                label: activeBands[i].label,
+                interval: activeBands[i].interval,
+              ),
             ),
           // 长按高亮选区：主题色描边 + 浅填充 + 中央加号（再次单击进新建页）
           if (_highlight != null && displayDays.contains(_highlight!.day))
@@ -1144,25 +1171,43 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
   }
 }
 
-/// 午休 / 晚间分隔带：浅色通栏 + 淡淡的文字
+/// 午休 / 晚间分隔带：浅色通栏，名称 + 时间段（如「午休 12:00–14:00」），
+/// 与左侧时间轴的同名色段连成整条（1.2.1 通栏化）
 class _DividerBand extends StatelessWidget {
-  const _DividerBand({required this.label});
+  const _DividerBand({required this.label, required this.interval});
 
   final String label;
+
+  /// 时间段文本（如 12:00–14:00），算不出时为空
+  final String interval;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final color = colorScheme.outline.withValues(alpha: 0.8);
     return Container(
       color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
       alignment: Alignment.center,
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          color: colorScheme.outline.withValues(alpha: 0.8),
-          letterSpacing: 8,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+              letterSpacing: 4,
+            ),
+          ),
+          if (interval.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Text(
+              interval,
+              style: TextStyle(fontSize: 11, color: color),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1183,7 +1228,7 @@ class _GridLines extends StatelessWidget {
   final double rowHeight;
   final int sectionCount;
   final int columnCount;
-  final List<({int after, String label})> activeBands;
+  final List<GridBand> activeBands;
   final double totalHeight;
 
   @override
@@ -1217,7 +1262,7 @@ class _GridPainter extends CustomPainter {
   final double rowHeight;
   final int sectionCount;
   final int columnCount;
-  final List<({int after, String label})> activeBands;
+  final List<GridBand> activeBands;
   final Color color;
 
   double _topOf(int section) =>
@@ -1302,7 +1347,7 @@ class _PositionedCourseCard extends StatelessWidget {
         displayColorValue:
             mapCourseColor(slot.courses.first.colorValue, ui.colorScheme),
         cornerRadius: ui.cornerRadius,
-        boldBorder: ui.boldBorder,
+        borderWidth: ui.borderWidth,
         textScale: ui.cardTextScale,
         showClassroom: ui.showClassroom,
         showTeacher: ui.showTeacher,

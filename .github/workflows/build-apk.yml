@@ -22,8 +22,13 @@ jobs:
         run: |
           curl -sL --retry 3 -o assets/fonts/LXGWWenKai-Regular.ttf "https://github.com/lxgw/LxgwWenKai/releases/download/v1.530/LXGWWenKai-Regular.ttf"
           curl -sL --retry 3 -o assets/fonts/ZCOOLKuaiLe-Regular.ttf "https://raw.githubusercontent.com/google/fonts/main/ofl/zcoolkuaile/ZCOOLKuaiLe-Regular.ttf"
+          curl -sL --retry 3 -o /tmp/smiley.zip "https://github.com/atelier-anchor/smiley-sans/releases/download/v2.0.1/smiley-sans-v2.0.1.zip"
+          unzip -o -q /tmp/smiley.zip -d /tmp/smiley && cp /tmp/smiley/SmileySans-Oblique.ttf assets/fonts/SmileySans.ttf
+          curl -sL --retry 3 -o assets/fonts/NotoSansSC.ttf "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf"
           test $(stat -c%s assets/fonts/LXGWWenKai-Regular.ttf) -gt 10000000
           test $(stat -c%s assets/fonts/ZCOOLKuaiLe-Regular.ttf) -gt 1000000
+          test $(stat -c%s assets/fonts/SmileySans.ttf) -gt 2000000
+          test $(stat -c%s assets/fonts/NotoSansSC.ttf) -gt 10000000
           ls -la assets/fonts
       - name: 解码并校验正式签名钥匙
         run: |

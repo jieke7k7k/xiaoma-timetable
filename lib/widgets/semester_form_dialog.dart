@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../models/semester.dart';
 import '../utils/week_calc.dart';
+import 'semester_start_dialog.dart';
 
 /// 弹出新建学期表单；确认返回填好的学期（无 id），取消返回 null。
 /// 学期管理页与导入页（选目标学期时当场新建）共用。
@@ -48,7 +49,7 @@ class SemesterFormDialogState extends ConsumerState<SemesterFormDialog> {
     setState(() => _startDate = WeekCalc.alignToMonday(picked));
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(context)
@@ -62,13 +63,20 @@ class SemesterFormDialogState extends ConsumerState<SemesterFormDialog> {
       return;
     }
     // 默认开学日期：今天对齐到周一（用户没选就给一个合理初值）
-    final start =
-        WeekCalc.alignToMonday(_startDate ?? DateTime.now());
+    final start = WeekCalc.alignToMonday(_startDate ?? DateTime.now());
+    // 1.2.1：落库前强制过目确认开学日期（错一位全表周次错位），弹窗内可改
+    final confirmed = await showSemesterStartConfirmDialog(
+      context,
+      semesterName: name,
+      initialStart: start,
+      totalWeeks: weeks,
+    );
+    if (confirmed == null || !mounted) return;
     Navigator.pop(
       context,
       Semester(
         name: name,
-        startDate: DateFormat('yyyy-MM-dd').format(start),
+        startDate: DateFormat('yyyy-MM-dd').format(confirmed),
         totalWeeks: weeks,
       ),
     );

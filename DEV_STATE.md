@@ -4,6 +4,17 @@
 
 ## 做到哪了
 
+## v1.2.1+7（2026-10-21，七项：五项确认方案 + 导出改版 + 小部件修复，192 测试全绿）
+
+- **开学日期确认**：新组件 `widgets/semester_start_dialog.dart`（showSemesterStartConfirmDialog：大字日期+第 1 周范围+总周数，改日期在弹窗内完成并自动对齐周一，返回最终 DateTime/取消 null）。SemesterFormDialog._submit 改异步：校验后先弹确认，确认才 pop 学期（学期管理与导入页新建共用此对话框，一处覆盖两入口）。ImportPage 加 `_guardedImport`（按目标学期 id 记忆 `_startConfirmedForId`，同次导入只弹一次）：弹窗改期后走 **Dao 直更**（注意 CurrentSemesterNotifier.updateSemester 会把当前学期整体替换成参数，非当前目标禁用），是当前学期则 setDirectly 同步 + invalidate semestersProvider；动作闭包必须用更新后的 target（ICS 按 startDate 算周次，捕获旧对象会算错）。
+- **预见式返回**：AndroidManifest application 加 `android:enableOnBackInvokedCallback="false"`（应用级退出预见式返回）。待真机验证 PopScope 类返回拦截（核对页放弃确认）在关闭后仍生效。
+- **分隔带通栏**：grid_metrics 新增 `kBandHeight=24`（原 week_view 私有 _bandHeight=20 已删）与 `typedef GridBand=({after,label,interval})`；week_view 全部 `List<({int after,String label})>` 改 List<GridBand>；interval 在 _GridArea 按作息计算（上一节 endTime–下一节 startTime）；_TimeAxis 空白占位改为同底色名称段，_DividerBand 加 interval 显示。高度公式全走 kBandHeight 守恒。
+- **边框无极调节**：UiSettings.boldBorder(bool) → borderWidth(double 0~3)，JSON 新键 borderWidth，旧键迁移 true→1.4/false→0；CourseCard 参数 borderWidth（>0 才画 darken 边）；设置页开关换 _SliderRow（0 显示「无边框」）；调用点 week_view/share/settings 预览三处。
+- **字体**：内置 +得意黑（family SmileySans，官方 v2.0.1 zip 内 SmileySans-Oblique.ttf 改名，2.6MB）+思源黑体（family NotoSansSC，google/fonts 可变字体 17.7MB）。**MiSans 落选原因**：官方只有 228MB 全家桶包、npm 镜像只有子集 woff2，无稳定单文件源——已在 CHANGELOG 与交付消息中说明替换。CI 字体步已加两源+体积断言。fontId 新增 smiley/noto。导入字体：`services/fonts_service.dart`（ImportedFont{id imp_<ms>,name,ext}，family='Imported_<id>'；注册表 app_settings.imported_fonts JSON；文件存 getApplicationDocumentsDirectory()/fonts/；main() 在 runApp 前 FontsService.init() 逐个 FontLoader 注册+剔除缺失条目；resolveFamily(ui) 供 main 与分享图共用）；path_provider 转直接依赖；file_picker 13 的 API 是 FilePicker.pickFiles 静态法返回 List<PlatformFile>（无 .platform/.files）。设置页字体区抽成 _FontSection（Stateful，内置 5 + 导入列表带删 + 导入按钮）。已知边界：TTC 不支持、单字重、字体文件不进备份。
+- **导出图改版**：share_image_page 整页重写为与主页同构——宽度=MediaQuery 逻辑宽度、行高=ui.cellHeight、轴 50/表头 46/带 24 通栏（含时间段）、topOf/bandTop 公式与主页一致、横线跳带、pixelRatio 3。旧版 720 固定版式与「无分隔带」简化一并取消。
+- **小部件不显示课程**：全链路审计结论——Dart 数据生成/键名/插件（home_widget 0.10）存取契约/类名解析/接收器注册/布局颜色/刷新挂点全部无误，属投递层问题（updatePeriodMillis=0 无系统重绘兜底 + 厂商省电吞广播 → 永远停在添加时的默认文案）。修复：widget info 改 1800000（30 分钟系统重绘读 prefs 自愈）；Kotlin onUpdate 每实例 runCatching；WidgetService 保存后 getWidgetData 回读校验不一致重写；设置页新增「立即刷新桌面小部件」ListTile（附「仍不显示就删掉重加」提示）。待真机验证：装新版后先看周期重绘是否自愈，不行走重加路径。
+
+
 ## v1.2.0+6（2026-10-21，用户确认的 12 项方案，188 测试全绿）
 
 - **导入目标学期显式化**：ImportPage 改 Stateful，顶部目标学期卡（默认当前学期；「更改」底部弹层选已有/当场新建，新建走共享 `widgets/semester_form_dialog.dart` 的 `showSemesterFormDialog`，建好 addSemester+switchTo 并设为目标）。目标以参数传 ImportReviewPage（必填 targetSemester），ICS 解析用目标开学日，核对页横幅明示，`_importAll` 只查 `getCoursesBySemester(target.id)`。学期管理页的私有表单对话框已抽到共享组件。

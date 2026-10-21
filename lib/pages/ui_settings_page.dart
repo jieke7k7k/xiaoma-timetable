@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,6 +8,7 @@ import '../models/course.dart';
 import '../models/time_slot.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
+import '../services/fonts_service.dart';
 import '../ui/grid_metrics.dart';
 import '../utils/color_schemes.dart';
 import '../utils/morandi_palette.dart';
@@ -71,11 +75,15 @@ class UiSettingsPage extends ConsumerWidget {
             value: ui.showGridLines,
             onChanged: (v) => apply(ui.copyWith(showGridLines: v)),
           ),
-          SwitchListTile(
-            title: const Text('格子加粗边框'),
-            subtitle: const Text('边框取格子颜色的加深版'),
-            value: ui.boldBorder,
-            onChanged: (v) => apply(ui.copyWith(boldBorder: v)),
+          _SliderRow(
+            label: '格子边框粗细',
+            valueText:
+                ui.borderWidth <= 0 ? '无边框' : '${ui.borderWidth.toStringAsFixed(1)} px',
+            value: ui.borderWidth,
+            min: UiSettings.borderWidthMin,
+            max: UiSettings.borderWidthMax,
+            divisions: 30,
+            onChanged: (v) => apply(ui.copyWith(borderWidth: v)),
           ),
           SwitchListTile(
             title: const Text('节数栏显示时间'),
@@ -188,28 +196,7 @@ class UiSettingsPage extends ConsumerWidget {
                 ),
               ),
             ),
-          const _Header('显示字体'),
-          for (final font in const [
-            (id: 'system', name: '系统默认', family: null),
-            (id: 'lxgw', name: '霞鹜文楷', family: 'LXGWWenKai'),
-            (id: 'zcool', name: '站酷快乐体', family: 'ZCOOLKuaiLe'),
-          ])
-            ListTile(
-              leading: Icon(
-                ui.fontId == font.id
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_off,
-                color: ui.fontId == font.id
-                    ? Theme.of(context).colorScheme.primary
-                    : null,
-              ),
-              title: Text(
-                '小马课表 · 药理学',
-                style: TextStyle(fontFamily: font.family, fontSize: 16),
-              ),
-              subtitle: Text(font.name),
-              onTap: () => apply(ui.copyWith(fontId: font.id)),
-            ),
+          _FontSection(ui: ui, apply: apply),
           const SizedBox(height: 24),
         ],
       ),
@@ -628,7 +615,7 @@ class _Preview extends StatelessWidget {
         onLongPress: () {},
         displayColorValue: mapCourseColor(course.colorValue, ui.colorScheme),
         cornerRadius: ui.cornerRadius,
-        boldBorder: ui.boldBorder,
+        borderWidth: ui.borderWidth,
         textScale: ui.cardTextScale,
         showClassroom: ui.showClassroom,
         showTeacher: ui.showTeacher,
@@ -669,4 +656,144 @@ class _PreviewGridPainter extends CustomPainter {
   @override
   bool shouldRepaint(_PreviewGridPainter old) =>
       old.colW != colW || old.rowH != rowH || old.cols != cols || old.color != color;
+}
+
+/// 显示字体区（1.2.1）：内置五款单选 + 用户导入字体（列表/导入/删除）。
+/// 导入字体的注册表在 FontsService（静态），本组件用本地状态触发重建。
+class _FontSection extends StatefulWidget {
+  const _FontSection({required this.ui, required this.apply});
+
+  final UiSettings ui;
+  final void Function(UiSettings next) apply;
+
+  @override
+  State<_FontSection> createState() => _FontSectionState();
+}
+
+class _FontSectionState extends State<_FontSection> {
+  bool _importing = false;
+
+  Widget _fontTile({
+    required bool selected,
+    required String name,
+    required String? family,
+    required VoidCallback onTap,
+    Widget? trailing,
+  }) {
+    return ListTile(
+      leading: Icon(
+        selected ? Icons.radio_button_checked : Icons.radio_button_off,
+        color: selected ? Theme.of(context).colorScheme.primary : null,
+      ),
+      title: Text(
+        '小马课表 · 药理学',
+        style: TextStyle(fontFamily: family, fontSize: 16),
+      ),
+      subtitle: Text(name),
+      trailing: trailing,
+      onTap: onTap,
+    );
+  }
+
+  Future<void> _importFont() async {
+    final picked = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['ttf', 'otf'],
+    );
+    if (picked.isEmpty || !mounted) return;
+    final path = picked.first.path;
+    if (path == null) return;
+    final baseName = path.split('/').last;
+    final name = baseName.replaceAll(
+        RegExp(r'\.(ttf|otf)$', caseSensitive: false), '');
+    setState(() => _importing = true);
+    try {
+      final font = await FontsService.importFont(
+          File(path), name.isEmpty ? '导入字体' : name);
+      widget.apply(widget.ui.copyWith(fontId: font.id));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('已导入并应用「${font.name}」')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('导入失败：这个文件不是有效的字体文件（仅支持 TTF / OTF）')));
+      }
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  Future<void> _removeFont(ImportedFont font) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除导入字体'),
+        content: Text('确定删除「${font.name}」吗？删除后使用该字体的设置会回到系统默认。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('删除')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await FontsService.removeFont(font);
+    if (widget.ui.fontId == font.id) {
+      widget.apply(widget.ui.copyWith(fontId: 'system'));
+    }
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ui = widget.ui;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _Header('显示字体'),
+        for (final font in const [
+          (id: 'system', name: '系统默认', family: null),
+          (id: 'lxgw', name: '霞鹜文楷', family: 'LXGWWenKai'),
+          (id: 'zcool', name: '站酷快乐体', family: 'ZCOOLKuaiLe'),
+          (id: 'smiley', name: '得意黑', family: 'SmileySans'),
+          (id: 'noto', name: '思源黑体', family: 'NotoSansSC'),
+        ])
+          _fontTile(
+            selected: ui.fontId == font.id,
+            name: font.name,
+            family: font.family,
+            onTap: () => widget.apply(ui.copyWith(fontId: font.id)),
+          ),
+        for (final font in FontsService.fonts)
+          _fontTile(
+            selected: ui.fontId == font.id,
+            name: '${font.name}（导入）',
+            family: font.family,
+            onTap: () => widget.apply(ui.copyWith(fontId: font.id)),
+            trailing: IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: '删除这款导入字体',
+              onPressed: () => _removeFont(font),
+            ),
+          ),
+        ListTile(
+          leading: const Icon(Icons.add_circle_outline),
+          title: const Text('导入字体文件'),
+          subtitle: const Text('从手机里选 TTF / OTF 字体，导入后立即全 App 生效'),
+          trailing: _importing
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : null,
+          onTap: _importing ? null : _importFont,
+        ),
+      ],
+    );
+  }
 }

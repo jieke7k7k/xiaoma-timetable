@@ -11,7 +11,7 @@ class UiSettings {
     this.cellHeight = 46,
     this.cornerRadius = 12,
     this.showGridLines = true,
-    this.boldBorder = false,
+    this.borderWidth = 0.0,
     this.axisShowTime = true,
     this.cardTextScale = 1.0,
     this.showClassroom = true,
@@ -32,8 +32,14 @@ class UiSettings {
   /// 是否显示网格线，默认显示
   final bool showGridLines;
 
-  /// 是否给课程格子加粗边框（边框取格子色加深版），默认关
-  final bool boldBorder;
+  /// 课程格子边框粗细 px（1.2.1 起由「加粗开关」改无极调节）：0~3，默认 0=无边框。
+  /// 边框颜色取格子色加深版。旧版 boldBorder=true 迁移为 1.4（旧版加粗的实际宽度）。
+  final double borderWidth;
+
+  /// 边框粗细范围与旧版加粗宽度
+  static const double borderWidthMin = 0.0;
+  static const double borderWidthMax = 3.0;
+  static const double legacyBoldBorderWidth = 1.4;
 
   /// 左侧节数栏是否显示每节起止时间，默认显示；关掉只留节次数字
   final bool axisShowTime;
@@ -68,7 +74,8 @@ class UiSettings {
   /// 自定义主题色（ARGB）；非空时优先于主题预置
   final int? themeCustomColor;
 
-  /// 显示字体 id：system 系统默认 / lxgw 霞鹜文楷 / zcool 站酷快乐体
+  /// 显示字体 id：system 系统默认 / lxgw 霞鹜文楷 / zcool 站酷快乐体 /
+  /// smiley 得意黑 / noto 思源黑体；imp_ 开头为用户导入字体（见 FontsService）
   final String fontId;
 
   /// 实际生效的主题种子色（ARGB）
@@ -79,6 +86,8 @@ class UiSettings {
   String? get fontFamily => switch (fontId) {
         'lxgw' => 'LXGWWenKai',
         'zcool' => 'ZCOOLKuaiLe',
+        'smiley' => 'SmileySans',
+        'noto' => 'NotoSansSC',
         _ => null,
       };
 
@@ -89,7 +98,7 @@ class UiSettings {
     double? cellHeight,
     double? cornerRadius,
     bool? showGridLines,
-    bool? boldBorder,
+    double? borderWidth,
     bool? axisShowTime,
     double? cardTextScale,
     bool? showClassroom,
@@ -105,7 +114,7 @@ class UiSettings {
       cellHeight: cellHeight ?? this.cellHeight,
       cornerRadius: cornerRadius ?? this.cornerRadius,
       showGridLines: showGridLines ?? this.showGridLines,
-      boldBorder: boldBorder ?? this.boldBorder,
+      borderWidth: borderWidth ?? this.borderWidth,
       axisShowTime: axisShowTime ?? this.axisShowTime,
       cardTextScale: cardTextScale ?? this.cardTextScale,
       showClassroom: showClassroom ?? this.showClassroom,
@@ -123,7 +132,7 @@ class UiSettings {
         'cellHeight': cellHeight,
         'cornerRadius': cornerRadius,
         'showGridLines': showGridLines,
-        'boldBorder': boldBorder,
+        'borderWidth': borderWidth,
         'axisShowTime': axisShowTime,
         'cardTextScale': cardTextScale,
         'showClassroom': showClassroom,
@@ -156,7 +165,12 @@ class UiSettings {
         cellHeight: dbl('cellHeight', 46, 44, 96),
         cornerRadius: dbl('cornerRadius', 12, 0, 20),
         showGridLines: bl('showGridLines', true),
-        boldBorder: bl('boldBorder', false),
+        // 新键优先；缺失时读旧版加粗开关迁移（开=1.4px，关=无边框）
+        borderWidth: (map['borderWidth'] is num)
+            ? (map['borderWidth'] as num)
+                .toDouble()
+                .clamp(borderWidthMin, borderWidthMax)
+            : (bl('boldBorder', false) ? legacyBoldBorderWidth : 0.0),
         axisShowTime: bl('axisShowTime', true),
         // 新键优先；缺失时读旧版三档并迁移，老设置不丢
         cardTextScale: (map['cardTextScale'] is num)

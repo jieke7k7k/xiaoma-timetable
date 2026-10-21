@@ -36,11 +36,14 @@ class CourseWidgetProvider : HomeWidgetProvider() {
         val lines = parseLines(data.getString(KEY_LINES, null))
 
         ids.forEach { id ->
-            val views = RemoteViews(context.packageName, R.layout.course_widget)
-            views.setTextViewText(R.id.widget_title, title)
-            renderLines(views, lines)
-            views.setOnClickPendingIntent(R.id.widget_root, openAppIntent(context, id))
-            manager.updateAppWidget(id, views)
+            // 单个实例渲染异常不能拖垮其余实例（1.2.1 加固）
+            runCatching {
+                val views = RemoteViews(context.packageName, R.layout.course_widget)
+                views.setTextViewText(R.id.widget_title, title)
+                renderLines(views, lines)
+                views.setOnClickPendingIntent(R.id.widget_root, openAppIntent(context, id))
+                manager.updateAppWidget(id, views)
+            }
         }
     }
 

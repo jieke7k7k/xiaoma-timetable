@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.0+6
+version: 1.2.1+7
 
 environment:
   sdk: ^3.13.5
@@ -57,6 +57,8 @@ dependencies:
   home_widget: ^0.10.0
   # 阶段六（1.2.0）：课表导出图片走系统分享面板
   share_plus: ^13.3.1
+  # 阶段六（1.2.1）：导入字体存 App 私有目录
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_launcher_icons: ^0.14.4
@@ -92,6 +94,14 @@ flutter:
     - family: ZCOOLKuaiLe
       fonts:
         - asset: assets/fonts/ZCOOLKuaiLe-Regular.ttf
+    # 1.2.1 新增：得意黑（官方仓库发行包内的 SmileySans-Oblique.ttf 重命名）
+    - family: SmileySans
+      fonts:
+        - asset: assets/fonts/SmileySans.ttf
+    # 1.2.1 新增：思源黑体 Noto Sans SC（可变字体，默认实例为常规字重）
+    - family: NotoSansSC
+      fonts:
+        - asset: assets/fonts/NotoSansSC.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

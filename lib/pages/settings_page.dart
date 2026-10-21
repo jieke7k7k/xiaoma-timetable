@@ -129,6 +129,17 @@ class SettingsPage extends ConsumerWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.pushNamed(context, '/ui-settings'),
             ),
+            ListTile(
+              leading: const Icon(Icons.widgets_outlined),
+              title: const Text('立即刷新桌面小部件'),
+              subtitle: const Text('把最新课程重新推送到桌面小部件'),
+              onTap: () async {
+                await WidgetService.instance.refreshWidgets();
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('已推送。若桌面仍不显示，长按小部件删除后重新添加一次即可')));
+              },
+            ),
             Consumer(
               builder: (ctx, ref, _) {
                 final showOther = ref.watch(showOtherWeeksProvider);

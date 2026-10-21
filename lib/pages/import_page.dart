@@ -15,7 +15,9 @@ import '../services/pdf_import.dart';
 import '../ui/app_styles.dart';
 import '../utils/ics_parser.dart';
 import '../utils/morandi_palette.dart';
+import '../database/dao.dart';
 import '../widgets/semester_form_dialog.dart';
+import '../widgets/semester_start_dialog.dart';
 import 'import_review_page.dart';
 
 /// 课程导入入口页
@@ -33,6 +35,10 @@ class ImportPage extends ConsumerStatefulWidget {
 }
 
 class _ImportPageState extends ConsumerState<ImportPage> {
+
+  /// 已确认过开学日期的目标学期 id（1.2.1）：同一次导入只弹一次确认，
+  /// 切换目标学期后 id 不同会自动重新确认
+  int? _startConfirmedForId;
   /// 用户在本页选定的目标学期；为空时用当前激活学期
   Semester? _target;
 
@@ -59,21 +65,21 @@ class _ImportPageState extends ConsumerState<ImportPage> {
             color: const Color(0xFF8FA3B0),
             title: '导入 ICS 日历文件',
             subtitle: '从教务系统导出的 .ics 文件，自动匹配星期/节次/周次',
-            onTap: () => _importIcs(context, target),
+            onTap: () => _guardedImport(target, (t) => _importIcs(context, t)),
           ),
           _ImportTile(
             icon: Icons.photo_camera_outlined,
             color: const Color(0xFFAFC3BB),
             title: '拍照 / 相册识别课表',
             subtitle: '本地 OCR 识别课表截图（中文），支持手动核对修正',
-            onTap: () => _importImage(context, target),
+            onTap: () => _guardedImport(target, (t) => _importImage(context, t)),
           ),
           _ImportTile(
             icon: Icons.picture_as_pdf_outlined,
             color: const Color(0xFFC4B8A8),
             title: '导入 PDF 课表文件',
             subtitle: '提取 PDF 文本后复用相同解析流程',
-            onTap: () => _importPdf(context, target),
+            onTap: () => _guardedImport(target, (t) => _importPdf(context, t)),
           ),
           _ImportTile(
             icon: Icons.cloud_download_outlined,
@@ -168,6 +174,41 @@ class _ImportPageState extends ConsumerState<ImportPage> {
             .showSnackBar(SnackBar(content: Text('新建学期失败：$e')));
       }
     }
+  }
+
+  /// 导入前确认目标学期的开学日期（1.2.1）：未确认先弹窗，
+  /// 弹窗里改了日期就直更数据库并同步本地目标；确认过直接放行
+  Future<void> _guardedImport(
+      Semester? target, Future<void> Function(Semester?) action) async {
+    if (target == null) {
+      await action(null);
+      return;
+    }
+    if (_startConfirmedForId != target.id) {
+      final res = await showSemesterStartConfirmDialog(
+        context,
+        semesterName: target.name,
+        initialStart: DateTime.parse(target.startDate),
+        totalWeeks: target.totalWeeks,
+      );
+      if (res == null || !mounted) return;
+      final iso = DateFormat('yyyy-MM-dd').format(res);
+      if (iso != target.startDate) {
+        final updated = target.copyWith(startDate: iso);
+        await Dao.instance.updateSemester(updated);
+        if (!mounted) return;
+        // 当前学期被改到时同步内存状态，今日周次立即按新日期重算
+        if (ref.read(currentSemesterProvider).value?.id == updated.id) {
+          ref.read(currentSemesterProvider.notifier).setDirectly(updated);
+        }
+        ref.invalidate(semestersProvider);
+        setState(() => _target = updated);
+        target = updated;
+      }
+      _startConfirmedForId = target.id;
+    }
+    // 注意：动作必须用（可能已改开学日期的）最新 target，不能用点击时捕获的旧对象
+    await action(target);
   }
 
   Future<void> _importIcs(BuildContext context, Semester? target) async {

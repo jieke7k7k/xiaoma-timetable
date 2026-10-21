@@ -64,6 +64,15 @@ class WidgetService {
 
       await HomeWidget.saveWidgetData<String>('widget_title', title);
       await HomeWidget.saveWidgetData<String>('widget_lines', jsonEncode(lines));
+      // 回读校验（1.2.1）：个别设备上通道写入可能静默失败，读回不一致就重写一次，
+      // 避免小部件长期停在默认文案（数据在本地存储里，小部件靠系统重绘读取）
+      final back = await HomeWidget.getWidgetData<String>('widget_title');
+      if (back != title) {
+        debugPrint('小组件数据回读不一致，重写一次');
+        await HomeWidget.saveWidgetData<String>('widget_title', title);
+        await HomeWidget.saveWidgetData<String>(
+            'widget_lines', jsonEncode(lines));
+      }
       await HomeWidget.updateWidget(
         name: _androidWidgetName,
         qualifiedAndroidName: _qualifiedAndroidName,
