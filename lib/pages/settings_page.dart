@@ -86,6 +86,13 @@ class SettingsPage extends ConsumerWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _exportIcs(context, ref),
             ),
+            ListTile(
+              leading: const Icon(Icons.sd_storage_outlined),
+              title: const Text('数据管理'),
+              subtitle: const Text('存储占用、备份快捷入口与恢复出厂'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.pushNamed(context, '/data-manage'),
+            ),
             const _SectionHeader(title: '外观'),
             // 主题三档选择：跟随系统/浅色/深色（阶段五·深色适配）
             Padding(
@@ -94,7 +101,8 @@ class SettingsPage extends ConsumerWidget {
                 builder: (ctx, ref, _) {
                   // provider 未加载完（首帧）时按跟随系统显示，加载后自动到位
                   final mode =
-                      ref.watch(themeSettingsProvider).value ?? ThemeMode.system;
+                      ref.watch(themeSettingsProvider).value ??
+                      ThemeMode.system;
                   return SegmentedButton<ThemeMode>(
                     segments: const [
                       ButtonSegment(
@@ -136,8 +144,9 @@ class SettingsPage extends ConsumerWidget {
               onTap: () async {
                 await WidgetService.instance.refreshWidgets();
                 if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('已推送。若桌面仍不显示，长按小部件删除后重新添加一次即可')));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('已推送。若桌面仍不显示，长按小部件删除后重新添加一次即可')),
+                );
               },
             ),
             Consumer(
@@ -161,9 +170,8 @@ class SettingsPage extends ConsumerWidget {
                   title: const Text('周末无课时自动收起周六日'),
                   subtitle: const Text('开启后周末没课时周视图只显示周一到周五，更宽敞'),
                   value: autoCollapse,
-                  onChanged: (v) => ref
-                      .read(autoCollapseWeekendProvider.notifier)
-                      .toggle(v),
+                  onChanged: (v) =>
+                      ref.read(autoCollapseWeekendProvider.notifier).toggle(v),
                 );
               },
             ),
@@ -230,7 +238,7 @@ class SettingsPage extends ConsumerWidget {
               builder: (ctx, ref, _) {
                 final advance =
                     ref.watch(reminderSettingsProvider).value?.advanceMinutes ??
-                        15;
+                    15;
                 return ListTile(
                   leading: const Icon(Icons.timer_outlined),
                   title: const Text('提前提醒'),
@@ -239,6 +247,14 @@ class SettingsPage extends ConsumerWidget {
                   onTap: () => _pickAdvanceMinutes(ctx, ref),
                 );
               },
+            ),
+            const _SectionHeader(title: '关于'),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('关于小马课表'),
+              subtitle: const Text('版本、检查更新、公告、更新日志与开源许可'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.pushNamed(context, '/about'),
             ),
             const _SectionHeader(title: '桌面小组件'),
             const ListTile(
@@ -255,15 +271,17 @@ class SettingsPage extends ConsumerWidget {
           title: '设置加载失败',
           message: '$e',
           actionLabel: '重试',
-          onAction: () =>
-              ref.read(currentSemesterProvider.notifier).reload(),
+          onAction: () => ref.read(currentSemesterProvider.notifier).reload(),
         ),
       ),
     );
   }
 
   Future<void> _pickStartDate(
-      BuildContext context, WidgetRef ref, String current) async {
+    BuildContext context,
+    WidgetRef ref,
+    String current,
+  ) async {
     final initial = DateTime.tryParse(current) ?? DateTime.now();
     final picked = await showDatePicker(
       context: context,
@@ -277,8 +295,9 @@ class SettingsPage extends ConsumerWidget {
     final old = ref.read(currentSemesterProvider).value;
     if (old == null) return;
     try {
-      await notifier.updateSemester(old.copyWith(
-          startDate: DateFormat('yyyy-MM-dd').format(picked)));
+      await notifier.updateSemester(
+        old.copyWith(startDate: DateFormat('yyyy-MM-dd').format(picked)),
+      );
       if (context.mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('开学日期已更新')));
@@ -292,7 +311,10 @@ class SettingsPage extends ConsumerWidget {
   }
 
   Future<void> _editTotalWeeks(
-      BuildContext context, WidgetRef ref, int current) async {
+    BuildContext context,
+    WidgetRef ref,
+    int current,
+  ) async {
     final controller = TextEditingController(text: '$current');
     final result = await showDialog<int>(
       context: context,
@@ -301,20 +323,20 @@ class SettingsPage extends ConsumerWidget {
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            hintText: '如 20',
-            suffixText: '周',
-          ),
+          decoration: const InputDecoration(hintText: '如 20', suffixText: '周'),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
           FilledButton(
             onPressed: () {
               final v = int.tryParse(controller.text.trim());
               if (v == null || v < 1 || v > 30) {
-                ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(content: Text('请输入 1~30 之间的周数')));
+                ScaffoldMessenger.of(
+                  ctx,
+                ).showSnackBar(const SnackBar(content: Text('请输入 1~30 之间的周数')));
                 return;
               }
               Navigator.pop(ctx, v);
@@ -344,15 +366,19 @@ class SettingsPage extends ConsumerWidget {
 
   /// 上课提醒开关：开启时申请通知权限 + 精确闹钟授权引导，再持久化
   Future<void> _onReminderToggle(
-      BuildContext context, WidgetRef ref, bool value) async {
+    BuildContext context,
+    WidgetRef ref,
+    bool value,
+  ) async {
     final notifier = ref.read(reminderSettingsProvider.notifier);
     if (value) {
       // Android 13+ 通知权限：被拒给中文提示，但不阻断开启（用户可稍后授权）
-      final granted =
-          await NotificationService.instance.ensureNotificationPermission();
+      final granted = await NotificationService.instance
+          .ensureNotificationPermission();
       if (!granted && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('通知权限被拒绝，提醒可能无法显示，请到系统设置开启')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('通知权限被拒绝，提醒可能无法显示，请到系统设置开启')),
+        );
       }
 
       // 精确闹钟：无权限时降级为非精确排期，并引导用户去系统设置授权
@@ -370,14 +396,18 @@ class SettingsPage extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('开启精确闹钟'),
-        content: const Text('为保证 App 被杀后提醒仍准时，请在系统设置中允许「闹钟和提醒」权限。拒绝也可继续，但提醒可能略有延迟。'),
+        content: const Text(
+          '为保证 App 被杀后提醒仍准时，请在系统设置中允许「闹钟和提醒」权限。拒绝也可继续，但提醒可能略有延迟。',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('暂不')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('暂不'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('去设置')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('去设置'),
+          ),
         ],
       ),
     );
@@ -388,8 +418,7 @@ class SettingsPage extends ConsumerWidget {
   }
 
   /// 提前分钟选择（5/10/15/30，默认 15）
-  Future<void> _pickAdvanceMinutes(
-      BuildContext context, WidgetRef ref) async {
+  Future<void> _pickAdvanceMinutes(BuildContext context, WidgetRef ref) async {
     const options = [5, 10, 15, 30];
     final current =
         ref.read(reminderSettingsProvider).value?.advanceMinutes ?? 15;
@@ -401,15 +430,19 @@ class SettingsPage extends ConsumerWidget {
           children: [
             const SizedBox(height: 8),
             const ListTile(
-              title: Text('提前提醒时间',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              title: Text(
+                '提前提醒时间',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
             for (final o in options)
               ListTile(
                 title: Text('$o 分钟'),
                 trailing: o == current
-                    ? Icon(Icons.check,
-                        color: Theme.of(ctx).colorScheme.primary)
+                    ? Icon(
+                        Icons.check,
+                        color: Theme.of(ctx).colorScheme.primary,
+                      )
                     : null,
                 onTap: () => Navigator.pop(ctx, o),
               ),
@@ -419,7 +452,9 @@ class SettingsPage extends ConsumerWidget {
       ),
     );
     if (picked != null) {
-      await ref.read(reminderSettingsProvider.notifier).setAdvanceMinutes(picked);
+      await ref
+          .read(reminderSettingsProvider.notifier)
+          .setAdvanceMinutes(picked);
     }
   }
 
@@ -471,16 +506,19 @@ class SettingsPage extends ConsumerWidget {
         builder: (ctx) => AlertDialog(
           title: const Text('确认恢复备份？'),
           content: Text(
-              '备份中包含 ${data.semesters.length} 个学期、${data.courses.length} 门课程'
-              '${data.courseOverrides.isEmpty ? '' : '、${data.courseOverrides.length} 条调课记录'}。'
-              '\n\n恢复会覆盖现有全部数据（含节次时间与设置），且无法撤销。'),
+            '备份中包含 ${data.semesters.length} 个学期、${data.courses.length} 门课程'
+            '${data.courseOverrides.isEmpty ? '' : '、${data.courseOverrides.length} 条调课记录'}。'
+            '\n\n恢复会覆盖现有全部数据（含节次时间与设置），且无法撤销。',
+          ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
             FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('覆盖并恢复')),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('覆盖并恢复'),
+            ),
           ],
         ),
       );
@@ -512,8 +550,9 @@ class SettingsPage extends ConsumerWidget {
       await closing;
       if (error != null || summary == null) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('恢复失败：$error\n现有数据未受影响，可放心重试')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('恢复失败：$error\n现有数据未受影响，可放心重试')),
+          );
         }
         return;
       }
@@ -533,18 +572,21 @@ class SettingsPage extends ConsumerWidget {
       unawaited(OngoingNoticeService.instance.refresh());
       unawaited(WidgetService.instance.refreshWidgets());
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('恢复完成：${summary.semesters} 个学期、'
-                '${summary.courses} 门课程'
-                '${summary.courseOverrides > 0
-                    ? '、${summary.courseOverrides} 条调课记录'
-                    : ''}')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '恢复完成：${summary.semesters} 个学期、'
+              '${summary.courses} 门课程'
+              '${summary.courseOverrides > 0 ? '、${summary.courseOverrides} 条调课记录' : ''}',
+            ),
+          ),
+        );
       }
     } catch (e) {
       // 文件读取/解析阶段的失败：数据库尚未被触碰，现有数据完好
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('恢复失败：$e\n现有数据未受影响，可放心重试')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('恢复失败：$e\n现有数据未受影响，可放心重试')));
       }
     }
   }
@@ -583,7 +625,8 @@ class SettingsPage extends ConsumerWidget {
         msg += '\n（另有 ${result.skippedCount} 次因节次时间缺失被跳过）';
       }
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(msg)));
       }
     } catch (e) {
       if (context.mounted) {
@@ -604,9 +647,8 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
       child: Text(
         title,
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-            ),
+        style: Theme.of(context).textTheme.labelLarge
+            ?.copyWith(color: Theme.of(context).colorScheme.primary),
       ),
     );
   }

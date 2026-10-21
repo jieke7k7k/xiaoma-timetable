@@ -4,6 +4,18 @@
 
 ## 做到哪了
 
+## v1.2.4+10（2026-10-21，应用完整性补全，209 测试全绿）
+
+- **公开通道**：新建 GitHub 公开仓 jieke7k7k/xiaoma-app-channel（只放 channel.json：latest{versionName,versionCode,notes,downloadUrl,releaseUrl}+announcements[{id,title,body,date,level}]，App 匿名读 raw URL）。源码仓保持私有。发布公告/新版 = 改这个文件推送（本地克隆在 ~/workspace/xiaoma-app-channel）。MCP 建仓 403 无权限，仓库是浏览器建的、文件走 git SSH 推。
+- **ChannelService**（services/channel_service.dart)：parseChannel/hasNewerVersion 纯函数可测；fetch 用 dart:io HttpClient（8s 超时）；状态存文档目录 channel_state.json（cache/lastCheckAt/seenIds/dismissedIds/dismissedVersionCode）；静默检查节流 20h。新依赖 package_info_plus、url_launcher、quick_actions。
+- **关于页**（pages/about_page.dart，路由 /about，设置页「关于」分区入口）：版本读 PackageInfo；检查更新手动触发 + 有新版弹窗（notes + 去下载 launchUrl downloadUrl)；公告入口带未读 Badge；更新日志 /changelog（pubspec assets 加了 CHANGELOG.md，页面手写简易解析渲染）；开源许可走 showLicensePage；隐私说明是页内弹窗；问题反馈/项目主页都指向公开通道仓（私有仓外人打不开）。
+- **主页接入**:WeekViewPage initState _loadChannel（缓存垫帧 + 节流静默刷新）；更新横幅与公告横幅共用 _ChannelBanner（tertiaryContainer)，插在状态条下方；重要公告未读第一条 postFrame 弹窗一次，确定即 markSeen。
+- **快捷入口 B1**:HomeShell initState 注册 QuickActions(shortcut_new→/course-edit 裸推、shortcut_import→/import)，图标是 res/drawable 两支 vector (ic_shortcut_new/import)。注意 HomeShell 经 _RootGate 在引导后才建，首启当天快捷入口不注册（可接受）。
+- **首次引导 B2**:_RootGate（main.dart）watch onboardingDoneProvider（providers.dart,Dao 键 onboarding_done）；未看完显示 OnboardingPage 三页（导入/小部件/备份），跳过/完成都落库放行；读标记失败直接进主页不挡路。
+- **数据管理 B3**:DataManagePage（/data-manage，设置「数据管理」分区入口）：占用（DB 文件 + fonts 目录）、备份/恢复（复用 BackupCodec/BackupService 同设置页口径）、恢复出厂（两次确认 → DbHelper.resetAllData 关库删文件 → 删 fonts 目录与 channel_state.json → _refreshAll invalidate 主力 providers + 通知/小部件重排 + pop 回根）。重置后 createSchema 自动重播默认学期；onboarding 标记随库清掉、引导重现（出厂语义）。
+- 待真机验：检查更新全链路（通道已含 1.2.3，1.2.4 发布后我会把通道 latest 更新为 1.2.4——届时 1.2.3 用户应能收到更新提示，正好实测）、公告横幅/弹窗、快捷入口图标、引导只出现一次、恢复出厂。
+
+
 ## v1.2.3+9（2026-10-21，反馈 4 项 + 优化 3 项，205 测试全绿）
 
 - **图层重排（A1+A2)**：_GridArea 的 Stack 改为 分隔带（最下）→ _FullWidthLinesPainter 全宽横线（中）→ Row 轴+课表（最上）。横线收归一层统一绘制（行界 + 分隔带上下边，0.5/outlineVariant/drawLine)——此前轴单元格用控件 Border（实心偏粗）与网格 CustomPaint 描线（抗锯齿偏虚）同宽不同貌，接缝如错位（用户纠正：非位置错位、是线宽不一）。_TimeAxis 单元格已删自带底边框；_GridPainter 只剩竖线。带子沉底后跨带长卡（周六实验室）完整压住带体。

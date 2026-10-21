@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.3+9
+version: 1.2.4+10
 
 environment:
   sdk: ^3.13.5
@@ -59,6 +59,9 @@ dependencies:
   share_plus: ^13.3.1
   # 阶段六（1.2.1）：导入字体存 App 私有目录
   path_provider: ^2.1.5
+  package_info_plus: ^10.2.2
+  url_launcher: ^6.3.3
+  quick_actions: ^1.1.1
 
 dev_dependencies:
   flutter_launcher_icons: ^0.14.4
@@ -85,6 +88,10 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # 1.2.4：更新日志页直接渲染仓库的 CHANGELOG.md（打包时作为资源带入）
+  assets:
+    - CHANGELOG.md
 
   # 内置字体（界面设置可切换）：霞鹜文楷（SIL OFL 开源）/ 站酷快乐体（免费商用）
   fonts:

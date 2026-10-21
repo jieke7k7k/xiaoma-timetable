@@ -35,6 +35,16 @@ class DbHelper {
     return _db!;
   }
 
+  /// 恢复出厂（1.2.4 数据管理页）：关库并删除数据库文件。
+  /// 下次访问 [database] 时会重新建库，createSchema 自动写入首启默认数据
+  /// （默认学期 + 默认节次时间），等于回到刚安装好的状态。
+  Future<void> resetAllData() async {
+    await _db?.close();
+    _db = null;
+    final dbPath = await getDatabasesPath();
+    await deleteDatabase(join(dbPath, _dbName));
+  }
+
   Future<Database> _open() async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, _dbName);
@@ -45,8 +55,10 @@ class DbHelper {
       // v1 -> v2：新增 app_settings 键值表（阶段四提醒设置持久化）
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
-          await db.execute('CREATE TABLE IF NOT EXISTS app_settings ('
-              'key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+          await db.execute(
+            'CREATE TABLE IF NOT EXISTS app_settings ('
+            'key TEXT PRIMARY KEY, value TEXT NOT NULL)',
+          );
         }
       },
     );
@@ -96,7 +108,8 @@ class DbHelper {
       )
     ''');
     await db.execute(
-        'CREATE INDEX idx_courses_semester ON courses(semesterId, dayOfWeek)');
+      'CREATE INDEX idx_courses_semester ON courses(semesterId, dayOfWeek)',
+    );
 
     // 单次调课表（阶段五预留，先建表避免迁移）
     await db.execute('''
@@ -113,7 +126,8 @@ class DbHelper {
       )
     ''');
     await db.execute(
-        'CREATE INDEX idx_overrides_course ON course_overrides(courseId, originalWeek)');
+      'CREATE INDEX idx_overrides_course ON course_overrides(courseId, originalWeek)',
+    );
 
     // 应用设置键值表（阶段四：上课提醒开关、提前分钟等）
     await db.execute(_createSettingsTableSql);

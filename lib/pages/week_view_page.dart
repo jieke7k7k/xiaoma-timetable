@@ -4,12 +4,14 @@ import 'package:flutter/gestures.dart' show DeviceGestureSettings;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../models/course.dart';
 import '../models/course_override.dart';
 import '../models/time_slot.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
+import '../services/channel_service.dart';
 import '../services/ongoing_notice_service.dart';
 import '../utils/color_schemes.dart';
 import '../utils/deliberate_page_physics.dart';
@@ -73,6 +75,82 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
   /// 时间轴宽度
   static const double _timeAxisWidth = kTimeAxisWidth;
 
+  // 公开通道（1.2.4）：静默检查更新 + 公告横幅/重要公告弹窗
+  ChannelInfo? _channel;
+  Set<String> _seenAnn = {};
+  Set<String> _dismissedAnn = {};
+  int _currentCode = 0;
+  int _dismissedCode = 0;
+  bool _importantShown = false;
+
+  Future<void> _loadChannel() async {
+    final cached = await ChannelService.cached();
+    final seen = await ChannelService.seenIds();
+    final dismissed = await ChannelService.dismissedIds();
+    final dismissedCode = await ChannelService.dismissedVersionCode();
+    final pkg = await PackageInfo.fromPlatform();
+    if (!mounted) return;
+    setState(() {
+      _channel = cached;
+      _seenAnn = seen;
+      _dismissedAnn = dismissed;
+      _dismissedCode = dismissedCode;
+      _currentCode = int.tryParse(pkg.buildNumber) ?? 0;
+    });
+    _maybeShowImportant();
+    if (await ChannelService.shouldSilentCheck()) {
+      final fresh = await ChannelService.fetch();
+      if (!mounted || fresh == null) return;
+      setState(() => _channel = fresh);
+      _maybeShowImportant();
+    }
+  }
+
+  /// 重要公告：未读的第一条弹窗一次，看过不再打扰
+  void _maybeShowImportant() {
+    if (_importantShown || _channel == null) return;
+    final pending = _channel!.announcements
+        .where((a) => a.isImportant && !_seenAnn.contains(a.id))
+        .toList();
+    if (pending.isEmpty) return;
+    _importantShown = true;
+    final a = pending.first;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(a.title),
+          content: Text(a.body),
+          actions: [
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await ChannelService.markSeen([a.id]);
+                if (mounted) setState(() => _seenAnn.add(a.id));
+              },
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  /// 横幅展示的公告：最新一条未读、未关过、非重要（重要的走弹窗）
+  Announcement? get _bannerAnnouncement {
+    final ch = _channel;
+    if (ch == null) return null;
+    for (final a in ch.announcements) {
+      if (!a.isImportant &&
+          !_seenAnn.contains(a.id) &&
+          !_dismissedAnn.contains(a.id)) {
+        return a;
+      }
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -83,6 +161,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
     _pageController = PageController(
       initialPage: todayWeek > 0 ? todayWeek - 1 : 0,
     );
+    _loadChannel();
   }
 
   @override
@@ -387,6 +466,39 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
         children: [
           // 当前/下一节课状态条（1.2.0）：点一下回到本周
           _ClassFocusBar(focus: focus, now: now, onTap: _goToday),
+          // 更新提示横幅（1.2.4）：有新版且这个版本没被关过
+          if (_channel != null &&
+              _currentCode > 0 &&
+              hasNewerVersion(_channel!, _currentCode) &&
+              _dismissedCode < _channel!.latest!.versionCode)
+            _ChannelBanner(
+              icon: Icons.system_update_outlined,
+              text: '有新版本 ${_channel!.latest!.versionName} 可用',
+              actionLabel: '去看看',
+              onAction: () => Navigator.pushNamed(context, '/about'),
+              onClose: () async {
+                final code = _channel!.latest!.versionCode;
+                await ChannelService.dismissVersion(code);
+                if (mounted) setState(() => _dismissedCode = code);
+              },
+            ),
+          // 公告横幅（1.2.4）：最新一条未读普通公告
+          if (_bannerAnnouncement != null)
+            _ChannelBanner(
+              icon: Icons.campaign_outlined,
+              text: '公告：${_bannerAnnouncement!.title}',
+              actionLabel: '查看',
+              onAction: () async {
+                await Navigator.pushNamed(context, '/announcements');
+                final seen = await ChannelService.seenIds();
+                if (mounted) setState(() => _seenAnn = seen);
+              },
+              onClose: () async {
+                final id = _bannerAnnouncement!.id;
+                await ChannelService.dismiss(id);
+                if (mounted) setState(() => _dismissedAnn.add(id));
+              },
+            ),
           // 周次快速跳转条
           AnimatedSize(
             duration: const Duration(milliseconds: 200),
@@ -436,6 +548,52 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
               onWeekChanged: (page) =>
                   ref.read(displayWeekProvider.notifier).setWeek(page + 1),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 通道横幅（1.2.4）：更新提示与公告共用的细横幅（图标+文案+动作+关闭）
+class _ChannelBanner extends StatelessWidget {
+  const _ChannelBanner({
+    required this.icon,
+    required this.text,
+    required this.actionLabel,
+    required this.onAction,
+    required this.onClose,
+  });
+
+  final IconData icon;
+  final String text;
+  final String actionLabel;
+  final VoidCallback onAction;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      color: scheme.tertiaryContainer,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: scheme.onTertiaryContainer),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: 13, color: scheme.onTertiaryContainer),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          TextButton(onPressed: onAction, child: Text(actionLabel)),
+          IconButton(
+            icon: const Icon(Icons.close, size: 16),
+            tooltip: '关闭',
+            onPressed: onClose,
           ),
         ],
       ),

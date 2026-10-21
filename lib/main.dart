@@ -4,11 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models/ui_settings.dart';
+import 'database/dao.dart';
+import 'pages/about_page.dart';
+import 'pages/announcements_page.dart';
+import 'pages/changelog_page.dart';
 import 'pages/course_edit_page.dart';
+import 'pages/data_manage_page.dart';
 import 'pages/course_override_page.dart';
 import 'pages/course_search_page.dart';
 import 'pages/exam_countdown_page.dart';
 import 'pages/free_time_page.dart';
+import 'pages/help_page.dart';
+import 'pages/onboarding_page.dart';
 import 'pages/share_image_page.dart';
 import 'pages/import_page.dart';
 import 'pages/semester_manage_page.dart';
@@ -18,6 +25,9 @@ import 'pages/splash_page.dart';
 import 'pages/time_settings_page.dart';
 import 'pages/week_view_page.dart';
 import 'providers/providers.dart';
+
+import 'package:quick_actions/quick_actions.dart';
+
 import 'services/fonts_service.dart';
 import 'services/notification_service.dart';
 import 'services/ongoing_notice_service.dart';
@@ -71,8 +81,9 @@ class SimpleTimetableApp extends ConsumerWidget {
         ),
         bottomSheetTheme: const BottomSheetThemeData(
           shape: RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.vertical(top: Radius.circular(AppRadii.sheet)),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(AppRadii.sheet),
+            ),
           ),
         ),
       ),
@@ -87,8 +98,9 @@ class SimpleTimetableApp extends ConsumerWidget {
         ),
         bottomSheetTheme: const BottomSheetThemeData(
           shape: RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.vertical(top: Radius.circular(AppRadii.sheet)),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(AppRadii.sheet),
+            ),
           ),
         ),
       ),
@@ -96,7 +108,7 @@ class SimpleTimetableApp extends ConsumerWidget {
       // 启动页作为初始路由：品牌展示 + 兜住首帧读库窗口，停留后替换进主页
       initialRoute: '/splash',
       routes: {
-        '/': (context) => const HomeShell(),
+        '/': (context) => const _RootGate(),
         // 应用启动页（纯 Dart，无原生资源依赖）
         '/splash': (context) => const SplashPage(),
         // 课程新建/编辑：arguments 为 courseId(int，编辑) 或 Map(新建预填)
@@ -119,7 +131,42 @@ class SimpleTimetableApp extends ConsumerWidget {
         '/share-image': (context) => const ShareImagePage(),
         // 节假日单次调课：arguments = {'courseId': int, 'week': int（originalWeek）}
         '/course-override': (context) => const CourseOverridePage(),
+        // 关于页（1.2.4：版本/检查更新/公告/日志/许可/帮助/反馈）
+        '/about': (context) => const AboutPage(),
+        // 公告页（1.2.4：公开通道公告列表）
+        '/announcements': (context) => const AnnouncementsPage(),
+        // 更新日志页（1.2.4：渲染打包的 CHANGELOG.md）
+        '/changelog': (context) => const ChangelogPage(),
+        // 使用帮助页（1.2.4）
+        '/help': (context) => const HelpPage(),
+        // 数据管理页（1.2.4：占用/备份快捷入口/恢复出厂）
+        '/data-manage': (context) => const DataManagePage(),
       },
+    );
+  }
+}
+
+/// 根门卫（1.2.4）：第一次打开先过首次引导，看完才进主框架。
+/// 引导标记存 app_settings，恢复出厂后会重新出现。
+class _RootGate extends ConsumerWidget {
+  const _RootGate();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final done = ref.watch(onboardingDoneProvider);
+    return done.when(
+      data: (d) => d
+          ? const HomeShell()
+          : OnboardingPage(
+              onDone: () async {
+                await Dao.instance.setSetting('onboarding_done', '1');
+                ref.invalidate(onboardingDoneProvider);
+              },
+            ),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      // 读标记失败时不挡路，直接进主页
+      error: (_, __) => const HomeShell(),
     );
   }
 }
@@ -150,12 +197,31 @@ class _HomeShellState extends State<HomeShell> {
     unawaited(OngoingNoticeService.instance.refresh());
     // App 启动后刷新桌面小组件（读库 + home_widget，内部已捕获异常）
     unawaited(WidgetService.instance.refreshWidgets());
+    // 桌面长按快捷入口（1.2.4）：新建课程 / 导入课表直达
+    const quickActions = QuickActions();
+    quickActions.initialize((type) {
+      if (!mounted) return;
+      if (type == 'shortcut_new') {
+        Navigator.pushNamed(context, '/course-edit');
+      } else if (type == 'shortcut_import') {
+        Navigator.pushNamed(context, '/import');
+      }
+    });
+    quickActions.setShortcutItems(const [
+      ShortcutItem(
+        type: 'shortcut_new',
+        localizedTitle: '新建课程',
+        icon: 'ic_shortcut_new',
+      ),
+      ShortcutItem(
+        type: 'shortcut_import',
+        localizedTitle: '导入课表',
+        icon: 'ic_shortcut_import',
+      ),
+    ]);
   }
 
-  static const _pages = [
-    WeekViewPage(),
-    SettingsPage(),
-  ];
+  static const _pages = [WeekViewPage(), SettingsPage()];
 
   void _onDestinationSelected(int i) {
     if (i == 1) {

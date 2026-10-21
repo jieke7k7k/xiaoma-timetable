@@ -42,7 +42,8 @@ class CurrentSemesterNotifier extends AsyncNotifier<Semester> {
 
 final currentSemesterProvider =
     AsyncNotifierProvider<CurrentSemesterNotifier, Semester>(
-        CurrentSemesterNotifier.new);
+      CurrentSemesterNotifier.new,
+    );
 
 /// 全部学期列表（学期管理页使用）
 ///
@@ -110,7 +111,8 @@ class SemestersNotifier extends AsyncNotifier<List<Semester>> {
 
 final semestersProvider =
     AsyncNotifierProvider<SemestersNotifier, List<Semester>>(
-        SemestersNotifier.new);
+      SemestersNotifier.new,
+    );
 
 /// 节次时间表
 class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
@@ -121,10 +123,12 @@ class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
     await Dao.instance.updateTimeSlot(slot);
     final list = state.value ?? [];
     // 已有节次替换、没有的新增（导入校准扩出的新节次靠这条进状态）
-    state = AsyncData([
-      for (final s in list) s.section == slot.section ? slot : s,
-      if (!list.any((s) => s.section == slot.section)) slot,
-    ]..sort((a, b) => a.section.compareTo(b.section)));
+    state = AsyncData(
+      [
+        for (final s in list) s.section == slot.section ? slot : s,
+        if (!list.any((s) => s.section == slot.section)) slot,
+      ]..sort((a, b) => a.section.compareTo(b.section)),
+    );
   }
 
   /// 增加一节（末尾追加）：开始 = 上一节结束 + 10 分钟课间，时长沿用上一节；
@@ -169,7 +173,9 @@ class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
             .setLunchAfterSection(n - 2 < 1 ? 1 : n - 2);
       }
       if (seg.dinnerAfterSection > n) {
-        await ref.read(segmentSettingsProvider.notifier).setDinnerAfterSection(n);
+        await ref
+            .read(segmentSettingsProvider.notifier)
+            .setDinnerAfterSection(n);
       }
     }
   }
@@ -183,11 +189,13 @@ class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
       4: ('15:10', '16:20'),
     };
     for (final entry in preset.entries) {
-      await Dao.instance.updateTimeSlot(TimeSlot(
-        section: entry.key,
-        startTime: entry.value.$1,
-        endTime: entry.value.$2,
-      ));
+      await Dao.instance.updateTimeSlot(
+        TimeSlot(
+          section: entry.key,
+          startTime: entry.value.$1,
+          endTime: entry.value.$2,
+        ),
+      );
     }
     await reload();
   }
@@ -211,7 +219,8 @@ String _slotHm(int minutes) =>
 
 final timeSlotsProvider =
     AsyncNotifierProvider<TimeSlotsNotifier, List<TimeSlot>>(
-        TimeSlotsNotifier.new);
+      TimeSlotsNotifier.new,
+    );
 
 /// 当前学期下的全部课程（含增删改）
 class CoursesNotifier extends AsyncNotifier<List<Course>> {
@@ -223,8 +232,9 @@ class CoursesNotifier extends AsyncNotifier<List<Course>> {
 
   Future<int> addCourse(Course course) async {
     final semester = await ref.read(currentSemesterProvider.future);
-    final id = await Dao.instance
-        .insertCourse(course.copyWith(semesterId: semester.id!));
+    final id = await Dao.instance.insertCourse(
+      course.copyWith(semesterId: semester.id!),
+    );
     await reload();
     // 新增课程后重排当天提醒（内部已捕获异常）
     unawaited(NotificationService.instance.rescheduleAll());
@@ -261,8 +271,9 @@ class CoursesNotifier extends AsyncNotifier<List<Course>> {
   }
 }
 
-final coursesProvider =
-    AsyncNotifierProvider<CoursesNotifier, List<Course>>(CoursesNotifier.new);
+final coursesProvider = AsyncNotifierProvider<CoursesNotifier, List<Course>>(
+  CoursesNotifier.new,
+);
 
 /// 当前学期的全部单次调课记录（阶段五·节假日调课）
 ///
@@ -307,14 +318,17 @@ class CourseOverridesNotifier extends AsyncNotifier<List<CourseOverride>> {
 
 final courseOverridesProvider =
     AsyncNotifierProvider<CourseOverridesNotifier, List<CourseOverride>>(
-        CourseOverridesNotifier.new);
+      CourseOverridesNotifier.new,
+    );
 
 /// 今天是本学期第几周（依赖当前学期，设置页改开学日期后自动刷新）
 final todayWeekProvider = Provider<int>((ref) {
   final semester = ref.watch(currentSemesterProvider).value;
   if (semester == null) return 0;
   return WeekCalc.currentWeek(
-      DateTime.parse(semester.startDate), DateTime.now());
+    DateTime.parse(semester.startDate),
+    DateTime.now(),
+  );
 });
 
 /// 周视图当前正在浏览的周次（PageView 滑动切换，默认跳到本周）
@@ -332,7 +346,8 @@ class DisplayWeekNotifier extends Notifier<int> {
 }
 
 final displayWeekProvider = NotifierProvider<DisplayWeekNotifier, int>(
-    DisplayWeekNotifier.new);
+  DisplayWeekNotifier.new,
+);
 
 /// 设置开关：是否显示非本周课程（置灰），默认隐藏
 class ShowOtherWeeksNotifier extends Notifier<bool> {
@@ -341,8 +356,9 @@ class ShowOtherWeeksNotifier extends Notifier<bool> {
   void toggle(bool value) => state = value;
 }
 
-final showOtherWeeksProvider =
-    NotifierProvider<ShowOtherWeeksNotifier, bool>(ShowOtherWeeksNotifier.new);
+final showOtherWeeksProvider = NotifierProvider<ShowOtherWeeksNotifier, bool>(
+  ShowOtherWeeksNotifier.new,
+);
 
 /// 设置开关：周末无课时自动收起周六日（5 列宽屏显示），默认开启
 class AutoCollapseWeekendNotifier extends Notifier<bool> {
@@ -353,7 +369,8 @@ class AutoCollapseWeekendNotifier extends Notifier<bool> {
 
 final autoCollapseWeekendProvider =
     NotifierProvider<AutoCollapseWeekendNotifier, bool>(
-        AutoCollapseWeekendNotifier.new);
+      AutoCollapseWeekendNotifier.new,
+    );
 
 /// 上课提醒设置（阶段四）：开关 + 提前分钟，持久化到 app_settings 表
 class ReminderSettings {
@@ -373,20 +390,26 @@ class ReminderSettings {
 class ReminderSettingsNotifier extends AsyncNotifier<ReminderSettings> {
   @override
   Future<ReminderSettings> build() async {
-    final enabled =
-        await Dao.instance.getSettingBool('reminder_enabled', false);
-    final advance =
-        await Dao.instance.getSettingInt('reminder_advance_minutes', 15);
+    final enabled = await Dao.instance.getSettingBool(
+      'reminder_enabled',
+      false,
+    );
+    final advance = await Dao.instance.getSettingInt(
+      'reminder_advance_minutes',
+      15,
+    );
     return ReminderSettings(enabled: enabled, advanceMinutes: advance);
   }
 
   /// 开启/关闭提醒。开启时由 UI 先申请权限再调用；此处只负责持久化 + 重排
   Future<void> setEnabled(bool value) async {
     await Dao.instance.setSetting('reminder_enabled', value ? '1' : '0');
-    state = AsyncData(ReminderSettings(
-      enabled: value,
-      advanceMinutes: state.value?.advanceMinutes ?? 15,
-    ));
+    state = AsyncData(
+      ReminderSettings(
+        enabled: value,
+        advanceMinutes: state.value?.advanceMinutes ?? 15,
+      ),
+    );
     // 开启则排期，关闭则清空（rescheduleAll 内部处理）
     unawaited(NotificationService.instance.rescheduleAll());
   }
@@ -394,17 +417,20 @@ class ReminderSettingsNotifier extends AsyncNotifier<ReminderSettings> {
   /// 修改提前分钟（5/10/15/30）
   Future<void> setAdvanceMinutes(int minutes) async {
     await Dao.instance.setSetting('reminder_advance_minutes', '$minutes');
-    state = AsyncData(ReminderSettings(
-      enabled: state.value?.enabled ?? false,
-      advanceMinutes: minutes,
-    ));
+    state = AsyncData(
+      ReminderSettings(
+        enabled: state.value?.enabled ?? false,
+        advanceMinutes: minutes,
+      ),
+    );
     unawaited(NotificationService.instance.rescheduleAll());
   }
 }
 
 final reminderSettingsProvider =
     AsyncNotifierProvider<ReminderSettingsNotifier, ReminderSettings>(
-        ReminderSettingsNotifier.new);
+      ReminderSettingsNotifier.new,
+    );
 
 /// 今日课程常驻通知栏开关（阶段四·第 3 项）：读自 app_settings 表，默认开启
 class OngoingNoticeSettingsNotifier extends AsyncNotifier<bool> {
@@ -427,7 +453,8 @@ class OngoingNoticeSettingsNotifier extends AsyncNotifier<bool> {
 
 final ongoingNoticeSettingsProvider =
     AsyncNotifierProvider<OngoingNoticeSettingsNotifier, bool>(
-        OngoingNoticeSettingsNotifier.new);
+      OngoingNoticeSettingsNotifier.new,
+    );
 
 /// 主题模式设置（阶段五·深色适配）：跟随系统 / 浅色 / 深色三档，
 /// 持久化到 app_settings 表（键 theme_mode，值 "system"/"light"/"dark"，默认 system）。
@@ -474,7 +501,8 @@ class ThemeSettingsNotifier extends AsyncNotifier<ThemeMode> {
 
 final themeSettingsProvider =
     AsyncNotifierProvider<ThemeSettingsNotifier, ThemeMode>(
-        ThemeSettingsNotifier.new);
+      ThemeSettingsNotifier.new,
+    );
 
 /// 作息分段设置（阶段六·作息三段化）：午休/晚餐分段点，持久化到 app_settings 表。
 /// 键名 lunch_after_section（默认 5）、dinner_after_section（默认 9）。
@@ -502,7 +530,9 @@ class SegmentSettingsNotifier extends AsyncNotifier<SegmentSettings> {
     final lunch = await Dao.instance.getSettingInt('lunch_after_section', 5);
     final dinner = await Dao.instance.getSettingInt('dinner_after_section', 9);
     return SegmentSettings(
-        lunchAfterSection: lunch, dinnerAfterSection: dinner);
+      lunchAfterSection: lunch,
+      dinnerAfterSection: dinner,
+    );
   }
 
   /// 修改午休分段点。钳制到 [1, 晚餐分段点-1]，保证午休点 < 晚餐点且上午段至少 1 节。
@@ -511,10 +541,9 @@ class SegmentSettingsNotifier extends AsyncNotifier<SegmentSettings> {
     final max = dinner - 1;
     final v = value < 1 ? 1 : (value > max ? max : value);
     await Dao.instance.setSetting('lunch_after_section', '$v');
-    state = AsyncData(SegmentSettings(
-      lunchAfterSection: v,
-      dinnerAfterSection: dinner,
-    ));
+    state = AsyncData(
+      SegmentSettings(lunchAfterSection: v, dinnerAfterSection: dinner),
+    );
   }
 
   /// 修改晚餐分段点。钳制到 [午休分段点+1, +∞)，保证午休点 < 晚餐点；
@@ -524,16 +553,16 @@ class SegmentSettingsNotifier extends AsyncNotifier<SegmentSettings> {
     final min = lunch + 1;
     final v = value < min ? min : value;
     await Dao.instance.setSetting('dinner_after_section', '$v');
-    state = AsyncData(SegmentSettings(
-      lunchAfterSection: lunch,
-      dinnerAfterSection: v,
-    ));
+    state = AsyncData(
+      SegmentSettings(lunchAfterSection: lunch, dinnerAfterSection: v),
+    );
   }
 }
 
 final segmentSettingsProvider =
     AsyncNotifierProvider<SegmentSettingsNotifier, SegmentSettings>(
-        SegmentSettingsNotifier.new);
+      SegmentSettingsNotifier.new,
+    );
 
 /// 界面设置状态（1.1.1）：整体 JSON 持久化到 app_settings 的 ui_settings 键。
 /// 改动即落库并通知全 App（主题色/字体在 MaterialApp 层监听，格子外观在周视图监听）。
@@ -558,4 +587,11 @@ class UiSettingsNotifier extends AsyncNotifier<UiSettings> {
 
 final uiSettingsProvider =
     AsyncNotifierProvider<UiSettingsNotifier, UiSettings>(
-        UiSettingsNotifier.new);
+      UiSettingsNotifier.new,
+    );
+
+/// 首次启动引导是否已看完（1.2.4）：app_settings 的 onboarding_done 键。
+/// 恢复出厂会清掉这个键，引导会重新出现（符合出厂语义）。
+final onboardingDoneProvider = FutureProvider<bool>((ref) async {
+  return await Dao.instance.getSetting('onboarding_done') == '1';
+});
