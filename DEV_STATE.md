@@ -4,6 +4,14 @@
 
 ## 做到哪了
 
+## v1.2.7+13（2026-10-21，小部件黑框救援，209 测试）
+
+- 背景：他反馈桌面小部件 1.2.2 后变黑框报「载入窗口小部件时出现问题」、内置刷新无效；此前（≤1.2.1 简单版）正常。最初误传为负一屏问题，实为正常桌面。
+- 改动：course_widget.xml 色条 View→ImageView(scaleType=fitXY)，分数 sp（12.5/14.5/11.5）→整数；Provider 去掉唯一的反射动作 setInt("setBackgroundColor")，改 setImageViewBitmap(6×54 纯色位图，按色缓存）。其余数据契约/结构不动。
+- 自检：Provider 在 onUpdate 末尾把 dbg_widget_ts/ids/error 写回 HomeWidget 偏好；WidgetService.debugStatus() 读取，设置页刷新入口下有「部件状态」行。注意：宿主侧 apply 失败应用侧抓不到，error 只覆盖 Provider 侧异常——真机若仍黑框，结合 ts/ids 判断更新是否到达。
+- 负一屏结论（同日调研）：安卓原生小部件经小部件中心「搜索—安卓小部件」可加进负一屏（无需审核）；「小米小部件」画廊需上架商店+平台审核，自用不走。
+
+
 ## v1.2.5+11（2026-10-21，真机反馈 4 项，209 测试全绿）
 
 - **横线挂开关**：_GridArea 的 _FullWidthLinesPainter 层加 `if (ui.showGridLines)`（1.2.3 统一横线时漏挂；竖线本来就受控）。轴/网格间的 VerticalDivider 是结构线保留。

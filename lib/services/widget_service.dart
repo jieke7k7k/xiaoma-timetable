@@ -29,6 +29,15 @@ class WidgetService {
   /// Android 小部件 Provider 的简单类名（不带包名），home_widget 用它定位组件
   static const String _androidWidgetName = 'CourseWidgetProvider';
 
+  /// 部件自检状态（1.2.7）：原生 Provider 每次 onUpdate 回写的记录，
+  /// 设置页展示——上次更新时间、实例数、首个异常（无异常时 error 为 null）
+  Future<({int ts, int ids, String? error})> debugStatus() async {
+    final ts = await HomeWidget.getWidgetData<int>('dbg_widget_ts');
+    final ids = await HomeWidget.getWidgetData<int>('dbg_widget_ids');
+    final error = await HomeWidget.getWidgetData<String>('dbg_widget_error');
+    return (ts: ts ?? 0, ids: ids ?? 0, error: error);
+  }
+
   /// 全限定类名（含包名），home_widget 0.10.x 用它 Class.forName 定位 Provider
   static const String _qualifiedAndroidName =
       'com.jieke.xiaomakebiao.CourseWidgetProvider';

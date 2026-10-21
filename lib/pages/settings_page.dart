@@ -149,6 +149,32 @@ class SettingsPage extends ConsumerWidget {
                 );
               },
             ),
+            // 部件自检状态（1.2.7）：Provider 回写的上次更新记录
+            FutureBuilder<({int ts, int ids, String? error})>(
+              future: WidgetService.instance.debugStatus(),
+              builder: (ctx, snap) {
+                final d = snap.data;
+                if (d == null || d.ts == 0) {
+                  return const ListTile(
+                    leading: Icon(Icons.info_outline),
+                    title: Text('部件状态'),
+                    subtitle: Text('还没有收到小部件的更新记录（先添加一个桌面小部件）'),
+                  );
+                }
+                final t = DateTime.fromMillisecondsSinceEpoch(d.ts);
+                final hh = t.hour.toString().padLeft(2, '0');
+                final mm = t.minute.toString().padLeft(2, '0');
+                return ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('部件状态'),
+                  subtitle: Text(
+                    d.error == null
+                        ? '上次更新 $hh:$mm · 共 ${d.ids} 个小部件 · 无异常'
+                        : '上次更新 $hh:$mm · 共 ${d.ids} 个小部件 · 异常：${d.error}',
+                  ),
+                );
+              },
+            ),
             Consumer(
               builder: (ctx, ref, _) {
                 final showOther = ref.watch(showOtherWeeksProvider);

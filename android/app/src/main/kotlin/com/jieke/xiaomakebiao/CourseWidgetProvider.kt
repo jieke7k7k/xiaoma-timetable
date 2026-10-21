@@ -5,6 +5,7 @@ import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.graphics.Bitmap
 import android.view.View
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetProvider
@@ -32,15 +33,42 @@ class CourseWidgetProvider : HomeWidgetProvider() {
         data: SharedPreferences,
     ) {
         val payload = parsePayload(data.getString(KEY_PAYLOAD, null))
+        var firstError: String? = null
         ids.forEach { id ->
             runCatching {
                 val views = RemoteViews(context.packageName, R.layout.course_widget)
                 render(views, payload)
                 views.setOnClickPendingIntent(R.id.widget_root, openAppIntent(context, id))
                 manager.updateAppWidget(id, views)
+            }.onFailure {
+                if (firstError == null) firstError = it.toString()
+            }
+        }
+        // 自检记录（1.2.7）：写回同一份偏好，设置页「部件状态」可读——
+        // 宿主侧渲染失败时不再盲猜，能看到更新时间/实例数/首个异常
+        runCatching {
+            data.edit().apply {
+                putLong(KEY_DBG_TS, System.currentTimeMillis())
+                putInt(KEY_DBG_IDS, ids.size)
+                if (firstError != null) {
+                    putString(KEY_DBG_ERROR, firstError)
+                } else {
+                    remove(KEY_DBG_ERROR)
+                }
+                apply()
             }
         }
     }
+
+    /** 色条位图缓存：按颜色生成一张小纯色图（替代反射 setBackgroundColor） */
+    private val barBitmapCache = HashMap<Int, Bitmap>()
+
+    private fun barBitmap(color: Int): Bitmap =
+        barBitmapCache.getOrPut(color) {
+            Bitmap.createBitmap(6, 54, Bitmap.Config.ARGB_8888).apply {
+                eraseColor(color)
+            }
+        }
 
     private data class Row(
         val name: String,
@@ -115,7 +143,10 @@ class CourseWidgetProvider : HomeWidgetProvider() {
             views.setTextViewText(SUB_IDS[i], row.sub)
             views.setTextViewText(START_IDS[i], row.start)
             views.setTextViewText(END_IDS[i], row.end)
-            views.setInt(BAR_IDS[i], "setBackgroundColor", row.color)
+            // 1.2.7：色条改位图填充——setInt 反射调用在个别厂商宿主上会让
+            // 整份 RemoteViews 应用失败（桌面报「载入窗口小部件时出现问题」），
+            // 位图是一级动作，兼容性最稳
+            views.setImageViewBitmap(BAR_IDS[i], barBitmap(row.color))
             views.setViewVisibility(rowId, View.VISIBLE)
         }
         val footer = payload?.footer ?: ""
@@ -146,6 +177,9 @@ class CourseWidgetProvider : HomeWidgetProvider() {
         private const val MAX_ROWS = 4
         private const val ACTION_OPEN_APP =
             "com.jieke.xiaomakebiao.action.OPEN_WIDGET"
+        private const val KEY_DBG_TS = "dbg_widget_ts"
+        private const val KEY_DBG_IDS = "dbg_widget_ids"
+        private const val KEY_DBG_ERROR = "dbg_widget_error"
 
         private val ROW_IDS = intArrayOf(
             R.id.widget_row_1, R.id.widget_row_2, R.id.widget_row_3, R.id.widget_row_4,
