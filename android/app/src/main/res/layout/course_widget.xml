@@ -2,7 +2,10 @@
 <!-- 今日课程桌面小部件布局（1.2.2 列表式改版，对照 WakeUp 样式）：
      顶栏（学期名 | 日期·第X周·周X）+ 最多 4 行课程：
      每行 = 课程色竖条 + 课名/教室教师 两行 + 右侧起止时间两行；
-     超出行数时底部尾注「还有 N 节课」；无课时显示占位文案。 -->
+     超出行数时底部尾注「还有 N 节课」；无课时显示占位文案。
+     注意：CourseWidgetProvider.WidgetMetrics 里有一份本布局的尺寸度量
+     （padding 14×2 / 顶栏 22 / 行高 36 / 行距 12 / footer 16+8），
+     改这里的 padding、字号、色条高度或行间距时必须同步那组常量。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"

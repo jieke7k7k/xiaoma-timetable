@@ -83,8 +83,7 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
         courses: courses, overrides: overrides, week: week);
     final displayDays =
         computeDisplayDays(effective, week, showOther, autoCollapse);
-    final dates =
-        WeekCalc.weekDatesOf(DateTime.parse(semester.startDate), week);
+    final dates = WeekCalc.weekDatesOf(semester.startDateParsed, week);
     final sortedSlots = [...slots]
       ..sort((a, b) => a.section.compareTo(b.section));
     final maxSection = sortedSlots.last.section;

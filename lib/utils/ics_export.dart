@@ -33,7 +33,7 @@ class IcsExporter {
   }) {
     final slotBySection = {for (final s in slots) s.section: s};
     final stamp = _toUtcStamp(now ?? DateTime.now());
-    final semesterStart = DateTime.parse(semester.startDate);
+    final semesterStart = semester.startDateParsed;
 
     // 按星期几 + 起始节次排序，让导出文件里事件顺序稳定可读
     final sorted = [...courses]..sort((a, b) {

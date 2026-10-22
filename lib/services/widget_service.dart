@@ -4,6 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 
 import '../database/dao.dart';
+import '../models/course.dart';
+import '../models/course_override.dart';
+import '../models/note.dart';
+import '../models/time_slot.dart';
 import '../models/ui_settings.dart';
 import '../utils/widget_data.dart';
 
@@ -15,6 +19,10 @@ import '../utils/widget_data.dart';
 /// 1.2.2 改版：下发整包 JSON（键 widget_payload），结构见 utils/widget_data.dart
 /// （顶栏学期名 + 日期周次、课程列表行：色条/课名/教室教师/起止时间）。
 /// 此前（≤1.2.1）的 widget_title / widget_lines 两键不再写入，原生侧已同步。
+///
+/// 1.3.4 跨天自动切换：额外写 widget_payload_days（键 yyyy-MM-dd → 该日 payload
+/// JSON，共 7 天）。原生 Provider 每次重绘先按本地今天日期取这份，取不到才回退
+/// widget_payload——解决「长假不开 App，小部件停在旧日期」的已知限制。
 ///
 /// 1.2.1 教训：链路代码全对时小部件仍可能永不刷新——投递层不可靠
 /// （厂商省电吞广播、周期为 0 无系统重绘）。对策：updatePeriodMillis=30 分钟
@@ -50,25 +58,33 @@ class WidgetService {
     try {
       final semester = await Dao.instance.getCurrentSemester();
       final uiRaw = await Dao.instance.getSetting('ui_settings');
-      final payload = semester == null
-          ? buildWidgetPayload(
-              now: DateTime.now(),
-              semester: null,
-              courses: const [],
-              timeSlots: const [],
-            )
-          : buildWidgetPayload(
-              now: DateTime.now(),
-              semester: semester,
-              courses: await Dao.instance.getCoursesBySemester(semester.id!),
-              timeSlots: await Dao.instance.getTimeSlots(),
-              overrides: await Dao.instance.getOverridesBySemester(
-                semester.id!,
-              ),
-              ui: uiRaw == null
-                  ? const UiSettings()
-                  : UiSettings.fromEncoded(uiRaw),
-            );
+      final ui = uiRaw == null
+          ? const UiSettings()
+          : UiSettings.fromEncoded(uiRaw);
+      final List<Course> courses = semester == null
+          ? const <Course>[]
+          : await Dao.instance.getCoursesBySemester(semester.id!);
+      final List<TimeSlot> timeSlots = semester == null
+          ? const <TimeSlot>[]
+          : await Dao.instance.getTimeSlots();
+      final List<CourseOverride> overrides = semester == null
+          ? const <CourseOverride>[]
+          : await Dao.instance.getOverridesBySemester(semester.id!);
+
+      final now = DateTime.now();
+      // 备注按日分组（今天 + 未来 6 天，与逐日 payload 同一窗口）。
+      // 一次批量查出来再按日期键分桶，避免逐日重复查库。
+      final Map<String, List<Note>> notesByDate =
+          await _notesByDateFrom(now, days: 7);
+      final payload = buildWidgetPayload(
+        now: now,
+        semester: semester,
+        courses: courses,
+        timeSlots: timeSlots,
+        overrides: overrides,
+        ui: ui,
+        notesByDate: notesByDate,
+      );
       final json = jsonEncode(payload.toJson());
       await HomeWidget.saveWidgetData<String>('widget_payload', json);
       // 回读校验（1.2.1）：个别设备上通道写入可能静默失败，读回不一致就重写一次
@@ -77,12 +93,50 @@ class WidgetService {
         debugPrint('小部件数据回读不一致，重写一次');
         await HomeWidget.saveWidgetData<String>('widget_payload', json);
       }
+      // 逐日 payload（1.3.4）：今天 + 未来 6 天，键是 yyyy-MM-dd。
+      // 原生 Provider 每次重绘按设备本地日期取对应那份，长假不开 App 也能跨天切换。
+      final daysJson = jsonEncode(
+        buildWidgetPayloadDays(
+          now: now,
+          semester: semester,
+          courses: courses,
+          timeSlots: timeSlots,
+          overrides: overrides,
+          ui: ui,
+          notesByDate: notesByDate,
+        ),
+      );
+      await HomeWidget.saveWidgetData<String>('widget_payload_days', daysJson);
       await HomeWidget.updateWidget(
         name: _androidWidgetName,
         qualifiedAndroidName: _qualifiedAndroidName,
       );
     } catch (e) {
       debugPrint('刷新桌面小部件失败：$e');
+    }
+  }
+
+  /// 取 [now] 起 [days] 天的备注，按 yyyy-MM-dd 分桶。
+  /// 读库失败（表不存在等）吞掉返回空表——小部件没有备注也要能照常显示课程，
+  /// 绝不让「备注读不到」把整份 payload 拖垮成黑框。
+  Future<Map<String, List<Note>>> _notesByDateFrom(
+    DateTime now, {
+    int days = 7,
+  }) async {
+    try {
+      final today = DateTime(now.year, now.month, now.day);
+      final keys = [
+        for (var i = 0; i < days; i++) widgetDayKey(today.add(Duration(days: i))),
+      ];
+      final notes = await Dao.instance.getNotesByDates(keys);
+      final out = <String, List<Note>>{};
+      for (final n in notes) {
+        out.putIfAbsent(n.date, () => <Note>[]).add(n);
+      }
+      return out;
+    } catch (e) {
+      debugPrint('读取备注失败（小部件按无备注继续）：$e');
+      return const {};
     }
   }
 }

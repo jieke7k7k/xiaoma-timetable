@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../database/dao.dart';
 import '../models/course.dart';
 import '../models/course_override.dart';
+import '../models/note.dart';
 import '../models/semester.dart';
 import '../models/time_slot.dart';
 import '../models/ui_settings.dart';
@@ -45,6 +46,16 @@ final currentSemesterProvider =
       CurrentSemesterNotifier.new,
     );
 
+/// 数据变更后的统一联动（提醒重排 + 今日课程常驻通知 + 桌面小组件）。
+///
+/// 课程增删改、单次调课、切换学期、编辑当前学期都走这一份——三处散落各写一遍
+/// 迟早会漏挂某一项。三个服务内部都已捕获异常，fire-and-forget 不阻塞 UI。
+void _notifyDataChanged() {
+  unawaited(NotificationService.instance.rescheduleAll());
+  unawaited(OngoingNoticeService.instance.refresh());
+  unawaited(WidgetService.instance.refreshWidgets());
+}
+
 /// 全部学期列表（学期管理页使用）
 ///
 /// 切换激活学期的统一入口在 [SemestersNotifier.switchTo]：
@@ -68,6 +79,27 @@ class SemestersNotifier extends AsyncNotifier<List<Semester>> {
     return id;
   }
 
+  /// 编辑学期（名称 / 开学日期 / 总周数）
+  ///
+  /// [updated] 由学期表单返回，编辑模式下带原 id 与 isCurrent，落库按 id 更新同一行。
+  /// 被编辑的正是当前学期时，除了刷库与刷列表还要同步内存：
+  /// `setDirectly`（免 AsyncLoading，与导入页改开学日期同一写法）让 todayWeekProvider /
+  /// 周视图 / 提醒计划立刻按新的开学日期与总周数工作；随后走与其它数据变更完全
+  /// 一致的联动（提醒重排 + 常驻通知 + 小部件）。
+  /// 非当前学期只改库 + 刷列表——它的字段不参与任何当前数据的计算。
+  Future<void> updateSemester(Semester updated) async {
+    await Dao.instance.updateSemester(updated);
+    final isCurrent = ref.read(currentSemesterProvider).value?.id == updated.id;
+    if (isCurrent) {
+      ref.read(currentSemesterProvider.notifier).setDirectly(updated);
+    }
+    await reload();
+    if (!isCurrent) return;
+    // 总周数被改小时，浏览周可能越界（PageView 页码越界会崩），先钳回来
+    ref.read(displayWeekProvider.notifier).clampToTotalWeeks();
+    _notifyDataChanged();
+  }
+
   /// 切换激活学期：刷新下游所有 watch 当前学期的 Provider
   Future<void> switchTo(int semesterId) async {
     await Dao.instance.setCurrentSemester(semesterId);
@@ -89,12 +121,8 @@ class SemestersNotifier extends AsyncNotifier<List<Semester>> {
     // 浏览周重置为新学期的「本周」
     ref.read(displayWeekProvider.notifier).goToday();
 
-    // 学期切换后重排提醒（滚动窗口换成新学期课程；内部已捕获异常，不阻塞 UI）
-    unawaited(NotificationService.instance.rescheduleAll());
-    // 学期切换后刷新今日课程常驻通知
-    unawaited(OngoingNoticeService.instance.refresh());
-    // 学期切换后刷新桌面小组件（内部已捕获异常）
-    unawaited(WidgetService.instance.refreshWidgets());
+    // 学期切换后重排提醒 / 刷新常驻通知 / 刷新小组件（与其它数据变更同一份口径）
+    _notifyDataChanged();
   }
 
   /// 删除学期（级联删除课程与调课记录）。
@@ -115,6 +143,12 @@ final semestersProvider =
     );
 
 /// 节次时间表
+///
+/// 2.0.0 复审 C3：作息时间直接决定桌面小部件每行开头的「上课时间」，所以
+/// [updateSlot] / [addSection] / [removeLastSection] / [applyPresetBigSections]
+/// 四个改动作息的方法末尾统一挂一次小部件刷新。放在 provider 层而不是每个页面
+/// 各补一遍——改作息的入口有三个（作息设置页、导入校准、一键套用），漏一处就会
+/// 出现「页面上是新时间、桌面还是旧时间」这类对不上的反馈。
 class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
   @override
   Future<List<TimeSlot>> build() => Dao.instance.getTimeSlots();
@@ -129,6 +163,8 @@ class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
         if (!list.any((s) => s.section == slot.section)) slot,
       ]..sort((a, b) => a.section.compareTo(b.section)),
     );
+    // 小部件每行都要带上课/下课时间，作息一改就得重推（2.0.0 复审 C3）
+    unawaited(WidgetService.instance.refreshWidgets());
   }
 
   /// 增加一节（末尾追加）：开始 = 上一节结束 + 10 分钟课间，时长沿用上一节；
@@ -154,6 +190,8 @@ class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
     }
     await Dao.instance.updateTimeSlot(next);
     state = AsyncData([...list, next]);
+    // 作息变了 → 小部件重推（见类注释）
+    unawaited(WidgetService.instance.refreshWidgets());
   }
 
   /// 减少一节（删除最后一节），并把午休/晚餐分段点钳回新范围。总节数下限 4。
@@ -178,6 +216,8 @@ class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
             .setDinnerAfterSection(n);
       }
     }
+    // 作息变了 → 小部件重推（见类注释）
+    unawaited(WidgetService.instance.refreshWidgets());
   }
 
   /// 一键套用常用大节时间（1-2 节 09:40-12:00，3-4 节 14:00-16:20）
@@ -198,6 +238,8 @@ class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
       );
     }
     await reload();
+    // 作息变了 → 小部件重推（见类注释）
+    unawaited(WidgetService.instance.refreshWidgets());
   }
 
   Future<void> reload() async {
@@ -304,11 +346,7 @@ class CourseOverridesNotifier extends AsyncNotifier<List<CourseOverride>> {
 
   /// 与 CoursesNotifier 增删改相同的联动：提醒重排 + 常驻通知 + 小组件。
   /// 三个服务内部均已捕获异常，fire-and-forget 不阻塞 UI。
-  void _notifyServices() {
-    unawaited(NotificationService.instance.rescheduleAll());
-    unawaited(OngoingNoticeService.instance.refresh());
-    unawaited(WidgetService.instance.refreshWidgets());
-  }
+  void _notifyServices() => _notifyDataChanged();
 
   Future<void> reload() async {
     state = const AsyncLoading();
@@ -321,14 +359,55 @@ final courseOverridesProvider =
       CourseOverridesNotifier.new,
     );
 
+/// 全部备注（v3·AI 备注）：按日期升序，与学期无关。
+///
+/// 增删改后只联动「备注常驻通知 + 桌面小部件」两处——备注不参与上课提醒，
+/// 不需要 rescheduleAll（那里面第一步就是 cancelAll，白清一遍滚动窗口）。
+class NotesNotifier extends AsyncNotifier<List<Note>> {
+  @override
+  Future<List<Note>> build() => Dao.instance.getAllNotes();
+
+  Future<int> addNote(Note note) async {
+    final id = await Dao.instance.insertNote(note);
+    await reload();
+    _notifyServices();
+    return id;
+  }
+
+  Future<void> updateNote(Note note) async {
+    await Dao.instance.updateNote(note);
+    await reload();
+    _notifyServices();
+  }
+
+  Future<void> deleteNote(int id) async {
+    await Dao.instance.deleteNote(id);
+    await reload();
+    _notifyServices();
+  }
+
+  /// 备注变化的联动：常驻通知重算（今天/明天没备注时会自己取消）+ 小部件重推。
+  /// 两个服务内部均已捕获异常，fire-and-forget 不阻塞 UI。
+  void _notifyServices() {
+    unawaited(NotificationService.instance.refreshNoteNotice());
+    unawaited(WidgetService.instance.refreshWidgets());
+  }
+
+  Future<void> reload() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(build);
+  }
+}
+
+final notesProvider = AsyncNotifierProvider<NotesNotifier, List<Note>>(
+  NotesNotifier.new,
+);
+
 /// 今天是本学期第几周（依赖当前学期，设置页改开学日期后自动刷新）
 final todayWeekProvider = Provider<int>((ref) {
   final semester = ref.watch(currentSemesterProvider).value;
   if (semester == null) return 0;
-  return WeekCalc.currentWeek(
-    DateTime.parse(semester.startDate),
-    DateTime.now(),
-  );
+  return WeekCalc.currentWeek(semester.startDateParsed, DateTime.now());
 });
 
 /// 周视图当前正在浏览的周次（PageView 滑动切换，默认跳到本周）
@@ -337,6 +416,11 @@ final todayWeekProvider = Provider<int>((ref) {
 /// 瞬间学期还没加载完就读到兜底值、之后不再纠正。现改为：用户没手动
 /// 切周前持续 watch 今天的周次（数据一到自动落到本周）；setWeek 定住
 /// 后以用户操作为准；goToday 解除定住重新跟随。
+///
+/// 1.3.1 越界钳制：[WeekCalc.currentWeek] 允许返回超过学期总周数的实际
+/// 周数（学期已结束仍继续计数），但本值直接用作 PageView 的页码，
+/// 超出 totalWeeks 会越界崩溃，故一律钳到 [1, totalWeeks]；
+/// 学期未加载（totalWeeks = 0）时保持原行为——只保下限 1。
 class DisplayWeekNotifier extends Notifier<int> {
   /// 用户手动定住的周次；null 表示跟随「今天是第几周」
   int? _pinned;
@@ -344,21 +428,33 @@ class DisplayWeekNotifier extends Notifier<int> {
   @override
   int build() {
     final today = ref.watch(todayWeekProvider);
-    final w = _pinned ?? today;
-    return w < 1 ? 1 : w;
+    final totalWeeks = _totalWeeks();
+    return WeekCalc.clampForPage(_pinned ?? today, totalWeeks);
   }
 
   void setWeek(int week) {
-    _pinned = week < 1 ? 1 : week;
+    _pinned = WeekCalc.clampForPage(week, _totalWeeks());
     state = _pinned!;
   }
 
   /// 回到「本周」：解除定住，重新跟随今天
   void goToday() {
     _pinned = null;
-    final w = ref.read(todayWeekProvider);
-    state = w < 1 ? 1 : w;
+    state = WeekCalc.clampForPage(ref.read(todayWeekProvider), _totalWeeks());
   }
+
+  /// 学期总周数变化后重新钳制浏览周（编辑当前学期时用）。
+  ///
+  /// 总周数被改小时，原浏览周可能超出范围，而它直接用作 PageView 的页码，
+  /// 越界会崩。没越界时保持用户当前浏览的周不动（不做「回到本周」的跳页）。
+  void clampToTotalWeeks() {
+    final clamped = WeekCalc.clampForPage(state, _totalWeeks());
+    if (_pinned != null) _pinned = clamped;
+    state = clamped;
+  }
+
+  /// 当前学期总周数；学期未加载（value 为 null）返回 0，表示「不限制上限」
+  int _totalWeeks() => ref.read(currentSemesterProvider).value?.totalWeeks ?? 0;
 }
 
 final displayWeekProvider = NotifierProvider<DisplayWeekNotifier, int>(

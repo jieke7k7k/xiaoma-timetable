@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,11 +8,15 @@ import '../models/course.dart';
 import '../models/semester.dart';
 import '../models/time_slot.dart';
 import '../providers/providers.dart';
+import '../services/notification_service.dart';
+import '../services/widget_service.dart';
+import '../ui/app_styles.dart';
 import '../utils/conflict_detector.dart';
 import '../utils/ics_parser.dart';
 import '../utils/import_planner.dart';
 import '../utils/morandi_palette.dart';
 import '../utils/slot_calibrator.dart';
+import '../utils/week_infer.dart';
 import '../utils/week_parser.dart';
 import '../widgets/draft_edit_dialog.dart';
 import '../widgets/empty_state.dart';
@@ -47,6 +53,33 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
   bool _importing = false;
   // 导入完成后允许直接返回，不再弹「放弃核对」确认
   bool _done = false;
+  // 周次超出学期总周数时，是否顺手把总周数扩到推断值（默认勾选）
+  bool _extendTotalWeeks = true;
+
+  /// 草稿最晚周次超过目标学期总周数时，建议调整到的总周数；否则 null（不展示任何提示）
+  ///
+  /// 钳到 1~30（2.0.0 复审 C7）：与学期表单校验、[Semester.fromMap] 同一区间。
+  /// 提示条里写的数就是保存时写进库的数，不会出现「说好改成 40 周、结果 30 周」。
+  int? get _inferredTotalWeeks {
+    final inferred = WeekInfer.inferredTotalWeeks(
+      _drafts,
+      widget.targetSemester.totalWeeks,
+    );
+    if (inferred == null) return null;
+    return inferred.clamp(1, 30);
+  }
+
+  /// 数据变更后的三项联动（提醒重排 / 备注常驻通知 / 桌面小部件）。
+  ///
+  /// 与 providers 里 `_notifyDataChanged` 同一口径，多补一条备注通知（那份是给
+  /// 课程类变更用的，不含备注通知）。导入一次可能落几十门课，提醒计划、常驻
+  /// 通知、小部件都得重算；三个服务各自读库且内部已捕获异常，fire-and-forget
+  /// 不阻塞完成弹窗。
+  void _notifyDataChanged() {
+    unawaited(NotificationService.instance.rescheduleAll());
+    unawaited(NotificationService.instance.refreshNoteNotice());
+    unawaited(WidgetService.instance.refreshWidgets());
+  }
 
   @override
   void initState() {
@@ -128,36 +161,68 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
         choices = result;
       }
 
-      // 照计划落库：删除覆盖对象 → 插入保留的草稿（盖上目标学期 id）
+      // 照计划落库：删除覆盖对象 → 插入保留的草稿（盖上目标学期 id）。
+      // 整段包进一个事务（1.3.1）：旧课逐条删除与新课逐条插入要么全成功、
+      // 要么整体回滚，中途失败不会留下「旧课已删、新课没进」的半批数据。
       final plan = ImportPlanner.buildPlan(_drafts, items, choices);
       final insertedIds = <int, int>{};
-      var imported = 0;
-      var skipped = 0;
-      var overwritten = 0;
-      for (final p in plan) {
-        if (!p.shouldImport) {
-          skipped++;
-          continue;
-        }
-        for (final id in p.deleteExistingIds) {
-          await dao.deleteCourse(id);
-          overwritten++;
-        }
-        for (final di in p.deleteDraftIndexes) {
-          final nid = insertedIds[di];
-          if (nid != null) {
-            await dao.deleteCourse(nid);
+      final result = await dao.runInTransaction((txn) async {
+        var imported = 0;
+        var skipped = 0;
+        var overwritten = 0;
+        for (final p in plan) {
+          if (!p.shouldImport) {
+            skipped++;
+            continue;
+          }
+          for (final id in p.deleteExistingIds) {
+            await dao.deleteCourse(id, txn: txn);
             overwritten++;
           }
+          for (final di in p.deleteDraftIndexes) {
+            final nid = insertedIds[di];
+            if (nid != null) {
+              await dao.deleteCourse(nid, txn: txn);
+              overwritten++;
+            }
+          }
+          final newId = await dao.insertCourse(
+            _drafts[p.draftIndex].copyWith(semesterId: target.id!),
+            txn: txn,
+          );
+          insertedIds[p.draftIndex] = newId;
+          imported++;
         }
-        final newId = await dao
-            .insertCourse(_drafts[p.draftIndex].copyWith(semesterId: target.id!));
-        insertedIds[p.draftIndex] = newId;
-        imported++;
-      }
+        return (imported: imported, skipped: skipped, overwritten: overwritten);
+      });
+      final imported = result.imported;
+      final skipped = result.skipped;
+      final overwritten = result.overwritten;
 
       // 刷新 provider 让周视图同步
       await ref.read(coursesProvider.notifier).reload();
+      // 课程整批换过了：提醒计划 / 常驻通知 / 小部件都要按新数据重算
+      _notifyDataChanged();
+
+      // 周次溢出：导入的课最晚周次超过学期总周数时，按用户勾选把总周数补齐。
+      // 放在落库成功之后——课程已安全入库，这里失败也不回滚（与作息校准同一策略）。
+      var extendedTo = 0;
+      // 钳到 1~30（C7）：写进库的与提示条上写的必须是同一个数
+      final inferred = WeekInfer.maxWeek(_drafts).clamp(1, 30);
+      if (_extendTotalWeeks && target.id != null && inferred > target.totalWeeks) {
+        try {
+          final updated = target.copyWith(totalWeeks: inferred);
+          // 走学期管理页「编辑学期」的同一个入口（2.0.0 复审 C2）：改库 → 当前
+          // 学期同步内存 state → 刷学期列表 → 浏览周按新总周数钳制 → 三联动。
+          // 本页不再自己拼这一串，免得日后一边加了联动另一边忘了
+          await ref.read(semestersProvider.notifier).updateSemester(updated);
+          extendedTo = updated.totalWeeks;
+          // 再补一次备注通知（providers 那份三联动不含备注通知）
+          _notifyDataChanged();
+        } catch (e) {
+          debugPrint('调整学期总周数失败：$e');
+        }
+      }
 
       // 课程全部导入成功后，按课表文件校准作息时间。
       // 校准失败（异常）不回滚已导入的课程，仅静默记录日志。
@@ -207,6 +272,11 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
                 children: [
                   Text('已导入到《${target.name}》：\n'
                       '新增 $imported 门，覆盖 $overwritten 门，跳过 $skipped 门'),
+                  if (extendedTo > 0) ...[
+                    const SizedBox(height: 8),
+                    Text('《${target.name}》的总周数已调整为 $extendedTo 周'
+                        '（原 ${target.totalWeeks} 周）'),
+                  ],
                   if (calibrationDiffs.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     const Text('作息已按课表文件校准：',
@@ -235,9 +305,53 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
     }
   }
 
+  /// 周次溢出提示条：草稿最晚周次超过目标学期总周数时才出现，
+  /// 勾选后随「确认导入」一起把学期总周数扩到 [inferred] 周；
+  /// 不勾选则原样保存，学期总周数不动
+  Widget _weekOverflowBanner(BuildContext context, int inferred) {
+    final total = widget.targetSemester.totalWeeks;
+    return Container(
+      width: double.infinity,
+      color: Theme.of(context).colorScheme.tertiaryContainer,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.l,
+        vertical: AppSpacing.s,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '导入的课程最晚到第 $inferred 周，超过当前学期的总周数 $total 周',
+            style: const TextStyle(fontSize: 13),
+          ),
+          InkWell(
+            onTap: () => setState(() => _extendTotalWeeks = !_extendTotalWeeks),
+            child: Row(
+              children: [
+                Checkbox(
+                  value: _extendTotalWeeks,
+                  visualDensity: VisualDensity.compact,
+                  onChanged: (v) =>
+                      setState(() => _extendTotalWeeks = v ?? false),
+                ),
+                Expanded(
+                  child: Text(
+                    '保存时把总周数调整为 $inferred 周',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // 防误触返回：草稿非空时先弹窗确认，避免辛苦核对的成果被一次滑动丢掉
+    final inferred = _inferredTotalWeeks;
     return PopScope(
       canPop: _drafts.isEmpty || _done,
       onPopInvokedWithResult: (didPop, _) async {
@@ -280,6 +394,8 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
                 style: const TextStyle(fontSize: 13),
               ),
             ),
+            // 周次溢出提示：不改动任何数据，只在用户勾选时随保存一起生效
+            if (inferred != null) _weekOverflowBanner(context, inferred),
             Expanded(
               child: _drafts.isEmpty
                   // 统一空状态占位（阶段五·视觉打磨）：图标 + 文案 + 手动补录入口

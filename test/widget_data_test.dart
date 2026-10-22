@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xiaoma_timetable/models/course.dart';
 import 'package:xiaoma_timetable/models/course_override.dart';
+import 'package:xiaoma_timetable/models/note.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/models/time_slot.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
@@ -144,5 +147,202 @@ void main() {
     );
     expect(payload.headerLeft, '小马课表');
     expect(payload.rows, isEmpty);
+  });
+
+  // ---------- 1.3.4 逐日 payload（小部件跨天自动切换） ----------
+
+  test('逐日表：默认 7 天，键是今天起算的 yyyy-MM-dd', () {
+    final days = buildWidgetPayloadDays(
+      now: DateTime(2026, 9, 7, 10, 12),
+      semester: semester,
+      courses: [course(id: 1, dayOfWeek: 1, name: '周一的课')],
+      timeSlots: slots,
+    );
+    expect(days.length, 7);
+    expect(
+      days.keys.toList(),
+      [
+        '2026-09-07',
+        '2026-09-08',
+        '2026-09-09',
+        '2026-09-10',
+        '2026-09-11',
+        '2026-09-12',
+        '2026-09-13',
+      ],
+    );
+  });
+
+  test('今天这份与 buildWidgetPayload 逐字一致（含「已结束的课不入选」）', () {
+    final now = DateTime(2026, 9, 7, 10, 12);
+    final days = buildWidgetPayloadDays(
+      now: now,
+      semester: semester,
+      courses: [
+        course(id: 1, startSection: 1, name: '已结束课'),
+        course(id: 2, startSection: 2, name: '正在上的课'),
+      ],
+      timeSlots: slots,
+    );
+    expect(
+      days['2026-09-07'],
+      buildWidgetPayload(
+        now: now,
+        semester: semester,
+        courses: [
+          course(id: 1, startSection: 1, name: '已结束课'),
+          course(id: 2, startSection: 2, name: '正在上的课'),
+        ],
+        timeSlots: slots,
+      ).toJson(),
+    );
+  });
+
+  test('未来某日按该日 00:00 构建：当天课程完整入选且顶栏是该日', () {
+    final days = buildWidgetPayloadDays(
+      now: DateTime(2026, 9, 7, 10, 12),
+      semester: semester,
+      courses: [
+        course(id: 1, dayOfWeek: 1, startSection: 1, name: '周一第1节'),
+        course(id: 2, dayOfWeek: 2, startSection: 1, name: '周二第1节'),
+        course(
+          id: 3,
+          dayOfWeek: 2,
+          startSection: 4,
+          endSection: 4,
+          name: '周二第4节',
+        ),
+      ],
+      timeSlots: slots,
+    );
+    final tue = days['2026-09-08']!;
+    expect(tue['rows'] as List, hasLength(2));
+    expect(
+      (tue['rows'] as List).map((r) => (r as Map)['name']).toList(),
+      ['周二第1节', '周二第4节'],
+    );
+    expect(tue['headerRight'], '9.8 第1周 周二');
+  });
+
+  test('无课的某天按现有语义顺延到次日（今天与未来某日同理）', () {
+    final days = buildWidgetPayloadDays(
+      now: DateTime(2026, 9, 11, 10, 12), // 2026-09-11 是周五
+      semester: semester,
+      courses: [course(id: 1, dayOfWeek: 6, name: '只有周六有课')],
+      timeSlots: slots,
+    );
+    // 周五当天无课 → 顺延周六；周六那份（00:00 构建）直接是周六的课
+    expect(days['2026-09-11']!['headerRight'], '9.12 第1周 周六');
+    final sat = days['2026-09-12']!;
+    expect(sat['headerRight'], '9.12 第1周 周六');
+    expect((sat['rows'] as List).single['name'], '只有周六有课');
+    // 周日 00:00 无课 → 顺延周一（第 2 周）
+    expect(days['2026-09-13']!['headerRight'], '9.14 第2周 周一');
+  });
+
+  test('逐日表整体可 JSON 编码，且每天都是完整 payload 结构', () {
+    final days = buildWidgetPayloadDays(
+      now: DateTime(2026, 9, 7, 7, 0),
+      semester: semester,
+      courses: [course(id: 1, dayOfWeek: 3, name: '周三的课')],
+      timeSlots: slots,
+    );
+    final decoded = jsonDecode(jsonEncode(days)) as Map<String, dynamic>;
+    expect(decoded.length, 7);
+    for (final v in decoded.values) {
+      final m = v as Map<String, dynamic>;
+      final keys = m.keys.toList()..sort();
+      expect(keys, [
+        'emptyText',
+        'footer',
+        'headerLeft',
+        'headerRight',
+        'notes',
+        'rows',
+      ]);
+    }
+  });
+
+  test('无学期时逐日表也有 7 份兜底 payload', () {
+    final days = buildWidgetPayloadDays(
+      now: DateTime(2026, 9, 7, 7, 0),
+      semester: null,
+      courses: const [],
+      timeSlots: const [],
+    );
+    expect(days.length, 7);
+    expect(days.values.every((p) => p['headerLeft'] == '小马课表'), isTrue);
+    expect(days['2026-09-09']!['headerRight'], '9.9 周三');
+  });
+
+  group('当日备注', () {
+    Note note(String date, String content, {int id = 1}) => Note(
+          id: id,
+          date: date,
+          content: content,
+          createdAt: DateTime(2026, 9, 1).millisecondsSinceEpoch,
+        );
+
+    test('payload 带上展示那天的备注，最多 3 条且去掉空白', () {
+      final payload = buildWidgetPayload(
+        now: DateTime(2026, 9, 7, 7, 0),
+        semester: semester,
+        courses: [course(startSection: 1, endSection: 1)],
+        timeSlots: slots,
+        notesByDate: {
+          '2026-09-07': [
+            note('2026-09-07', '带实验服'),
+            note('2026-09-07', '  '),
+            note('2026-09-07', '交作业'),
+            note('2026-09-07', '周三预习'),
+            note('2026-09-07', '第四条不该出现'),
+          ],
+        },
+      );
+      expect(payload.notes, ['带实验服', '交作业', '周三预习']);
+    });
+
+    test('没有备注时 notes 为空列表，老 payload 结构不受影响', () {
+      final payload = buildWidgetPayload(
+        now: DateTime(2026, 9, 7, 7, 0),
+        semester: semester,
+        courses: [course(startSection: 1, endSection: 1)],
+        timeSlots: slots,
+      );
+      expect(payload.notes, isEmpty);
+      expect(payload.toJson()['notes'], <String>[]);
+    });
+
+    test('今天没课顺延到明天时，备注跟着换成明天的', () {
+      final payload = buildWidgetPayload(
+        // 今天的课已经上完（最后一节 22:00 结束）
+        now: DateTime(2026, 9, 7, 23, 0),
+        semester: semester,
+        courses: [course(startSection: 6, endSection: 6, dayOfWeek: 1)],
+        timeSlots: slots,
+        notesByDate: {
+          '2026-09-07': [note('2026-09-07', '今天的备忘')],
+          '2026-09-08': [note('2026-09-08', '明天的备忘')],
+        },
+      );
+      expect(payload.headerRight, contains('9.8'));
+      expect(payload.notes, ['明天的备忘']);
+    });
+
+    test('逐日 payload 各带各日备注', () {
+      final days = buildWidgetPayloadDays(
+        now: DateTime(2026, 9, 7, 7, 0),
+        semester: semester,
+        courses: [course(id: 1, dayOfWeek: 3, name: '周三的课')],
+        timeSlots: slots,
+        notesByDate: {
+          '2026-09-07': [note('2026-09-07', '周一备忘')],
+          '2026-09-09': [note('2026-09-09', '周三备忘')],
+        },
+      );
+      expect(days['2026-09-07']!['notes'], ['周一备忘']);
+      expect(days['2026-09-08']!['notes'], isEmpty);
+      expect(days['2026-09-09']!['notes'], ['周三备忘']);
+    });
   });
 }

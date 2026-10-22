@@ -74,6 +74,34 @@ void main() {
       expect(conflicts.length, 2);
     });
 
+    test('手动改课：候选课与同学期已有课冲突，且排除自身', () {
+      // 编辑《药理学》时把它挪到与另一门课重叠的时段：池子里既有它自己
+      // （原时段，与候选值重叠）也有《药物分析》，只应检出与《药物分析》的一处
+      final candidate = _course(
+        id: 10,
+        name: '药理学',
+        startSection: 3,
+        endSection: 4,
+      );
+      final existing = [
+        _course(id: 10, name: '药理学', startSection: 3, endSection: 4),
+        _course(id: 11, name: '药物分析', startSection: 3, endSection: 4),
+      ];
+      final conflicts =
+          ConflictDetector.detect(candidate, existing, ignoreCourseId: 10);
+      expect(conflicts.length, 1);
+      expect(conflicts.first.courseB.name, '药物分析');
+    });
+
+    test('手动建课：周次仅在端点相交也算冲突（与导入链路同一套语义）', () {
+      final candidate =
+          _course(startSection: 1, endSection: 2, weeks: [1, 2, 3, 4, 5, 6, 7, 8]);
+      final existing = [_course(name: 'B', weeks: [8, 9, 10])];
+      final conflicts = ConflictDetector.detect(candidate, existing);
+      expect(conflicts.length, 1);
+      expect(conflicts.first.overlapWeeks, [8]);
+    });
+
     test('describe 描述包含课程名与周次节次', () {
       final a = _course(name: '药物分析', startSection: 3, endSection: 4);
       final b = _course(name: '药理学', startSection: 3, endSection: 4);

@@ -199,7 +199,7 @@ class _ImportPageState extends ConsumerState<ImportPage> {
       final res = await showSemesterStartConfirmDialog(
         context,
         semesterName: target.name,
-        initialStart: DateTime.parse(target.startDate),
+        initialStart: target.startDateParsed,
         totalWeeks: target.totalWeeks,
       );
       if (res == null || !mounted) return;
@@ -237,7 +237,7 @@ class _ImportPageState extends ConsumerState<ImportPage> {
       final slots = ref.read(timeSlotsProvider).value ?? [];
       final parsed = IcsParser.parse(
         content,
-        semesterStart: DateTime.parse(target.startDate),
+        semesterStart: target.startDateParsed,
         slots: slots,
       );
       if (!context.mounted) return;

@@ -1,11 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:xiaoma_timetable/database/dao.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/models/course.dart';
 import 'package:xiaoma_timetable/models/course_override.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/providers/providers.dart';
+import 'package:xiaoma_timetable/utils/week_calc.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// 学期管理与切换联动测试
@@ -164,6 +166,75 @@ void main() {
       expect(semesters.any((s) => s.id == secondId), isFalse);
       // 当前学期未受影响
       expect((await Dao.instance.getCurrentSemester())!.id, isNot(secondId));
+    });
+  });
+
+  group('编辑学期', () {
+    test('编辑当前学期后内存同步：周次与浏览周立即按新日期/新总周数工作', () async {
+      final current = (await Dao.instance.getCurrentSemester())!;
+      // 页面里由 watch 保证已加载，测试里显式等它就绪
+      await container.read(currentSemesterProvider.future);
+      // 浏览周定在第 20 周（原总周数 20 的上限），改小总周数后必须被钳回来
+      container.read(displayWeekProvider.notifier).setWeek(20);
+
+      // 开学日期改成「本周周一」→ 今天恒为第 1 周（与运行日期无关）
+      final monday = DateFormat('yyyy-MM-dd')
+          .format(WeekCalc.alignToMonday(DateTime.now()));
+      await container
+          .read(semestersProvider.notifier)
+          .updateSemester(current.copyWith(
+            name: '改名后的学期',
+            startDate: monday,
+            totalWeeks: 8,
+          ));
+
+      // 当前学期内存对象同步（todayWeekProvider / 周视图 / 提醒都读它）
+      final now = container.read(currentSemesterProvider).value!;
+      expect(now.id, current.id);
+      expect(now.name, '改名后的学期');
+      expect(now.startDate, monday);
+      expect(now.totalWeeks, 8);
+
+      // 下游联动：今天 = 第 1 周；浏览周从 20 被钳到 8（PageView 页码不越界）
+      expect(container.read(todayWeekProvider), 1);
+      expect(container.read(displayWeekProvider), 8);
+
+      // 落库与列表也同步，且 isCurrent 仍然唯一
+      final inDb = (await Dao.instance.getCurrentSemester())!;
+      expect(inDb.name, '改名后的学期');
+      expect(inDb.totalWeeks, 8);
+      final list = await container.read(semestersProvider.future);
+      expect(list.where((s) => s.isCurrent).length, 1);
+      expect(list.firstWhere((s) => s.id == current.id).name, '改名后的学期');
+    });
+
+    test('编辑非当前学期：只改库与列表，当前学期状态不受影响', () async {
+      final current = (await Dao.instance.getCurrentSemester())!;
+      await container.read(currentSemesterProvider.future);
+      final secondId = await Dao.instance.insertSemester(
+          const Semester(name: '下学期', startDate: '2027-03-01', totalWeeks: 18));
+
+      final target = (await Dao.instance.getAllSemesters())
+          .firstWhere((s) => s.id == secondId);
+      await container
+          .read(semestersProvider.notifier)
+          .updateSemester(target.copyWith(name: '下学期改名', totalWeeks: 16));
+
+      // 目标学期已改
+      final inDb = (await Dao.instance.getAllSemesters())
+          .firstWhere((s) => s.id == secondId);
+      expect(inDb.name, '下学期改名');
+      expect(inDb.totalWeeks, 16);
+      final list = await container.read(semestersProvider.future);
+      expect(list.firstWhere((s) => s.id == secondId).totalWeeks, 16);
+
+      // 当前学期与它的周次不受影响
+      final now = container.read(currentSemesterProvider).value!;
+      expect(now.id, current.id);
+      expect(now.name, current.name);
+      expect(now.totalWeeks, current.totalWeeks);
+      expect(now.isCurrent, isTrue);
+      expect(inDb.isCurrent, isFalse);
     });
   });
 }

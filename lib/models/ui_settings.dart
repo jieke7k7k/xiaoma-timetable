@@ -22,6 +22,7 @@ class UiSettings {
     this.themeCustomColor,
     this.fontId = 'system',
     this.showParityLabel = true,
+    this.showWeekParity = true,
     this.autoFitHeight = true,
     this.highlightTodayColumn = false,
   });
@@ -87,6 +88,13 @@ class UiSettings {
   /// 标题是否显示单双周（1.2.3）：关掉后左上角只显示「第 X 周」，默认显示
   final bool showParityLabel;
 
+  /// 主页左上角是否显示当前周的单/双周小标识（2.0.0），默认显示。
+  ///
+  /// 与 [showParityLabel] 是**两个不同的东西**：那个管的是标题文字
+  /// 「第 3 周 · 单周」里的后缀，这个管的是左上角那枚「单周」小字标识。
+  /// 口径都是 WeekCalc 的当前周，学期外/未开学时都不显示。
+  final bool showWeekParity;
+
   /// 行高自适应一屏（1.2.3）：开启后按可用高度均分行高、整表恰好一屏，
   /// 此时格子高度设置不生效；1.2.5 起默认开（新用户首开即一屏）
   final bool autoFitHeight;
@@ -126,6 +134,7 @@ class UiSettings {
     bool clearThemeCustomColor = false,
     String? fontId,
     bool? showParityLabel,
+    bool? showWeekParity,
     bool? autoFitHeight,
     bool? highlightTodayColumn,
   }) {
@@ -146,6 +155,7 @@ class UiSettings {
           : (themeCustomColor ?? this.themeCustomColor),
       fontId: fontId ?? this.fontId,
       showParityLabel: showParityLabel ?? this.showParityLabel,
+      showWeekParity: showWeekParity ?? this.showWeekParity,
       autoFitHeight: autoFitHeight ?? this.autoFitHeight,
       highlightTodayColumn: highlightTodayColumn ?? this.highlightTodayColumn,
     );
@@ -166,6 +176,7 @@ class UiSettings {
     'themeCustomColor': themeCustomColor,
     'fontId': fontId,
     'showParityLabel': showParityLabel,
+    'showWeekParity': showWeekParity,
     'autoFitHeight': autoFitHeight,
     'highlightTodayColumn': highlightTodayColumn,
   };
@@ -218,6 +229,7 @@ class UiSettings {
             : null,
         fontId: st('fontId', 'system'),
         showParityLabel: bl('showParityLabel', true),
+        showWeekParity: bl('showWeekParity', true),
         autoFitHeight: bl('autoFitHeight', true),
         highlightTodayColumn: bl('highlightTodayColumn', false),
       );

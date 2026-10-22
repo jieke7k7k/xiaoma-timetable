@@ -2,17 +2,30 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/course.dart';
 import '../models/course_override.dart';
+import '../models/note.dart';
 import '../models/semester.dart';
 import '../models/time_slot.dart';
 import 'db_helper.dart';
 
-/// 数据访问对象：封装四张表的增删改查
+/// 数据访问对象：封装各表的增删改查
 /// 所有数据库异常在此处统一捕获并向上抛出带中文信息的异常，由 UI 层友好提示
 class Dao {
   Dao._();
   static final Dao instance = Dao._();
 
   Future<Database> get _db async => DbHelper.instance.database;
+
+  /// 把一批写操作包进单个事务（1.3.1：批量导入落库用）。
+  ///
+  /// [action] 拿到的执行器可直接传给带 `txn` 参数的 Dao 方法（insertCourse /
+  /// deleteCourse 等）；任一处抛错整体回滚，不会出现「删一半插一半」。
+  /// 不传执行器时各方法仍各自独立执行，旧调用点行为不变。
+  Future<T> runInTransaction<T>(
+    Future<T> Function(DatabaseExecutor txn) action,
+  ) async {
+    final db = await _db;
+    return db.transaction((txn) => action(txn));
+  }
 
   // ---------- 学期 ----------
 
@@ -99,20 +112,36 @@ class Dao {
     return rows.map(Course.fromMap).toList();
   }
 
-  Future<int> insertCourse(Course c) async {
-    final db = await _db;
+  /// 插入课程。[txn] 非空时在该事务内执行（批量导入整体原子化用）
+  Future<int> insertCourse(Course c, {DatabaseExecutor? txn}) async {
+    final db = txn ?? await _db;
     return db.insert('courses', c.toMap());
   }
 
-  Future<int> updateCourse(Course c) async {
-    final db = await _db;
+  /// 改课程（整行覆盖）。单条 UPDATE，本身就是原子的——C8 的复核结论是这里
+  /// 不用包事务，只有 deleteCourse（删调课 + 删课程两条 SQL）才需要。
+  Future<int> updateCourse(Course c, {DatabaseExecutor? txn}) async {
+    final db = txn ?? await _db;
     return db.update('courses', c.toMap(), where: 'id = ?', whereArgs: [c.id]);
   }
 
-  Future<int> deleteCourse(int id) async {
+  /// 删除课程（含其调课记录）。[txn] 非空时在该事务内执行
+  ///
+  /// 未传 [txn] 时**自己包一层事务**（2.0.0 复审 C8）：删调课记录与删课程是两条
+  /// SQL，分开执行时中途失败会留下「课程没了、调课记录还挂着」的悬空数据。
+  /// 传了 [txn] 说明调用方已经在一个更大的事务里（批量导入），直接沿用，
+  /// 不再嵌套（sqflite 的嵌套事务是保存点，语义已够用，但没必要多一层）。
+  Future<int> deleteCourse(int id, {DatabaseExecutor? txn}) async {
+    if (txn != null) {
+      await txn.delete('course_overrides',
+          where: 'courseId = ?', whereArgs: [id]);
+      return txn.delete('courses', where: 'id = ?', whereArgs: [id]);
+    }
     final db = await _db;
-    await db.delete('course_overrides', where: 'courseId = ?', whereArgs: [id]);
-    return db.delete('courses', where: 'id = ?', whereArgs: [id]);
+    return db.transaction((t) async {
+      await t.delete('course_overrides', where: 'courseId = ?', whereArgs: [id]);
+      return t.delete('courses', where: 'id = ?', whereArgs: [id]);
+    });
   }
 
   // ---------- 备份导出（阶段五：跨学期全量读取） ----------
@@ -161,6 +190,59 @@ class Dao {
   Future<int> deleteOverride(int id) async {
     final db = await _db;
     return db.delete('course_overrides', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ---------- 备注（v3：AI 备注 / 常驻通知 / 桌面小部件） ----------
+
+  /// 全部备注，按日期升序、同日内按写入顺序（id）升序。
+  /// 备注页、常驻通知都吃这份（数量级是「人手写」的量，全表读足够）。
+  Future<List<Note>> getAllNotes() async {
+    final db = await _db;
+    final rows = await db.query('notes', orderBy: 'date ASC, id ASC');
+    return rows.map(Note.fromMap).toList();
+  }
+
+  /// 某一天的备注（[date] 为 yyyy-MM-dd），按写入顺序
+  Future<List<Note>> getNotesByDate(String date) async {
+    final db = await _db;
+    final rows = await db.query(
+      'notes',
+      where: 'date = ?',
+      whereArgs: [date],
+      orderBy: 'id ASC',
+    );
+    return rows.map(Note.fromMap).toList();
+  }
+
+  /// 批量取若干天的备注（小组件一次要未来 7 天，避免逐日各查一次）。
+  /// [dates] 为空时返回空列表，不会拼出非法 SQL。
+  Future<List<Note>> getNotesByDates(List<String> dates) async {
+    if (dates.isEmpty) return [];
+    final db = await _db;
+    final placeholders = List.filled(dates.length, '?').join(', ');
+    final rows = await db.query(
+      'notes',
+      where: 'date IN ($placeholders)',
+      whereArgs: dates,
+      orderBy: 'date ASC, id ASC',
+    );
+    return rows.map(Note.fromMap).toList();
+  }
+
+  Future<int> insertNote(Note n) async {
+    final db = await _db;
+    return db.insert('notes', n.toMap());
+  }
+
+  Future<int> updateNote(Note n) async {
+    final db = await _db;
+    return db.update('notes', n.toMap(), where: 'id = ?', whereArgs: [n.id]);
+  }
+
+  /// 删除一条备注，返回受影响行数（0 表示 id 不存在）
+  Future<int> deleteNote(int id) async {
+    final db = await _db;
+    return db.delete('notes', where: 'id = ?', whereArgs: [id]);
   }
 
   // ---------- 应用设置（键值对，阶段四：提醒开关/提前分钟等） ----------

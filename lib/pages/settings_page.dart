@@ -5,11 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../database/dao.dart';
+import '../pages/ai_settings_page.dart';
 import '../providers/providers.dart';
 import '../services/backup_service.dart';
 import '../services/notification_service.dart';
 import '../services/ongoing_notice_service.dart';
+import '../services/permission_service.dart';
 import '../services/widget_service.dart';
 import '../utils/backup_codec.dart';
 import '../utils/ics_export.dart';
@@ -92,6 +93,69 @@ class SettingsPage extends ConsumerWidget {
               subtitle: const Text('存储占用、备份快捷入口与恢复出厂'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.pushNamed(context, '/data-manage'),
+            ),
+            const _SectionHeader(title: '备注'),
+            ListTile(
+              leading: const Icon(Icons.sticky_note_2_outlined),
+              title: const Text('备注'),
+              subtitle: const Text('按日期记录待办备忘，可在通知栏与桌面小部件显示'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.pushNamed(context, '/notes'),
+            ),
+            // 内置 AI 助手（2.0.0）：底栏左键就是聊天页，这里放配置与直达入口
+            const _SectionHeader(title: 'AI 助手'),
+            ListTile(
+              leading: const Icon(Icons.smart_toy_outlined),
+              title: const Text('和 AI 聊聊'),
+              subtitle: const Text('带着课表上下文回答问题，也能帮你改课表（改前会先确认）'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.pushNamed(context, '/ai-chat'),
+            ),
+            const AiSettingsForm(),
+            const AiSettingsTips(),
+            // AI 桥（1.3.6）：外部 AI 通过私有 GitHub 仓下指令/读快照
+            const _SectionHeader(title: 'AI 桥'),
+            ListTile(
+              leading: const Icon(Icons.hub_outlined),
+              title: const Text('AI 桥'),
+              subtitle: const Text(
+                '把私有仓库当命令信箱：外部 AI 下指令改课表，删除类指令会先等你确认',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.pushNamed(context, '/bridge'),
+            ),
+            // 权限（2.0.0）：三项系统权限的状态与补开入口，首次启动会引导一次
+            const _SectionHeader(title: '权限'),
+            const _PermissionSummaryTile(),
+            // 课程与工具（2.0.0）：底栏三键改版后，原页签目的地在这里补齐
+            const _SectionHeader(title: '课程与工具'),
+            ListTile(
+              leading: const Icon(Icons.search_outlined),
+              title: const Text('课程搜索'),
+              subtitle: const Text('按课名 / 老师 / 教室搜当前学期的课，点结果跳到那一周'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.pushNamed(context, '/course-search'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.free_breakfast_outlined),
+              title: const Text('空闲时段'),
+              subtitle: const Text('按周列出每天没课的时段，找空档排事情'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.pushNamed(context, '/free-time'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.event_note_outlined),
+              title: const Text('考试倒计时'),
+              subtitle: const Text('设置了考试日期的课程按日期升序排列'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.pushNamed(context, '/exam-countdown'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.image_outlined),
+              title: const Text('导出课表图片'),
+              subtitle: const Text('把当前浏览的那一周渲染成图片，走系统分享'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.pushNamed(context, '/share-image'),
             ),
             const _SectionHeader(title: '外观'),
             // 主题三档选择：跟随系统/浅色/深色（阶段五·深色适配）
@@ -317,13 +381,15 @@ class SettingsPage extends ConsumerWidget {
       helpText: '选择开学日期',
     );
     if (picked == null) return;
-    final notifier = ref.read(currentSemesterProvider.notifier);
     final old = ref.read(currentSemesterProvider).value;
     if (old == null) return;
     try {
-      await notifier.updateSemester(
-        old.copyWith(startDate: DateFormat('yyyy-MM-dd').format(picked)),
-      );
+      // 走学期管理页「编辑学期」的同一个入口（2.0.0 复审 C3）：改库 → 同步内存
+      // → 刷列表 → 浏览周钳制 → 提醒重排 / 常驻通知 / 小部件三联动，
+      // 与管理页改同一门数据走同一条路，口径不再分叉
+      await ref.read(semestersProvider.notifier).updateSemester(
+            old.copyWith(startDate: DateFormat('yyyy-MM-dd').format(picked)),
+          );
       if (context.mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('开学日期已更新')));
@@ -484,30 +550,28 @@ class SettingsPage extends ConsumerWidget {
     }
   }
 
-  /// 导出 JSON 全量备份：读库组装 → 用户选保存位置 → 落盘。
+  /// 备份提示的附加文案（如某个字体超限没写进备份）；没有提示时为空串
+  String _warnText(List<String> warnings) =>
+      warnings.isEmpty ? '' : '\n${warnings.join('\n')}';
+
+  /// 导出 JSON 全量备份：读库组装（含自定义字体）→ 用户选保存位置 → 落盘。
   /// 用户取消（返回 null）不算失败，静默返回。
   Future<void> _exportBackup(BuildContext context) async {
     try {
-      final data = BackupCodec.encode(
-        semesters: await Dao.instance.getAllSemesters(),
-        timeSlots: await Dao.instance.getTimeSlots(),
-        courses: await Dao.instance.getAllCourses(),
-        overrides: await Dao.instance.getAllOverrides(),
-        settings: await Dao.instance.getAllSettings(),
-        now: DateTime.now(),
-      );
+      final bundle = await BackupService.instance.buildBackup(now: DateTime.now());
       // 缩进美化：备份要人肉应急查看/修改时更可读，体积代价可忽略
       const pretty = JsonEncoder.withIndent('  ');
       final stamp = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
       final path = await BackupService.instance.saveTextFile(
         fileName: '小马课表备份_$stamp.json',
-        content: pretty.convert(data),
+        content: pretty.convert(bundle.json),
         extension: 'json',
       );
       if (path == null) return;
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('备份已保存到：$path')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('备份已保存到：$path${_warnText(bundle.warnings)}')),
+        );
       }
     } catch (e) {
       if (context.mounted) {
@@ -592,6 +656,10 @@ class SettingsPage extends ConsumerWidget {
       ref.invalidate(themeSettingsProvider);
       ref.invalidate(reminderSettingsProvider);
       ref.invalidate(ongoingNoticeSettingsProvider);
+      ref.invalidate(notesProvider);
+      ref.invalidate(courseOverridesProvider);
+      ref.invalidate(segmentSettingsProvider);
+      ref.invalidate(uiSettingsProvider);
       ref.read(displayWeekProvider.notifier).goToday();
       // 通知/常驻通知/小组件基于恢复后的数据重排刷新（内部均已捕获异常）
       unawaited(NotificationService.instance.rescheduleAll());
@@ -660,6 +728,56 @@ class SettingsPage extends ConsumerWidget {
             .showSnackBar(SnackBar(content: Text('ICS 导出失败：$e')));
       }
     }
+  }
+}
+
+/// 权限入口行：显示「已授权 x / 3」摘要。
+///
+/// 状态查询是一次平台通道调用，因此只在 initState 里发起一次（放在 build 里
+/// 会让每次重建都查一遍）；从权限页返回时再查一次，用户在系统里改完立即可见。
+class _PermissionSummaryTile extends StatefulWidget {
+  const _PermissionSummaryTile();
+
+  @override
+  State<_PermissionSummaryTile> createState() => _PermissionSummaryTileState();
+}
+
+class _PermissionSummaryTileState extends State<_PermissionSummaryTile> {
+  late Future<PermissionSnapshot> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = PermissionService.instance.status();
+  }
+
+  Future<void> _open() async {
+    await Navigator.pushNamed(context, '/permissions');
+    if (!mounted) return;
+    setState(() => _future = PermissionService.instance.status());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<PermissionSnapshot>(
+      future: _future,
+      builder: (ctx, snap) {
+        final s = snap.data;
+        return ListTile(
+          leading: const Icon(Icons.shield_outlined),
+          title: const Text('权限'),
+          subtitle: Text(
+            s == null
+                ? '正在读取…'
+                : '通知 ${s.notification ? '已授权' : '未授权'} · '
+                    '闹钟 ${s.exactAlarm ? '已授权' : '未授权'} · '
+                    '电池 ${s.battery ? '已授权' : '未授权'}',
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _open,
+        );
+      },
+    );
   }
 }
 

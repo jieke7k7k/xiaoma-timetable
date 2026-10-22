@@ -12,6 +12,8 @@ import '../widgets/semester_form_dialog.dart';
 /// 功能：
 /// - 学期列表：名称、开学日期、总周数、当前激活徽标
 /// - 新建学期：名称 + 开学日期（日期选择器，自动对齐周一）+ 总周数（默认 20）
+/// - 编辑学期：所有学期（含当前学期）都能改名称 / 开学日期 / 总周数；
+///   改的是当前学期时，保存后周次与课表立即按新日期、新总周数重算
 /// - 切换激活学期：事务保证同时只有一个 isCurrent，切换后周视图/设置页自动联动刷新
 /// - 删除旧学期：不允许删除当前激活学期；二次确认；级联删除该学期下所有课程
 class SemesterManagePage extends ConsumerWidget {
@@ -92,36 +94,47 @@ class SemesterManagePage extends ConsumerWidget {
                     '${s.startDate} 开学 · 共 ${s.totalWeeks} 周',
                     style: const TextStyle(fontSize: 12),
                   ),
-                  // 当前学期不给切换/删除入口，从源头杜绝误操作
-                  trailing: isCurrent
-                      ? null
-                      : PopupMenuButton<String>(
+                  // 当前学期只给「编辑学期」入口；切换与删除仍然不给（从源头杜绝误操作）
+                  trailing: PopupMenuButton<String>(
                           onSelected: (action) {
-                            if (action == 'switch') {
+                            if (action == 'edit') {
+                              _editSemester(context, ref, s);
+                            } else if (action == 'switch') {
                               _confirmSwitch(context, ref, s);
                             } else if (action == 'delete') {
                               _confirmDelete(context, ref, s);
                             }
                           },
-                          itemBuilder: (ctx) => const [
-                            PopupMenuItem(
-                              value: 'switch',
+                          itemBuilder: (ctx) => [
+                            const PopupMenuItem(
+                              value: 'edit',
                               child: ListTile(
                                 dense: true,
                                 contentPadding: EdgeInsets.zero,
-                                leading: Icon(Icons.swap_horiz),
-                                title: Text('切换到该学期'),
+                                leading: Icon(Icons.edit_outlined),
+                                title: Text('编辑学期'),
                               ),
                             ),
-                            PopupMenuItem(
-                              value: 'delete',
-                              child: ListTile(
-                                dense: true,
-                                contentPadding: EdgeInsets.zero,
-                                leading: Icon(Icons.delete_outline),
-                                title: Text('删除该学期'),
+                            if (!isCurrent) ...[
+                              const PopupMenuItem(
+                                value: 'switch',
+                                child: ListTile(
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: Icon(Icons.swap_horiz),
+                                  title: Text('切换到该学期'),
+                                ),
                               ),
-                            ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: ListTile(
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: Icon(Icons.delete_outline),
+                                  title: Text('删除该学期'),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                   onTap: () {
@@ -167,6 +180,29 @@ class SemesterManagePage extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('创建失败：$e')));
+      }
+    }
+  }
+
+  /// 编辑学期（名称 / 开学日期 / 总周数），当前学期与其它学期走同一套表单与保存路径。
+  ///
+  /// 保存后的内存同步与「提醒重排 / 常驻通知 / 小组件」联动都在
+  /// `SemestersNotifier.updateSemester` 里（被编辑的是当前学期时才做），页面不自己拼。
+  Future<void> _editSemester(
+      BuildContext context, WidgetRef ref, Semester s) async {
+    final updated = await showSemesterFormDialog(context, initial: s);
+    if (updated == null) return;
+    try {
+      await ref.read(semestersProvider.notifier).updateSemester(updated);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已更新「${updated.name}」')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('保存失败：$e')));
       }
     }
   }

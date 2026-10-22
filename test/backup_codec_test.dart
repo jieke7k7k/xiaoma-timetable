@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/models/course.dart';
 import 'package:xiaoma_timetable/models/course_override.dart';
+import 'package:xiaoma_timetable/models/note.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/models/time_slot.dart';
 import 'package:xiaoma_timetable/utils/backup_codec.dart';
@@ -222,6 +223,111 @@ void main() {
           await db.query('semesters', where: 'isCurrent = 1');
       expect(currents.length, 1);
       expect(currents.first['name'], '大三上');
+    });
+  });
+
+  group('2.0.0 复审 B1/B2：备注进备份 + 机密键不进备份', () {
+    test('encode 带 notes 段，decode 往返一致', () {
+      final json = BackupCodec.encode(
+        semesters: const [
+          Semester(
+              id: 1,
+              name: '大三上',
+              startDate: '2026-09-07',
+              totalWeeks: 20,
+              isCurrent: true),
+        ],
+        timeSlots: const [],
+        courses: const [],
+        overrides: const [],
+        settings: const {},
+        notes: const [
+          Note(id: 5, date: '2026-10-23', content: '交作业', createdAt: 123),
+        ],
+      );
+      expect(json['version'], 3);
+      final data = BackupCodec.decode(jsonEncode(json));
+      expect(data.notes.length, 1);
+      expect(data.notes.single.date, '2026-10-23');
+      expect(data.notes.single.content, '交作业');
+    });
+
+    test('旧版 v2 备份（无 notes 段）decode 按空列表兼容', () {
+      final json = backupJson();
+      json['version'] = 2;
+      json.remove('notes');
+      final data = BackupCodec.decode(jsonEncode(json));
+      expect(data.notes, isEmpty);
+    });
+
+    test('encode 剔除机密键，普通设置保留', () {
+      final json = BackupCodec.encode(
+        semesters: const [],
+        timeSlots: const [],
+        courses: const [],
+        overrides: const [],
+        settings: const {
+          'ai_api_key': 'sk-SECRET-VALUE',
+          'bridge_token': 'ghp_SECRET_TOKEN',
+          'bridge_owner': 'someone',
+          'bridge_repo': 'mailbox',
+          'theme_mode': 'dark',
+        },
+      );
+      final raw = jsonEncode(json);
+      expect(raw.contains('sk-SECRET-VALUE'), isFalse);
+      expect(raw.contains('ghp_SECRET_TOKEN'), isFalse);
+      expect(raw.contains('ai_api_key'), isFalse);
+      expect(raw.contains('bridge_token'), isFalse);
+      final settings = json['appSettings'] as Map<String, dynamic>;
+      expect(settings['theme_mode'], 'dark');
+    });
+
+    test('restore 换掉旧备注、保留本机机密键', () async {
+      final db = await databaseFactoryFfi.openDatabase(
+        inMemoryDatabasePath,
+        options: OpenDatabaseOptions(
+          version: 3,
+          onCreate: (d, v) => DbHelper.instance.createSchema(d),
+        ),
+      );
+      try {
+        // 本机既有状态：一把 AI Key + 一条旧备注
+        await db.insert('app_settings',
+            {'key': 'ai_api_key', 'value': 'sk-LOCAL-KEY'});
+        await db.insert('notes', {
+          'date': '2026-01-01',
+          'content': '本机旧备注',
+          'createdAt': 1,
+        });
+        // 备份里带一条新备注、不带任何机密键
+        final json = BackupCodec.encode(
+          semesters: const [
+            Semester(
+                id: 1,
+                name: '大三上',
+                startDate: '2026-09-07',
+                totalWeeks: 20,
+                isCurrent: true),
+          ],
+          timeSlots: const [],
+          courses: const [],
+          overrides: const [],
+          settings: const {'theme_mode': 'dark'},
+          notes: const [
+            Note(id: 9, date: '2026-10-23', content: '备份里的备注', createdAt: 2),
+          ],
+        );
+        await BackupCodec.restore(db, BackupCodec.decode(jsonEncode(json)));
+        final notes = await db.query('notes');
+        expect(notes.length, 1);
+        expect(notes.single['content'], '备份里的备注');
+        final keyRows = await db.query('app_settings',
+            where: 'key = ?', whereArgs: ['ai_api_key']);
+        expect(keyRows.single['value'], 'sk-LOCAL-KEY');
+      } finally {
+        await db.close();
+      }
     });
   });
 }

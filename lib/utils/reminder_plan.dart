@@ -60,7 +60,7 @@ List<ReminderPlan> buildDailyReminderPlan({
   List<CourseOverride> overrides = const [],
 }) {
   // 未开学（周次 0）没有任何课
-  final week = WeekCalc.currentWeek(DateTime.parse(semester.startDate), date);
+  final week = WeekCalc.currentWeek(semester.startDateParsed, date);
   if (week <= 0) return const [];
 
   // 应用单次调课：得到本周有效上课实例（停课移除、调课替换为新时间/教室）

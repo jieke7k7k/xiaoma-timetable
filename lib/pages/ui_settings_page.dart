@@ -112,6 +112,13 @@ class UiSettingsPage extends ConsumerWidget {
             onChanged: (v) => apply(ui.copyWith(showParityLabel: v)),
           ),
           SwitchListTile(
+            title: const Text('左上角单双周小标识'),
+            subtitle: const Text('在主页左上角显示当前周是「单周」还是「双周」，'
+                '未开学或学期已结束时不显示'),
+            value: ui.showWeekParity,
+            onChanged: (v) => apply(ui.copyWith(showWeekParity: v)),
+          ),
+          SwitchListTile(
             title: const Text('今天整列边框高亮'),
             subtitle: const Text('给今天这一整天加一圈主题色边框，默认关'),
             value: ui.highlightTodayColumn,

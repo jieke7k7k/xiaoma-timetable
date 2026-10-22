@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../database/dao.dart';
 import '../models/ui_settings.dart';
+import '../utils/backup_codec.dart';
 
 /// 用户导入的一款字体（1.2.1）
 ///
@@ -43,8 +44,9 @@ class ImportedFont {
 /// 导入字体服务：注册表存 app_settings.imported_fonts（JSON），
 /// 启动时（runApp 前）加载全部已导入字体，设置页负责导入/删除/选用。
 ///
-/// 已知边界：TTC 合集不支持；仅单字重（粗体为引擎合成）；
-/// 字体文件不进备份——恢复备份后注册表条目若文件缺失会自动剔除。
+/// 已知边界：TTC 合集不支持；仅单字重（粗体为引擎合成）。
+/// 字体文件自 1.3.5 起随备份走（base64 写进 JSON 的 fonts 段），
+/// 超过 8MB 的不进备份——恢复后这类条目文件缺失，启动 init() 会自动剔除。
 class FontsService {
   FontsService._();
 
@@ -125,6 +127,93 @@ class FontsService {
     _fonts = [..._fonts, font];
     await _persist();
     return font;
+  }
+
+  /// 读出当前已注册字体的文件内容，交给备份编码（1.3.5）。
+  ///
+  /// 只读 [fonts]（已确认文件存在且注册成功的那批）；个别文件读不到就跳过，
+  /// 不进备份而已，不影响备份其余部分。
+  static Future<List<BackupFont>> readForBackup() async {
+    final dir = await _fontsDir();
+    final result = <BackupFont>[];
+    for (final f in _fonts) {
+      final file = File('${dir.path}/${f.id}.${f.ext}');
+      try {
+        if (!await file.exists()) continue;
+        result.add(BackupFont(
+          name: f.name,
+          fileName: '${f.id}.${f.ext}',
+          bytes: await file.readAsBytes(),
+        ));
+      } catch (e) {
+        debugPrint('读取字体文件失败（不进备份）：${f.name}，$e');
+      }
+    }
+    return result;
+  }
+
+  /// 从备份恢复字体：写回字体目录 → 重新注册 → 补进注册表（1.3.5）。
+  ///
+  /// 恢复顺序上，app_settings（含 imported_fonts 注册表）已经先被备份覆盖，
+  /// 所以这里只做「补充」：把本次真正写文件成功的条目并进注册表，
+  /// 既不删减备份里的其他条目（如超限没进备份的字体，条目仍在），
+  /// 也不把内存列表清成只剩恢复成功的那些。单个字体失败只跳过它自己。
+  ///
+  /// 返回成功恢复的字体数量。
+  static Future<int> restoreFonts(List<BackupFont> fonts) async {
+    if (fonts.isEmpty) return 0;
+    final dir = await _fontsDir();
+    final restored = <ImportedFont>[];
+    for (final f in fonts) {
+      try {
+        final font = _fontForRestore(f);
+        final file = File('${dir.path}/${font.id}.${font.ext}');
+        await file.writeAsBytes(f.bytes, flush: true);
+        await _register(font, file);
+        restored.add(font);
+      } catch (e) {
+        debugPrint('备份中的字体恢复失败（已跳过）：${f.name}，$e');
+      }
+    }
+    if (restored.isEmpty) return 0;
+
+    // toList()：注册表为空时 decodeRegistry 返回的是 const []（不可改）
+    final registry =
+        decodeRegistry(await Dao.instance.getSetting(_registryKey)).toList();
+    for (final f in restored) {
+      registry.removeWhere((e) => e.id == f.id);
+      registry.add(f);
+    }
+    await Dao.instance.setSetting(_registryKey, encodeRegistry(registry));
+
+    // 内存列表只保留「注册表里有 + 本进程已注册过」的：本次恢复成功的，
+    // 以及会话开始时就加载好的那些。其余条目要么文件缺失，要么下次启动
+    // 由 init() 重新加载。
+    final restoredIds = restored.map((f) => f.id).toSet();
+    _fonts = [
+      for (final f in registry)
+        if (restoredIds.contains(f.id) ||
+            _fonts.any((e) => e.id == f.id))
+          f,
+    ];
+    return restored.length;
+  }
+
+  /// 从备份里的文件名还原字体记录。
+  ///
+  /// 文件名形如 `imp_1700000000000.ttf`：能解析出合法 id/扩展名就沿用
+  /// （这样才对得上 ui_settings 里记住的 fontId），解析不出来就按当前时间
+  /// 造一个新 id（界面设置会回退到默认字体，但至少字体文件不丢）。
+  static ImportedFont _fontForRestore(BackupFont f) {
+    final dot = f.fileName.lastIndexOf('.');
+    final rawId = dot > 0 ? f.fileName.substring(0, dot) : f.fileName;
+    final rawExt = dot > 0 ? f.fileName.substring(dot + 1).toLowerCase() : 'ttf';
+    final ext = (rawExt == 'ttf' || rawExt == 'otf') ? rawExt : 'ttf';
+    final id = rawId.startsWith('imp_') && rawId.length > 4
+        ? rawId
+        : 'imp_${DateTime.now().microsecondsSinceEpoch}';
+    final name = f.name.trim().isEmpty ? id : f.name;
+    return ImportedFont(id: id, name: name, ext: ext);
   }
 
   /// 删除一款导入字体（文件 + 注册表）。

@@ -5,6 +5,7 @@ import '../models/course.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../ui/app_styles.dart';
+import '../utils/conflict_detector.dart';
 import '../utils/morandi_palette.dart';
 import '../utils/week_parser.dart';
 import '../widgets/week_picker.dart';
@@ -55,9 +56,25 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     final args = ModalRoute.of(context)?.settings.arguments;
     _editId = widget.courseId ?? (args is int ? args : null);
     if (_editId != null) {
-      // 编辑：加载已有课程
+      // 编辑：加载已有课程。
+      // 安全查找（防御性）：课程可能刚被删除或属于别的学期，
+      // firstWhere 找不到会抛 StateError 直接崩页，这里改为找不到就提示并退出。
       final courses = await ref.read(coursesProvider.future);
-      final course = courses.firstWhere((c) => c.id == _editId);
+      Course? course;
+      for (final c in courses) {
+        if (c.id == _editId) {
+          course = c;
+          break;
+        }
+      }
+      if (course == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('课程已不存在')));
+          Navigator.pop(context);
+        }
+        return;
+      }
       _nameController.text = course.name;
       _teacherController.text = course.teacher ?? '';
       _classroomController.text = course.classroom ?? '';
@@ -114,30 +131,41 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
       _showError('至少选择一周上课哦');
       return;
     }
+    final course = Course(
+      id: _editId,
+      // 新建时占位，addCourse 会替换为当前学期 id；编辑时保留原学期
+      semesterId: _semesterId,
+      name: _nameController.text.trim(),
+      teacher: _teacherController.text.trim().isEmpty
+          ? null
+          : _teacherController.text.trim(),
+      classroom: _classroomController.text.trim().isEmpty
+          ? null
+          : _classroomController.text.trim(),
+      colorValue: _colorValue,
+      dayOfWeek: _dayOfWeek,
+      startSection: _startSection,
+      endSection: _endSection,
+      weeks: _weeks,
+      weekType: _weekType,
+      note:
+          _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+      // 考试日期：null 即未设置/已清除，updateCourse 直接整对象落库可正常清空
+      examDate: _examDate,
+    );
+
+    // 保存前先做时间冲突预检：与同学期已有课程比对，编辑时排除课程自身。
+    // 语义与导入链路完全一致（同星期 + 周次有交集 + 节次重叠），
+    // 候选课的 weeks/weekType 直接取当前表单值，无需任何换算
+    final conflicts = _findConflicts(course);
+    if (conflicts.isNotEmpty) {
+      final keepSaving = await _showConflictDialog(conflicts);
+      if (keepSaving != true) return;
+      if (!mounted) return;
+    }
+
     setState(() => _saving = true);
     try {
-      final course = Course(
-        id: _editId,
-        // 新建时占位，addCourse 会替换为当前学期 id；编辑时保留原学期
-        semesterId: _semesterId,
-        name: _nameController.text.trim(),
-        teacher: _teacherController.text.trim().isEmpty
-            ? null
-            : _teacherController.text.trim(),
-        classroom: _classroomController.text.trim().isEmpty
-            ? null
-            : _classroomController.text.trim(),
-        colorValue: _colorValue,
-        dayOfWeek: _dayOfWeek,
-        startSection: _startSection,
-        endSection: _endSection,
-        weeks: _weeks,
-        weekType: _weekType,
-        note:
-            _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
-        // 考试日期：null 即未设置/已清除，updateCourse 直接整对象落库可正常清空
-        examDate: _examDate,
-      );
       if (_editId == null) {
         await ref.read(coursesProvider.notifier).addCourse(course);
       } else {
@@ -154,6 +182,60 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
         _showError('保存失败：$e');
       }
     }
+  }
+
+  /// 候选课程与同学期已有课程的时间冲突列表（编辑时排除自身）
+  ///
+  /// 冲突池取 `coursesProvider`（恒为当前学期的课程）：新建的课程由
+  /// `addCourse` 盖上学期的 id，编辑的课程本就来自这份列表，两边都对得上。
+  List<CourseConflict> _findConflicts(Course candidate) {
+    final existing = ref.read(coursesProvider).value ?? const <Course>[];
+    return ConflictDetector.detect(
+      candidate,
+      existing,
+      ignoreCourseId: _editId,
+    );
+  }
+
+  /// 冲突确认框：列出冲突课程名与时间，返回 true 表示用户仍要保存
+  Future<bool?> _showConflictDialog(List<CourseConflict> conflicts) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('检测到时间冲突'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('这门课与已有课程有 ${conflicts.length} 处冲突：'),
+              const SizedBox(height: AppSpacing.s),
+              for (final c in conflicts)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                  child: Text(
+                    '· ${c.describe()}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(ctx).colorScheme.outline,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('返回修改'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('仍要保存'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showError(String msg) {

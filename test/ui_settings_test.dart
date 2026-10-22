@@ -22,6 +22,7 @@ void main() {
       expect(ui.showParityLabel, isTrue);
       expect(ui.autoFitHeight, isTrue); // 1.2.5 起默认开
       expect(ui.highlightTodayColumn, isFalse); // 1.2.6 边框高亮默认关
+      expect(ui.showWeekParity, isTrue); // 2.0.0 左上角单双周小标识默认开
       expect(UiSettings.fromEncoded('').cellHeight, 46);
       expect(UiSettings.fromEncoded('坏掉的 json').cellHeight, 46);
     });

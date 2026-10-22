@@ -23,12 +23,35 @@ class WeekCalc {
     return diffDays ~/ 7 + 1;
   }
 
+  /// 用于页面定位的周次：钳制到 [1, totalWeeks]
+  ///
+  /// [currentWeek] 按语义允许返回超过学期总周数的实际周数（学期结束了还在数），
+  /// 但这个值一旦用作 PageView 的页码就会越界崩溃，定位用途必须钳回来。
+  /// [totalWeeks] <= 0（学期还没加载完）时保持原行为：只保下限 1、不限制上限。
+  static int clampForPage(int week, int totalWeeks) {
+    final w = week < 1 ? 1 : week;
+    if (totalWeeks <= 0) return w;
+    return w > totalWeeks ? totalWeeks : w;
+  }
+
   /// 是否单周（奇数周）；week <= 0 时视为未开学，返回 false
   static bool isOddWeek(int week) => week > 0 && week.isOdd;
 
   /// 单双周描述文本
   static String weekTypeText(int week) {
     if (week <= 0) return '未开学';
+    return week.isOdd ? '单周' : '双周';
+  }
+
+  /// 单双周小标识文本（主页左上角那枚小字）；学期外返回 null 表示「不显示」
+  ///
+  /// 与 [weekTypeText] 的差别：这里对「不该显示」的情形返回 null，而不是给一句
+  /// 「未开学」占位——小标识是装饰性元素，未开学（week ≤ 0）或学期已结束
+  /// （week 超过总周数）时整个不出现才对。
+  /// [totalWeeks] ≤ 0 表示总周数未知（学期还没加载），此时不判断上限。
+  static String? parityLabel(int week, {int totalWeeks = 0}) {
+    if (week <= 0) return null;
+    if (totalWeeks > 0 && week > totalWeeks) return null;
     return week.isOdd ? '单周' : '双周';
   }
 

@@ -36,8 +36,7 @@ class _FreeTimePageState extends ConsumerState<FreeTimePage> {
     }
     final week = (_week ?? (todayWeek < 1 ? 1 : todayWeek))
         .clamp(1, semester.totalWeeks);
-    final dates =
-        WeekCalc.weekDatesOf(DateTime.parse(semester.startDate), week);
+    final dates = WeekCalc.weekDatesOf(semester.startDateParsed, week);
     final effective = effectiveCoursesForWeek(
             courses: courses, overrides: overrides, week: week)
         .where((c) => c.isActiveInWeek(week))

@@ -131,7 +131,7 @@ List<ClassSession> sessionsOnDay({
   List<CourseOverride> overrides = const [],
 }) {
   final day = DateTime(date.year, date.month, date.day);
-  final week = WeekCalc.currentWeek(DateTime.parse(semester.startDate), day);
+  final week = WeekCalc.currentWeek(semester.startDateParsed, day);
   if (week < 1 || week > semester.totalWeeks) return const [];
   final slotMap = {for (final s in timeSlots) s.section: s};
   final out = <ClassSession>[];

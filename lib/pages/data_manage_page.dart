@@ -7,14 +7,13 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
-import '../database/dao.dart';
 import '../database/db_helper.dart';
 import '../providers/providers.dart';
+import '../services/auto_backup_service.dart';
 import '../services/backup_service.dart';
 import '../services/notification_service.dart';
 import '../services/ongoing_notice_service.dart';
 import '../services/widget_service.dart';
-import '../utils/backup_codec.dart';
 
 /// 数据管理页（1.2.4）：存储占用总览 + 备份/恢复快捷入口 + 恢复出厂。
 /// 设置页原有的备份入口保留不动，这里是把数据相关的事归拢到一页。
@@ -27,6 +26,9 @@ class DataManagePage extends ConsumerStatefulWidget {
 
 class _DataManagePageState extends ConsumerState<DataManagePage> {
   late Future<(int, int)> _sizes = _loadSizes();
+
+  /// 最近一次自动备份的时间（只读展示，不提供手动触发入口）
+  late Future<DateTime?> _lastAuto = AutoBackupService.lastBackupAt();
 
   Future<(int, int)> _loadSizes() async {
     var dbSize = 0;
@@ -60,6 +62,7 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
     ref.invalidate(semestersProvider);
     ref.invalidate(coursesProvider);
     ref.invalidate(courseOverridesProvider);
+    ref.invalidate(notesProvider);
     ref.invalidate(timeSlotsProvider);
     ref.invalidate(segmentSettingsProvider);
     ref.invalidate(uiSettingsProvider);
@@ -69,29 +72,28 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
     NotificationService.instance.rescheduleAll();
     OngoingNoticeService.instance.refresh();
     WidgetService.instance.refreshWidgets();
-    setState(() => _sizes = _loadSizes());
+    setState(() {
+      _sizes = _loadSizes();
+      _lastAuto = AutoBackupService.lastBackupAt();
+    });
   }
 
   Future<void> _exportBackup() async {
     try {
-      final data = BackupCodec.encode(
-        semesters: await Dao.instance.getAllSemesters(),
-        timeSlots: await Dao.instance.getTimeSlots(),
-        courses: await Dao.instance.getAllCourses(),
-        overrides: await Dao.instance.getAllOverrides(),
-        settings: await Dao.instance.getAllSettings(),
-        now: DateTime.now(),
-      );
+      // 与设置页、自动备份同一条组装路径（含自定义字体），格式永远一致
+      final bundle = await BackupService.instance.buildBackup(now: DateTime.now());
       const pretty = JsonEncoder.withIndent('  ');
       final stamp = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
       final path = await BackupService.instance.saveTextFile(
         fileName: '小马课表备份_$stamp.json',
-        content: pretty.convert(data),
+        content: pretty.convert(bundle.json),
         extension: 'json',
       );
       if (path == null || !mounted) return;
+      final warn =
+          bundle.warnings.isEmpty ? '' : '\n${bundle.warnings.join('\n')}';
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('备份已保存到：$path')));
+          .showSnackBar(SnackBar(content: Text('备份已保存到：$path$warn')));
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -258,6 +260,22 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
             subtitle: const Text('选择备份 JSON，恢复前会再次确认（覆盖现有数据）'),
             trailing: const Icon(Icons.chevron_right),
             onTap: _restoreBackup,
+          ),
+          // 只读：自动备份由 App 启动时静默完成（约每 7 天一份，保留最近 3 份）
+          FutureBuilder<DateTime?>(
+            future: _lastAuto,
+            builder: (context, snap) {
+              final t = snap.data;
+              return ListTile(
+                leading: const Icon(Icons.history_outlined),
+                title: const Text('自动备份'),
+                subtitle: Text(
+                  t == null
+                      ? '暂无自动备份（每 7 天自动生成一次）'
+                      : '最近自动备份：${t.month}月${t.day}日',
+                ),
+              );
+            },
           ),
           const _Header('危险操作'),
           ListTile(

@@ -1,8 +1,238 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-10-20（阶段六·作息时间三段化 + 导入校准作息）
+> 更新时间：2026-10-22（2.0.0：内置 AI 助手 + 界面改版 + 首次权限）
 
 ## 做到哪了
+
+## 2026-10-22（2.0.0 收官大包：内置 AI + 底栏三键 + 首次权限，307 → 340 测试基线，未跑命令）
+
+**新增 9 个文件、改 9 个文件**；无新增 pub 依赖（HTTP 复用 `dart:io`），无表结构变化（AI 配置与权限标记走 `app_settings`），未提交 git。
+
+### 一、内置 AI 助手（设置 → AI 助手）
+
+1. **服务层**（`lib/services/ai_service.dart`）：OpenAI 兼容 `chat/completions`，`dart:io` HttpClient（连接 10s / 响应 30s，异常一律兜成中文）。配置三键 `ai_base_url` / `ai_model` / `ai_api_key`，预设智谱 `https://open.bigmodel.cn/api/paas/v4` + `glm-4-flash`（模型名是可改的文本框，出了新 Flash 型号直接改）。**Key 留空表示不改**（输入框遮挡显示），与 AI 桥令牌同款处理。
+2. **上下文现取**（`lib/utils/ai_context.dart`）：每次发送重新读学期 / 本周有效课程（经 `effectiveCoursesForWeek` 应用调课）/ 备注，拼出「学期名 + 总周数 + 当前第几周（单/双周）+ 今天明天日期星期 + 本周课程精简列表 + 临近考试（带倒计时）+ 今天/明天备注」。所以「我明天有什么课」「哪天有空」能直接答。
+3. **动手能力与桥同源**：模型回复里的 fenced json 块 `{"commands":[...]}` 被解析出来后**先渲染成确认卡片**——非破坏指令「一键执行」、破坏指令标红单独「仍要执行」（另给「忽略」）；点执行才走 `CommandExecutor`，结果回填聊天，并失效 `coursesProvider/notesProvider` + 重排提醒 + 刷新备注通知/常驻通知/小部件（与 BridgePage / HomeShell 同一份口径）。代码块**不会原样显示**（解析阶段就从正文摘掉）。人话描述复用 `describeCommand`，桥的 `describePendingCommand` 已改为委托它（行为逐字不变，35 个桥用例不受影响）。
+4. **页面**：`AiChatPage`（底栏左键 + 路由 `/ai-chat`）：消息列表 + 输入框 + 发送中转圈 + 失败「重试」；未配置时是引导空状态（说明智谱免费领 Key + 「去 AI 设置」按钮）。`AiSettingsPage`（路由 `/ai-settings`）与设置页内嵌的是**同一个** `AiSettingsForm`。
+
+### 二、界面改版（底栏三键）
+
+- **底栏**：左 AI / 中主页（56px 凸起圆按钮，明显大于两侧）/ 右设置；默认停在**主页**。**自绘 `_HomeBottomBar`，不用 NavigationBar**——中间要大按钮，而 `NavigationDestination` 长按会浮出 label 气泡（用户发过截图）。名称一律常显小字，**不包任何 Tooltip**，长按无反馈。
+- **主页**：右上角新增「+」按钮，点开就是原来那套「手动新建 / 导入课表」选择框；左上角新增当前周的「单周 / 双周」小标识（口径 = `WeekCalc` 当前周，未开学或学期已结束不显示），开关在「界面设置 → 左上角单双周小标识」（`showWeekParity`，默认开）。
+- **原页签 → 新去向**（一个都没丢）：
+
+| 原目的地 | 新去向 |
+|---|---|
+| 课表（主页） | 底栏中间「主页」（默认页），不变 |
+| 新建课程 / 导入课表 | **主页右上角「+」按钮**（底栏不再有「新建」键） |
+| 学期管理 | 设置 → 学期设置 → 学期管理（**已有**） |
+| 导入课表 | 设置 → 数据导入 → 导入课表（**已有**） |
+| 数据管理（备份/恢复/导出 ICS/存储占用） | 设置 → 数据管理（**已有**） |
+| 备注 | 设置 → 备注（**已有**） |
+| 课程搜索 | 设置 → **课程与工具（本轮新增）** → 课程搜索 |
+| 空闲时段 | 设置 → **课程与工具（本轮新增）** → 空闲时段 |
+| 考试倒计时 | 设置 → **课程与工具（本轮新增）** → 考试倒计时 |
+| 导出课表图片 | 设置 → **课程与工具（本轮新增）** → 导出课表图片 |
+| AI 桥 | 设置 → AI 桥（**已有**） |
+| 界面设置 / 外观 / 作息 / 提醒 / 关于 / 小组件 | 设置页原分区，**未动** |
+
+### 三、首次权限索取
+
+- `PermissionService` 是三项权限的**唯一入口**（此前散落在提醒开关里）。通知申请仍走插件 API；`MainActivity` 新增 `device` MethodChannel 负责**查状态**与跳系统页（通知设置 / 闹钟和提醒 / 电池优化 / 应用详情兜底）。
+- 首次进入主页后依次引导：① 通知（系统授权框）→ ② 精确闹钟 → ③ 电池优化白名单。每步都能「跳过」；**标记 `permissions_asked_v1` 在引导开始前就落库**，所以拒绝/跳过/中途杀 App 都不会再弹。
+- 设置页新增「权限」入口行：显示「已授权 x / 3」摘要，进页面可看到三项各自状态，未授权的项点进去跳对应系统页面，另有「应用详情页」兜底行。
+
+### 四、测试（+33）
+
+- `test/ai_context_test.dart`（20 例）：指令块解析（抽出/摘掉、多块合并、非 json 块保留、坏 JSON 提示、无 commands 不算、空回复）；指令人话描述与破坏性判定；课表上下文（学期/周次单双周、今天明天日期星期、课程行字段与排序、考试倒计时、今明备注、四类兜底文案、未开学不显示单双周、无学期提示）；系统提示含协议与「不会立刻执行」。
+- `test/ai_service_test.dart`（8 例）：配置清理与「三项齐才算配好」、接口地址三种写法都补成 `…/chat/completions`、Key 留空沿用旧值；响应解析四种（标准 / content 数组 / 兼容 `choices[].text` / 坏数据返回 null）。
+- `test/week_parity_test.dart`（5 例）：单双周、week ≤ 0 不显示、超过总周数不显示、总周数未知时按周次本身、与 `weekTypeText` 口径一致。
+- 基线 307 → **340**。桥的 35 例因 `describePendingCommand` 改为委托 `describeCommand` 而重跑（三条旧断言逐字保持）。
+
+**未跑命令**：本轮 Bash/Glob/Grep 仍被拒（ripgrep EACCES），`flutter analyze` / `flutter test` 由你执行（命令见文末「待执行的自检命令」，用例数已改 340）。
+
+**analyze 风险点先看这几处**：① `lib/main.dart` 底栏自绘用了 `Stack + Positioned.fill + clipBehavior: Clip.none`，`scheme.shadow` / `withValues` 是 M3 标准 API；② `permission_service.dart` 里 `invokeMethod<Object?>('status')` 后 `raw is Map` 再按字符串键取值（`Map<Object?, Object?>` 的 `[]` 取 String 键合法）；③ `ai_chat_page.dart` 的 `_ChatItem` 是可变对象，在 `setState` 里改字段（不是 const 构造）；④ `IconButton.filled` 与 `FilledButton.tonal` 需要较新的 Material 支持（SDK 3.47 满足）；⑤ `week_view_page.dart` 的 `parityText` 是 `final` 局部变量，`if (parityText != null)` 内的提升合法。
+
+**真机需看**：① 首次打开 App（清数据或卸载重装）→ 进主页后依次弹通知授权 → 精确闹钟说明 → 电池优化说明，每步「跳过」后不再弹；第二次打开不应再有任何权限弹窗；② 设置 → 权限：三项状态与实际系统一致，点未授权项能跳到对应系统页，回来状态刷新；③ 底栏：长按三个按钮都不应再出现名称气泡；中间主页按钮明显更大且凸起；④ 主页右上角「+」→ 手动新建课程 / 导入课表两条都通；⑤ 主页左上角「单周/双周」小标识：翻周时它仍指当前周；界面设置里关掉开关后消失；⑥ 设置 → AI 助手：填智谱 Key 保存 → 底栏 AI 里问「我明天有什么课」应基于真实课表回答；让它「帮我加一条明天交作业的备注」→ 应出现确认卡片，点执行后备注页能看到；删备注类指令应标红并要求单独确认。
+
+## 2026-10-22（学期编辑：当前学期也能改，300 → 307 测试基线，未跑命令）
+
+需求：学期管理页里默认（当前）学期没有编辑入口。本轮给**所有学期**（含当前学期）加上「编辑学期」，可改名称 / 开学日期 / 总周数；改到当前学期时保存后同步内存 + 走与其它数据变更一致的后处理。**改动 4 个文件、新增 1 个测试文件**，无新增依赖、不动表结构，未提交 git。
+
+### 一、表单（lib/widgets/semester_form_dialog.dart）
+
+- `showSemesterFormDialog(context, {Semester? initial})`：传 `initial` 即编辑模式，`initState` 回填名称 / 开学日期 / 总周数，标题「编辑学期」、按钮「保存」；返回 `initial.copyWith(...)`，**保留 id 与 isCurrent**（落库按 id 更新同一行）。不传就是原来的新建模式，导入页（import_page.dart:167）与学期管理页的新建调用点零改动。
+- 校验抽成纯函数 `validateSemesterForm({name, weeks})`（名称非空 + 周数 1~30，中文提示文案与原来逐字一致），新建与编辑共用同一套；开学日期仍走 `WeekCalc.alignToMonday` 归一化。**没有另写一套表单或校验。**
+- 开学日期确认弹窗（1.2.1 的 `showSemesterStartConfirmDialog`）**只在归一化后的日期与原值不同时才弹**——编辑常是只改名/改周数，每次都弹是噪音；改日期时防错等级与新建一致。
+
+### 二、保存与内存同步（lib/providers/providers.dart）
+
+- 新增 `SemestersNotifier.updateSemester(updated)`：`Dao.updateSemester` → 被改的是当前学期时 `currentSemesterProvider.setDirectly(updated)`（复用导入页改开学日期的现成写法，免 AsyncLoading）→ `reload()` → `displayWeekProvider.clampToTotalWeeks()` → `_notifyDataChanged()`。**非当前学期只改库 + 刷列表**，不多做一次服务联动（它的字段不参与当前数据的任何计算）。
+- `_notifyDataChanged()` 是本轮把三处散落的「提醒重排 + 常驻通知 + 小组件」收敛成的一份库内函数；`switchTo` 与 `CourseOverridesNotifier._notifyServices` 改为调用它，行为逐字等价，杜绝将来漏挂某一项。**页面没有自己拼联动。**
+- `DisplayWeekNotifier` 新增 `clampToTotalWeeks()`：总周数被改小时原浏览周可能超出范围，而它直接用作 PageView 页码（1.3.1 的教训：越界会崩）。只在越界时收敛，不越界不动用户当前浏览的周——不是「回到本周」那种跳页。
+
+### 三、页面（lib/pages/semester_manage_page.dart）
+
+每个学期的菜单都含「编辑学期」；当前学期仍然**只有这一项**（不给切换/删除，既有约束不变）。`_editSemester` → 表单 → `updateSemester` → 中文 SnackBar「已更新「xx」」/「保存失败：$e」。
+
+### 四、测试（+7）
+
+- `test/semester_manage_test.dart` 新增 2 例（ffi 内存库 + ProviderContainer）：① 编辑当前学期 → `currentSemesterProvider` 内存对象同步（名称/日期/总周数）、`todayWeekProvider` 按新日期重算为 1、浏览周从 20 被钳到 8、库与列表同步且 isCurrent 唯一；② 编辑非当前学期 → 目标学期已改、当前学期状态一字未动。开学日期用「本周周一」构造，与运行日期无关。
+- `test/semester_form_dialog_test.dart`（新建，5 例）：`validateSemesterForm` 三组边界（空名/纯空格、非数字/0/-3/31/'20周'、合法含空格）；编辑模式 widget 测——回填 + 原样保存返回带 id 与 isCurrent（日期没改所以不弹确认框）、改名改周数后保存返回更新值。
+- **说明**：编辑后的「周视图立刻按新日期/总周数工作」这一层是 Provider 级验证（内存对象 + 下游 todayWeek/displayWeek），没有做周视图的 widget 级渲染验证（该页没有现成的 widget 测试基建，本轮也不宜新建）。
+
+**未跑命令**：本轮 Bash/Glob/Grep 仍被拒（ripgrep EACCES），`flutter analyze` / `flutter test` 由你执行（命令见文末「待执行的自检命令」，用例数已改 307）。
+
+**analyze 风险点先看这几处**：① `SemesterFormDialog` 由 `const SemesterFormDialog()` 改为带可选参数的构造（无 const 要求），原 `const SemesterFormDialog()` 调用点在同文件内已同步；② `_Harness` 测试里的 `find.byType(TextField).first/.last` 依赖对话框里 TextField 的顺序（名称在前、总周数在后）；③ `find.text('20')` 只匹配周数输入框的 EditableText（日期副标题是完整日期串，不匹配）；④ `_notifyDataChanged()` 是库私有顶层函数，只在 providers.dart 内使用；⑤ `clampToTotalWeeks()` 里 `state` 是 `Notifier<int>` 的 state，读写合法。
+
+**真机需看**：① 设置 → 学期管理 → 当前学期卡片右上角菜单只有「编辑学期」（没有切换/删除）→ 改名 + 改开学日期 + 改总周数保存 → 回主页周次与课表立刻按新值走（顶部「第 X 周」、日期范围都要变）；② 编辑一个非当前学期 → 主页课表与周次不应有任何变化，学期管理里那张卡片信息更新；③ 把当前学期总周数改小（如 20→8）且当时正在浏览第 15 周 → 不应闪退，应自动停在第 8 周；④ 编辑当前学期的开学日期后，当天的上课提醒与桌面小组件应按新周次重排（改完等几秒看小组件）；⑤ 只改名不改日期时，不应弹「确认开学日期」弹窗；改了日期才弹。
+
+## 2026-10-22（小部件：HyperOS 预览图 + 尺寸自适应 + 负一屏复核，300 测试基线不变，未跑命令）
+
+三项都做完，**只动 Android 原生 3 个文件**（`CourseWidgetProvider.kt`、`course_widget_info.xml`、`course_widget.xml` 仅加一行同步常量的注释），**Dart 零改动**（payload 仍最多 4 行，布局结构与既有 id 未动），未提交 git。
+
+### 一、选择器预览图（HyperOS 不再回退应用图标）
+
+`res/xml/course_widget_info.xml` 加了一行 `android:previewImage="@drawable/widget_preview"`，指向既有的 `res/drawable-nodpi/widget_preview.png`（400×300，仿真实部件）。`previewLayout` 保留、其余属性一个没动：AOSP / Android 12+ 继续用 `previewLayout`，HyperOS 的选择器与负一屏列表走 `previewImage`，两条路互不冲突。
+
+### 二、尺寸自适应（最后一行不再被底边切一半）
+
+- `CourseWidgetProvider.kt` 新增 `WidgetMetrics`：与 `course_widget.xml` 逐条对齐的 dp 常量——根 padding 28（14×2）、顶栏 22、单行 36（色条固定高）、行间距 12、footer 行 16 + 间距 8。**改布局必须同步这组常量**，注释里已写明。
+- `onUpdate` 逐实例读 `AppWidgetManager.getAppWidgetOptions(id).getInt(OPTION_APPWIDGET_MAX_HEIGHT)`，`render` 按 `planRows` 先扣 padding/顶栏/footer（尾注 + 最多 2 行备注），剩下的除以行块高（48dp）得到能完整放下的行数；放不下的行 `GONE`，溢出节数并进 footer。
+- footer 文案合并：Dart 本来就有「还有 N 节课」（总课次 >4 时），若裁行后直接追加会出现「还有 2 节课 还有 1 节课」；`mergeFooter` 认出这个格式时把数量相加，其它文案才原样追加「还有 X 节课」。
+- **优先级**：footer/备注先占位（备注优先保留），空间不够先砍课程行；只有极端缩档（可用内容连「1 行 + footer」都放不下，约 110dp 最小高度）才反过来保 1 行课程、隐藏 footer，避免只剩标题的空壳。
+- 新增 `onAppWidgetOptionsChanged`：手动拖拽尺寸后重渲染该 id。这里拿不到 `HomeWidgetProvider` 注入的 SharedPreferences，故发一条显式 `ACTION_APPWIDGET_UPDATE` 广播回自己，复用 `onReceive → onUpdate` 的取数链路（不硬编码插件偏好文件名），`dbg_widget_*` 自检记录照旧写入。
+- **容错**：`maxHeightDp()` 全程 `runCatching`，options 缺失/为 0/id 失效一律返回 null → 回退升级前「4 行全显」；尺寸计算不参与任何 RemoteViews 必填动作，绝不因算尺寸变黑框。
+
+### 三、负一屏可用性复核结论
+
+- `AndroidManifest.xml` 的 provider receiver 是标准完整写法，**本轮未改**：`exported="true"`（宿主在别的进程，必须导出）、`intent-filter` 含 `android.appwidget.action.APPWIDGET_UPDATE`、`meta-data android.appwidget.provider` 指向 `@xml/course_widget_info`、`widgetCategory="home_screen"`。没有 `enabled=false`、权限限制或会把部件从标准列表排除的配置。
+- **添加路径**：负一屏 → 添加小部件 → 安卓小部件 → 小马课表（列表显示名可能为「今日课程」，取决于宿主读 receiver label 还是 app label）。
+- 不需要厂商审核或任何额外声明；HyperOS 的「小米小部件」精品画廊是另一套上架体系，与本路径无关。
+
+**未跑命令**：本轮 Bash/Glob/Grep 被拒（ripgrep EACCES），连 pub cache 的 Read 也被拒，`flutter analyze` / `flutter test` 由你执行。Dart 零改动，300 个用例基线不变，预期全绿；Kotlin 未编译验证。
+
+**analyze/build 风险点**：① `AppWidgetManager.ACTION_APPWIDGET_UPDATE` / `EXTRA_APPWIDGET_IDS` 是框架常量，拼写按 Android SDK 标准；② `Bundle.getInt(key, default)` 与 `getAppWidgetOptions` 均为 API 16+ 可用（项目 minSdk 远高于此）；③ `WidgetMetrics` 是类内嵌套 object、`const val` 合法；④ `onAppWidgetOptionsChanged` 重写的是 `AppWidgetProvider` 的公开回调，`newOptions` 未使用只会有未使用参数警告。
+
+**真机需看**：① HyperOS 小部件选择器里「小马课表/今日课程」显示的是部件预览图而不是应用图标；② 添加后上下拖动高度：最后一行完整显示，不再被切一半；拉大后行数自动变多；③ 缩到最小时显示 1 行课程（footer/备注可能被隐藏，这是极端档的保底，属预期）；④ 当天有 5 节课时，4 行 + footer「还有 1 节课」；把高度缩到只放 2 行时 footer 应为「还有 3 节课」（数量合并，不是两句）；⑤ 老系统/取不到 options 时仍显示 4 行不裁（可用设置页「部件状态」确认更新到达）；⑥ 负一屏按上面的路径能添加并正常显示。
+
+## 2026-10-22（AI 桥接上执行器，300 测试基线，未跑命令）
+
+把 GitHub 私有仓当**命令信箱**接到上一包的 `CommandExecutor` 上：**新增 4 个文件、改 3 个文件**（`lib/utils/bridge_codec.dart`、`lib/services/bridge_service.dart`、`lib/pages/bridge_page.dart`、`test/bridge_codec_test.dart`；改 `lib/main.dart`、`lib/pages/settings_page.dart`、`ARCHITECTURE.md`）。**无新增 pub 依赖**（HTTP 复用 `dart:io` 的 HttpClient，与 ChannelService 同款写法），**未动表结构**（全部走既有 `app_settings` 键值表），未提交 git。
+
+### 一、信箱协议（已写进 ARCHITECTURE「1.3.6」专节，外部 AI 照此对接）
+
+- `commands/<id>.json`（外部 AI 写）：`{id, createdAt, note?, commands:[…执行器指令…]}`。
+- `results/<id>.json`（App 写）：`{id, executedAt, status, results:[{index, type, success, message, state}]}`，state ∈ `executed/pending/rejected`，status ∈ `done/partial/awaiting_confirm`。
+- `state/snapshot.json`（每次同步后重传）：当前学期 + 全部课程精简字段 + 按日期分组的备注 + 单独一份考试清单。**只有课表与备注数据，结构上不可能带出设置/令牌**。
+- `<id>` 字符集收紧到 `[A-Za-z0-9][A-Za-z0-9._-]*`（≤64）：id 要被拼进 API 路径写回，含 `/` 或 `..` 就能改写仓库任意路径，一律拒绝并记录一条中文失败。
+- 已处理 id 存 `processed_command_ids`（**最近 200 条**），避免重复执行。
+
+### 二、服务层（lib/services/bridge_service.dart）
+
+- `syncNow()` 六步：没配全 → 返回 unconfigured（不报错不弹 UI）；列 `commands/`（404 视为「空信箱」不算错）；过滤已处理；逐个读取解析后**按 createdAt 升序**；逐批 → `splitByDestructive` 拆分 → 非破坏立即交给执行器、破坏指令入本地队列 → 写回 results；最后上传快照（先 GET 取 sha 再 PUT 更新，没有则新建）；并把「时间 + 摘要」写进 `last_bridge_sync`。
+- **并发只有一轮**：`syncNow` 内部共享 Future（同 `NotificationService.initialize` 的思路），页面点「立即同步」与启动静默同步相撞时不会各跑一遍重复写库。
+- 写回 results 一律**先 GET 后 PUT**：GET 同时拿到 sha（已存在文件的 PUT 必须带）与旧条目，按 index 覆盖合并后再写——于是「整批首次写回」和「用户事后确认某几条」走同一条路径，后者不会冲掉先前的结果。
+- 容错：每个文件/每批/快照上传各自 try/catch，错误进摘要（「处理 2 个指令批，执行 5 条，1 条待确认，2 个小错误」），不中断整轮。超时 15s、连接 10s。
+- **副作用留调用方**：服务不碰 Riverpod/BuildContext，只回 `changed` 标记；provider 失效 + 提醒重排 + 常驻通知 + 小部件四处联动在 `BridgePage._applyBridgeChanges` 与 `HomeShell._applyBridgeChanges` 各一份（注释互指）。
+- 令牌只在 `Authorization: Bearer` 请求头出现；错误文案只带状态码 + 截断 120 字的异常描述，不打印 URL。**已知边界：备份 JSON 走 `getAllSettings()`，会带上 `bridge_token`** —— 已在 BridgePage 底部明文写「别外发备份文件」，也在 ARCHITECTURE 的 app_settings 键说明里记了一行。
+
+### 三、页面
+
+- 设置页「备注」之后新增「AI 桥」分区 → `/bridge`。
+- BridgePage 三块：配置区（owner/repo/token，token 遮挡 + 眼睛按钮，**留空表示不改令牌**）/ 状态区（上次同步时间 + 摘要，立即同步按钮同步中禁用并转圈，完成后刷新状态 + 触发联动）/ 待确认区（`describePendingCommand` 输出人话，如「删除备注 2026-10-23 交作业」，每条「执行」「拒绝」，两者都会再走一次写回并出队）。
+- App 启动首帧后（`HomeShell._runStartupTasks` 并发列表）**静默同步一次**：未配置立即返回，失败只 debugPrint，不打扰用户。为此 `HomeShell` 改成 `ConsumerStatefulWidget`（要 ref 才能失效 Provider）。
+
+### 四、测试
+
+`test/bridge_codec_test.dart` **新增 35 例**（纯函数，不碰网络与数据库）：id 安全字符集（含 `../../etc/passwd` 被拒）、指令批解析与四种坏数据、文件名兜底 id、非对象元素丢弃、createdAt 排序（坏日期排最前）、destructive 拆分（含未知类型按非破坏、缺 type 兜底）、三种 status 判定 + 拒绝算失败、按 index 合并（新覆盖旧、其余保留、文档损坏兜底）、`buildResultsJson` 字段、队列往返与非法元素、人话描述三种、配置清理去斜杠 + 令牌兜底、快照字段/todayWeek=7/备注分组/**「不含 token」隐私断言**/无学期兜底。基线 265 → **300**。
+
+**未跑命令**：本轮 Bash/Glob/Grep 全被拒（老问题，ripgrep EACCES），只有 Read/Write/Edit 可用，`flutter analyze` / `flutter test` 由他执行（命令见文末「待执行的自检命令」，用例数已改 300）。
+
+**analyze 风险点先看这几处**：① `lib/main.dart` 把 `HomeShell` 改成 `ConsumerStatefulWidget`（`ConsumerState<HomeShell>`），build 与若干处 `mounted` 判断沿用原写法，理论上零影响；② 页面里所有 Http 相关 API（`HttpClient.openUrl` / `req.headers.set` / `ContentType.json` / `client.close(force:)` / `Future.ignore()`）都是 dart:io 与 dart:async 的标准用法；③ `withValues` 之类新 API **没有用**（卡片底色改回 `surfaceContainerHighest`）；④ `AppSpacing` 只有 xs/s/m/l 四个常量，页面底部留白直接写 24（规范里允许的「微调档」）；⑤ 记录类型 `(status:, json:, error:)` 需要 Dart 3（SDK ^3.13.5，满足）。
+
+**真机需看**：① 建一个私有仓 + 细粒度令牌（Contents 读写），App 里填好点「立即同步」→ 应提示「没有新指令」且仓里出现 `state/snapshot.json`；② 手写一个 `commands/hello-1.json`（add_note）→ 同步后应出现备注且 `results/hello-1.json` 状态 done；③ 混一条 delete_note → App 待确认区出现「删除备注 xxx」，点「执行」后备注消失、`results` 从 awaiting_confirm 变成 done；点「拒绝」→ state=rejected、status=partial；④ 同一个 id 再同步一次不应重复执行（看 processed_command_ids）；⑤ **打断网/写错令牌**同步：不应闪退，状态区显示失败摘要。
+
+## 2026-10-22（AI 备注 + 指令执行器地基层，265 测试基线，未跑命令）
+
+按两份配套需求做完：**新增 5 个文件、改 10 个文件**，唯一的表结构变化是 notes 表（走 v2→v3 版本升级），未提交 git。
+
+### 一、备注功能
+
+1. **数据层**：`lib/models/note.dart`（Note：id/date/content/createdAt）；`db_helper` 版本 2→3，新增 `_createNotesTableSql` + `idx_notes_date`，`createSchema`（新装）与 `onUpgrade(oldVersion<3)`（老库无感升级）都建这张表；`dao` 新增 `getAllNotes`（日期升序、同日按 id）/ `getNotesByDate` / `getNotesByDates(List)`（小部件一次取 7 天，空列表直接返回不拼非法 SQL）/ `insertNote` / `updateNote` / `deleteNote`（返回受影响行数）。
+2. **备注页**：`lib/pages/notes_page.dart`（路由 `/notes`），日期倒序分组（标题「今天/明天/yyyy年M月d日 周X」）、右下角加号新增（日期选择器 + 内容必填校验）、点卡片编辑、删除按钮弹二次确认；空状态/加载失败走 EmptyState，圆角间距走 AppRadii/AppSpacing，与设置页风格一致。设置页在「数据管理」之后、「外观」之前加了「备注」分区一行入口。
+3. **常驻通知**：新增 `lib/utils/note_notice.dart` 纯函数（`buildNoteNotice`：有今天的显示今天的、有明天的一并带「明天：」前缀、条数多合并多行、都没有返回 null）。`notification_service` 新增渠道 `note_ongoing_channel`（名「备注」，importance=low、不震动、不显角标）+ id `0x7FFFFFFE`（不与课程提醒/自举冲突）+ `refreshNoteNotice()`（ongoing=true、BigTextStyle 多行、无则 cancel）。**刷新时机**三条：备注增删改（NotesNotifier 末尾）、App 启动（HomeShell 首帧任务里的 `rescheduleAll` 内部末尾调用）、0 点自举重排那条链路同一进入口。跨天仍需打开一次 App 才刷新——与常驻通知/小部件同属已知限制，没假装做后台 0 点重排。
+4. **小部件**：payload 新增可选 `notes`（字符串数组，最多 `kWidgetMaxNotes=3`），按**实际展示那天**取值（今天没课顺延到明天时备注也跟着换），逐日 payload 各带各日；WidgetService 用 `getNotesByDates` 一次取 7 天分桶，读失败吞掉按「无备注」继续（不让备注拖垮整份 payload）。Kotlin `CourseWidgetProvider` 新增 `notes` 字段 + `parseNotes`（最多读 3 条、非数组/缺字段都容错）+ `notesText`（最多 2 行、首行「备注：」前缀），把尾注与备注拼进现有 `widget_footer`，**没改任何 XML/没加布局**，老 payload 没有 notes 键时默认空列表、渲染逐字不变。
+
+### 二、指令执行器（lib/services/command_executor.dart）
+
+- `CommandExecutor.execute(Map)` / `executeAll(List<Map>)`：逐条执行并返回 `CommandResult`（type / success / message 中文摘要或原因 / destructive / data）；**只依赖 Dao，不依赖 Riverpod 与 BuildContext**，provider 刷新、通知重排、备注通知刷新、小部件刷新由调用方负责（已写进类注释）。
+- 一期五条：`add_course`（全字段、周次支持「1-8单周」字符串与数组，落库前跑 `ConflictDetector`，**冲突只提示不拦截**）、`set_course_color`（courseId 或 courseName 定位，重名多门批量全改，限定当前学期）、`add_note`（date 默认今天 + content）、`delete_note`（按 id，registry 标 destructive=true）、`add_exam`（给指定课程写 `Course.examDate`，可带 HH:mm）。
+- `CommandRegistry` 集中登记 destructive（只有 delete_note 为 true），供后续桥的确认策略读取；参数缺失/非法 → 该条失败给中文原因（`_CommandError` 内部抛、`execute` 兜），**单条失败不中断整批**。
+- **停课/调课留给下一包**：仓库已有完整机制（`course_overrides` 表 + `CourseOverride.cancelFlag(-1)` 停课 + `Dao.upsertOverride/deleteOverride` + `CourseOverridesNotifier` 的四处联动），已在 ARCHITECTURE 记一笔，下一包直接加 `stop_course` / `move_course` 即可，本轮没新造。**另记**：仓库没有独立 Exam 模型/考试表，考试就是 `Course.examDate`，`add_exam` 按此对齐。
+
+**测试**：新增 `test/note_dao_test.dart`（7 例，ffi 内存库跑真实 SQL）、`test/note_notice_test.dart`（8 例纯逻辑）、`test/command_executor_test.dart`（19 例，ffi 内存库覆盖五条指令正常/异常路径与批量容错）；`test/widget_data_test.dart` 改 1 例（JSON 字段清单多 `notes`）+ 新增 4 例当日备注。基线 227 → **265**。
+
+**未跑命令**：本轮 Bash/Glob/Grep 全被拒（老问题，ripgrep EACCES），只有 Read/Write/Edit 可用，`flutter analyze` / `flutter test` 由他执行（命令见文末「待执行的自检命令」，用例数已改 265）。**无新增 pub 依赖。**
+
+**analyze 风险点先看这几处**：① `AndroidNotificationDetails` 的 `ongoing` / `BigTextStyleInformation(bigText, contentTitle:, summaryText:)` 签名凭 flutter_local_notifications 22.x 记忆写的，`autoCancel` 在 Android 明细类上是有的，若报未知参数按提示处理；② `AndroidNotificationChannel` 的 `enableVibration`/`showBadge` 与上一轮新增的自举渠道同款写法，若上一轮 analyze 通过则本轮同理；③ Kotlin 的 `arr.optString(i, "")` 是 org.json 的老用法、一直可用，`minOf(arr.length(), MAX_NOTES)` 正常；④ notes 表的列名（`date`/`content`/`createdAt`）与 `Note.toMap` 的键逐字一致。
+
+**真机需看**：① 老用户升级 App 后打开「设置 → 备注」能直接用（说明表补建成功、没闪退）；② 加一条今天的备注 → 通知栏出现「今日备注」常驻通知且滑不掉，再删掉 → 通知消失；③ 开关一次「上课提醒」/切学期 → 备注通知还在（验证 cancelAll 后重建）；④ 桌面小部件今天有课时底部出现「备注：xxx」，明天有课则跨天后自动跟上，没有备注时与升级前一个样（重点：不黑框）；⑤ 备注页日期改到别的一天后立刻重新分组。
+
+## 2026-10-22（通知窗口 30 天 + 自举静音渠道 + 小部件跨天切换，227 测试基线，未跑命令）
+
+按他给的三项逐条改完，**改动文件 5 个**（无新增依赖、不动小部件布局 XML 与 payload 字段、未提交 git）：
+
+1. **提醒窗口 7 → 30 天**（`lib/services/notification_service.dart`）：`_windowDays = 30`（今天 + 未来 29 天）。ID 安全性粗算：每次 `rescheduleAll` 先 `cancelAll` 再从 1 递增，上限 = 30 天 × 每天节次数（满课 12 节约 360），与 `kBootstrapNotificationId = 0x7FFFFFFF`（21.4 亿）差 6 个数量级，不会溢出/撞号/重复；AlarmManager 活跃闹钟上限约 500，360 仍在安全区（已写进常量注释）。课程提醒的循环与渠道/样式未动。
+2. **0 点自举通知换独立静音渠道**（同文件）：新增常量 `kBootstrapChannelId = 'course_bootstrap_silent'` / `kBootstrapChannelName = '课程提醒自举'`，新增 `_ensureBootstrapChannel()`（importance=low、enableVibration=false、showBadge=false，初始化时创建），`_bootstrapDetails()` 改走新渠道并补 `channelShowBadge=false`（importance/priority=low、playSound/enableVibration=false 保留）。**未给渠道传 `playSound`**：该参数类型随插件版本在 bool / PlaySound 枚举间变动，而 importance=low 在 Android 8+ 本就不响铃；若 analyze 确认是 bool，直接补一行 `playSound: false` 即可。
+3. **小部件跨天自动切换**：
+   - Dart：`lib/utils/widget_data.dart` 新增纯函数 `widgetDayKey(d)`（yyyy-MM-dd）与 `buildWidgetPayloadDays(...)`（默认 7 天；offset=0 用真实 now → 与 `widget_payload` 逐字一致，未来某日用该日 00:00 作 now → 当天课程完整入选）。`lib/services/widget_service.dart` 在原有 `widget_payload` 写入 + 回读校验之后，再写 `widget_payload_days`（JSON 对象：日期键 → 该日 payload，值与 `widget_payload` 同结构）。原逻辑零改动。
+   - Kotlin：`CourseWidgetProvider.onUpdate` 改调新增的 `resolvePayload(data)`——先按设备本地今天日期（SimpleDateFormat "yyyy-MM-dd" + Locale.US）从 `widget_payload_days` 取值，取不到（无键 / 日期不在范围 / 解析失败）回退 `widget_payload`；全程 `runCatching`，复用原 `parsePayload`。`dbg_widget_*` 自检写入与布局渲染未动。
+4. **测试**：`test/widget_data_test.dart` 新增 6 例（键为今天起 7 天、今天那份与 buildWidgetPayload 逐字一致、未来某日 00:00 整天入选且顶栏该日、无课顺延次日、整体可 JSON 编码且字段齐全、无学期时 7 份兜底）。既有 221 例未动 → 227。
+5. **文档**：ARCHITECTURE.md 新增「1.3.4」专节（文件表 + 6 条设计决策）+ 工具类补 WidgetData 一行；本文件顶部本节。
+
+**未跑命令**：本轮 Bash/Glob/Grep/WebFetch 全被拒（同踩坑 #6/#12，ripgrep EACCES），`flutter analyze` / `flutter test` 由他执行（命令见文末「待执行的自检命令」，用例数已改 227）。
+
+**真机需看**：① 开提醒后设一节 20 分钟后的课能响；改课/删课后旧提醒不响；② 半夜 0 点不再被自举通知弹醒（系统通知设置里应出现「课程提醒自举」渠道且重要性=低）；③ 桌面小部件跨天：今晚看一眼明天的内容 → 不打开 App 直接改系统日期到明天（或等一天）→ 小部件应显示明天那份；④ 长假场景：连续几天不开 App，小部件内容随日期走；⑤ 升级后首次打开 App（widget_payload_days 还没写）小部件应仍按旧逻辑正常显示不黑框。
+
+## 2026-10-22（导入周次推断 + 手动建课冲突检测，221 测试基线，未跑命令）
+
+按他给的两项补强逐条改完，**改动文件**：
+
+1. **导入时推断学期总周数**：新建纯函数 `lib/utils/week_infer.dart`（`WeekInfer.maxWeek` 取草稿里最晚周次、`inferredTotalWeeks` 超过总周数才返回建议值、否则 null）。`lib/pages/import_review_page.dart`：顶部新增提示条（仅推断值 > 目标学期总周数时出现，每次 build 重算，草稿被编辑/删除后自动出现或消失），文案「导入的课程最晚到第 X 周，超过当前学期的总周数 Y 周」+ 默认勾选的复选框「保存时把总周数调整为 X 周」（`_extendTotalWeeks` 默认 true）；`_importAll` 在课程落库 + `coursesProvider.reload()` 之后按勾选 `Dao.updateSemester` 改总周数，成功则在完成弹窗多一行「《学期名》的总周数已调整为 X 周（原 Y 周）」。同步内存状态沿用导入页改开学日期的现成写法：当前学期 `setDirectly(updated)`（todayWeekProvider 与周视图的钳制随之生效）+ `semestersProvider.reload()`；失败只 debugPrint，不回滚已导入课程。
+2. **手动建课/改课冲突检测**：`lib/pages/course_edit_page.dart` 的 `_save()` 落库前新增预检——`ConflictDetector.detect(candidate, coursesProvider 课程, ignoreCourseId: _editId)`，语义与导入链路完全一致（同星期 + 周次有交集 + 节次重叠），候选课 weeks/weekType 直接取表单值不做换算。有冲突弹 AlertDialog 列出 `describe()`（课程名 + 周次 + 星期 + 节次），按钮「返回修改」（不落库）/「仍要保存」（照旧 addCourse/updateCourse）。无冲突路径零变化。
+3. **测试**：新建 `test/week_infer_test.dart`（5 例：空草稿/空周次 0、多草稿取最大、单双周不改最晚周次、不超过总周数 null、超过返回推断值）；`test/conflict_detector_test.dart` 补 2 例（改课时池里含自身只检出对方、周次端点相交算冲突）。既有 214 例未动。
+4. **文档**：ARCHITECTURE.md 新增「1.3.3」专节（文件表 + 5 条设计决策）；CHANGELOG.md 顶部加「未发布」两条用户可见说明。
+
+**未跑命令**：本轮 Bash/Glob/Grep 全被拒（同踩坑 #6/#12，ripgrep EACCES），`flutter analyze` / `flutter test` 由他执行（命令见文末「待执行的自检命令」）。无新增 pub 依赖、未动表结构。
+
+**真机需看**：① 导入一份排到第 21 周及以后的课表 → 核对页顶部出现提示条且复选框默认勾选 → 保存后设置/学期管理里总周数变成推断值、周视图能翻到那一周；② 取消勾选后保存 → 学期总周数不变、超出周次的课不显示（预期行为）；③ 手动新建一门与已有课撞时间的课 → 弹冲突窗、点「返回修改」不落库、点「仍要保存」同格叠放；④ 编辑已有课程只改教室/颜色 → 不应弹冲突窗（自身被排除）。
+
+## 2026-10-22（启动提速，214 测试基线不变，未跑命令）
+
+用户反馈「打开 App 进主页慢」，授权必要时直接删掉启动动画。五项改动（**无新增依赖、不动课表数据与业务逻辑**）：
+
+1. **删应用内启动页**：`lib/main.dart` 的 `initialRoute` `'/splash'` → `'/'`，删 `/splash` 路由与 `SplashPage` 的 import。**省掉 900ms 停留 + 400ms 淡入的人为延迟（合计约 1 秒）**。首屏窗口改由 Android 原生 `LaunchTheme` 的 `launch_background` 兜住（styles.xml 未动，不会白闪）；`'/'` → `_RootGate` 与 `WeekViewPage` 数据未就绪时本就各有加载态，首帧不是空白页。
+2. **`lib/pages/splash_page.dart` 已无引用，需手工删除**：本轮 Bash 被拒，我删不了文件，请执行 `rm lib/pages/splash_page.dart`（`AppRadii.logo` 常量会随之无用，保留无害）。
+3. **启动初始化瘦身**：`_initServices()` 只留 `FontsService.init()`（防首帧字体闪烁，必须在 runApp 前）；通知初始化拆成 `_initNotifications()`，挂在 `runApp` 之后的 `WidgetsBinding.instance.addPostFrameCallback` 里 `unawaited` 跑，try/catch + debugPrint 的容错风格与上一轮一致（失败只打日志、不阻断、不写 last_error_log）。
+4. **通知初始化改共享 Future**（`lib/services/notification_service.dart`）：`initialize()` 由 bool 标记改 `_initFuture ??= _initialize()`。因为挪到首帧后，`rescheduleAll()` 可能先跑——旧写法会「标记已初始化但插件未就绪」就去排期、异常被吞导致提醒静默不排；共享 Future 后两者共用一次初始化，语义等价于原来的串行。
+5. **主页启动联动并行化 + 挪后**：`HomeShell.initState` 的提醒重排 / 常驻通知 / 小组件刷新 / QuickActions 注册全部进 `addPostFrameCallback`，由 `_runStartupTasks()` 用 `Future.wait` 并发触发（外层 try/catch 兜底），不再与课表首帧抢 isolate；`WeekViewPage.initState` 的 `_loadChannel()`（公告/更新，读本地状态文件 + PackageInfo 通道）同样挪到首帧后，函数内 5 项读取改「一次发起、逐个 await」并行。
+
+**未跑命令**：本轮 Bash/Glob/Grep 全被拒（同踩坑 #6/#12），`flutter analyze` / `flutter test` 由他执行（命令见文末「待执行的自检命令」）。既有 214 个用例不涉及启动路径，`SplashPage` 无测试引用，预期全绿。
+
+**真机需看**：① 冷启动到看见课表的耗时（对比改前，重点看是否还有肉眼可感的停顿）；② 启动瞬间无白闪/黑闪（原生启动背景覆盖）；③ 首次启动走引导页时课表首帧是加载圈不是白屏；④ 提醒仍会正常重排（通知初始化挪后是否真的排上了：进设置开提醒 → 看当天是否有通知；也可 `adb logcat` 搜「通知重排失败」确认无异常）。
+
+## 2026-10-22（五项防御性修复，214 测试基线，未跑命令）
+
+按他给的五项清单逐条改完，**改动文件**：
+
+1. **周次越界钳制**：`lib/utils/week_calc.dart`（新增 `WeekCalc.clampForPage`）、`lib/pages/week_view_page.dart`（`initState` 的 `initialPage`、`_goToday`）、`lib/providers/providers.dart`（`DisplayWeekNotifier` 的 build/setWeek/goToday + `_totalWeeks()`）。`WeekCalc.currentWeek` 语义保留不变（允许 > totalWeeks），只在消费端钳到 [1, totalWeeks]；学期未加载（totalWeeks=0）保持原行为只保下限 1。
+2. **编辑页防崩**：`lib/pages/course_edit_page.dart` 的 `_load()` —— `firstWhere` 改循环安全查找，找不到时 SnackBar「课程已不存在」+ `Navigator.pop(context)` 后 return。
+3. **全局异常兜底**：`lib/main.dart` —— `main()` 改 `void main()` + `runZonedGuarded` 包住整个启动；`FlutterError.onError`（presentError 后记日志，不转发 zone 避免重复）；`ErrorWidget.builder` 换中文兜底界面 `_FriendlyErrorWidget`；两条路都写 `Dao.setSetting('last_error_log', '[时间] 摘要')`，写库失败吞掉；`NotificationService.initialize` / `FontsService.init` 抽进 `_initServices()` 各自 try/catch，失败只 debugPrint 不阻断 runApp。
+4. **开学日期安全解析**：`lib/models/semester.dart` 新增 `startDateParsed`（`tryParse` 失败回退「今天所在周一」，理由已注释）。11 处 `DateTime.parse(<semester>.startDate)` 全换掉：providers(todayWeekProvider)、week_view_page(×2)、next_class、reminder_plan、widget_data、ics_export、share_image_page、free_time_page、import_page(×2)；与学期无关的 `DateTime.parse` 未动。
+5. **导入落库事务**：`lib/database/dao.dart` 新增 `runInTransaction<T>()` 并给 `insertCourse/updateCourse/deleteCourse` 加可选 `DatabaseExecutor? txn`（不传时行为不变，旧调用点零影响）；`lib/pages/import_review_page.dart` 的删除+插入整段包进一个事务，计数以记录返回；事务后的 `coursesProvider.reload()` 与作息校准保持在事务之外原样。
+
+**未跑命令**：本轮 Bash/Glob/Grep 全被拒（同踩坑 #6/#12），`flutter analyze` / `flutter test` 由他执行（命令见文末「待执行的自检命令」）。无新增 pub 依赖、未动表结构与 UI 文案风格。
 
 ## v1.3.0+14（2026-10-21，教务官网导入，214 测试）
 
@@ -181,10 +411,17 @@ flutter pub get            # 拉取新增依赖 flutter_local_notifications / ti
 flutter analyze            # 必须零问题
 unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
 export NO_PROXY=localhost,127.0.0.1
-flutter test               # 135 + 6 = 141 个用例应全绿（本机代理会导致 flutter_tester 连接失败）
+flutter test               # 307 个用例应全绿（基线 300：265 + bridge_codec 35；本轮 +7：学期编辑 2 + 学期表单 5；本机代理会导致 flutter_tester 连接失败）
 ```
 
 已知风险点（analyze/test 若报错优先查这里）：
+- **（本轮 1.3.6）未配置 / 断网 / 令牌失效都不应该崩**：这三条路径全部靠 `_syncOnce` 外层与各子步骤的 try/catch 兜，`syncNow` 的共享 Future（`_running`）若因异常没被 `whenComplete` 清掉会卡住后续同步——真机上如果发现「第一次失败后再点同步没反应」，查这一处。
+- **（本轮 1.3.6）`Processed ids` 那一行是 JSON 字符串**：`processed_command_ids` 写的是 `jsonEncode(List<String>)`，读走 `parseProcessedIds`（坏数据当空历史），不要当成别的格式。
+- **（本轮 1.3.6）GitHub 返回的 base64 带换行**：`readRemoteFile` 里先 `replaceAll(RegExp(r'\s'), '')` 再 `base64Decode`，若将来出现 FormatException 优先查这一步。
+- **（本轮 1.3.5）`AndroidNotificationDetails` 的 `ongoing` / `autoCancel` 与 `BigTextStyleInformation` 构造**：凭 flutter_local_notifications 22.x 记忆编写（`BigTextStyleInformation(bigText, contentTitle:, summaryText:)`），若报未知命名参数按提示改名，语义不受影响（备注通知退化为普通文本也不影响数据链路）。
+- **（本轮 1.3.5）Kotlin 侧没新增任何资源 id**：`widget_footer` 是既有 TextView，`notesText` 只是改它的文本与可见性；不要去查新布局。
+- **（本轮 1.3.4）`AndroidNotificationChannel` 的两个新参数**：`_ensureBootstrapChannel` 传了 `enableVibration: false` 与 `showBadge: false`；`_bootstrapDetails` 传了 `channelShowBadge: false`。三者凭 22.x 记忆编写（无法读 pub cache / pub.dev 核对）。若 analyze 报「参数不存在」，按提示删除或改名（`AndroidNotificationDetails` 的角标参数历史上在 `showBadge` / `channelShowBadge` 之间改过名）；渠道的 `playSound` 有意未传（类型随版本变动，importance=low 已足够静音，确认是 bool 可自行补 `playSound: false`）。
+- **（本轮 1.3.4）Kotlin `JSONObject.optString(key, null)`**：平台类型参数传 null 合法；若编译挑剔，改 `if (o.has(key)) parsePayload(o.getString(key)) else null`。`SimpleDateFormat` 需 `java.text`/`java.util` 三个 import（已加）。
 - `semester_manage_page.dart` 的 PopupMenu 内嵌 ListTile 写法（dense + contentPadding: EdgeInsets.zero）是否触发 lint；
 - `providers.dart` 中 `SemestersNotifier` 对 `ref.read(displayWeekProvider.notifier)` 的跨 Provider 读取；
 - `db_helper.dart` 新增的 `import 'package:flutter/foundation.dart'` 与 sqflite 导入共存；
@@ -339,3 +576,18 @@ flutter test               # 135 + 6 = 141 个用例应全绿（本机代理会�
 - Android 包名：`com.example.simple_timetable` → `com.jieke.xiaomakebiao`（build.gradle.kts 的 namespace 与 applicationId、4 个 Kotlin 文件的目录与 package 声明、CHANNEL/ACTION 字符串、Dart 侧 MethodChannel 名与小组件类名已同步）。
 - Dart 包名：`simple_timetable` → `xiaoma_timetable`（pubspec `name`、全项目 `package:` import 已同步替换）；pubspec 版本升为 `1.1.0+2`，description 改为「小马课表 - 零广告的大学生课程表 App」。
 - 有意保留不改：数据库文件名 `simple_timetable.db` 与备份格式标识 `appTag = 'simple_timetable'`（含 backup_codec 文档注释），避免已有数据/旧备份文件失效；本文件与 ARCHITECTURE.md 中的历史记述保留原文。
+
+## 待执行的自检命令（本环境无命令权限，由用户执行）
+
+```bash
+# 先清代理（本机 Clash 系统代理会让 flutter_tester 的 WebSocket 连不上）
+unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
+export NO_PROXY=localhost,127.0.0.1
+
+flutter pub get
+flutter analyze          # 期望零问题
+flutter test             # 期望 340/340 全绿（2.0.0 基线）
+flutter build apk --debug
+```
+
+最新一轮（2.0.0）新增/改动点若 analyze 报错，优先看 DEV_STATE 顶部那轮的「analyze 风险点」。

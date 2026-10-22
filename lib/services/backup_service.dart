@@ -4,8 +4,15 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 
+import '../database/dao.dart';
 import '../database/db_helper.dart';
 import '../utils/backup_codec.dart';
+import 'fonts_service.dart';
+
+/// 一份备份的组装结果：[json] 可直接落盘，[warnings] 是需要让用户知道的事
+/// （如某个字体超过 8MB 没写进备份）。自动备份静默丢弃 warnings，
+/// 手动导出由 UI 拼在提示里。
+typedef BackupBundle = ({Map<String, dynamic> json, List<String> warnings});
 
 /// 备份/导出文件服务（阶段五）
 ///
@@ -33,11 +40,41 @@ class BackupService {
     return BackupCodec.decode(content);
   }
 
+  /// 组装一份完整备份（含自定义字体）。
+  ///
+  /// 手动导出与启动自动备份都走这里，保证两者格式永远一致（同一套 encode）。
+  /// 字体先按体积过滤（[BackupCodec.collectFonts]），超限的不入备份，
+  /// 理由以中文提示放进 [BackupBundle.warnings] 交 UI 展示。
+  ///
+  /// 备注（v3 起）与课表数据一起进备份；[BackupCodec.secretSettingKeys] 那四个
+  /// 凭据键由 encode 统一剔除，本函数不需要（也不该）自己记得过滤。
+  Future<BackupBundle> buildBackup({DateTime? now}) async {
+    final pack = BackupCodec.collectFonts(await FontsService.readForBackup());
+    final json = BackupCodec.encode(
+      semesters: await Dao.instance.getAllSemesters(),
+      timeSlots: await Dao.instance.getTimeSlots(),
+      courses: await Dao.instance.getAllCourses(),
+      overrides: await Dao.instance.getAllOverrides(),
+      settings: await Dao.instance.getAllSettings(),
+      notes: await Dao.instance.getAllNotes(),
+      fonts: pack.fonts,
+      now: now,
+    );
+    return (json: json, warnings: pack.warnings);
+  }
+
   /// 执行恢复：单个事务内清空重建，失败自动回滚（细节见 BackupCodec.restore）。
   /// 成功后由调用方负责刷新 Provider 与通知/小组件联动。
+  ///
+  /// 字体文件（v2 备份才有）在数据库事务之外单独写回：文件 IO 不该进事务，
+  /// 单个字体写失败也只跳过它自己，已经恢复好的课表数据不受影响。
   Future<RestoreSummary> restore(BackupData data) async {
     final db = await DbHelper.instance.database;
-    return BackupCodec.restore(db, data);
+    final summary = await BackupCodec.restore(db, data);
+    if (data.fonts.isNotEmpty) {
+      await FontsService.restoreFonts(data.fonts);
+    }
+    return summary;
   }
 
   /// 通过系统「保存到…」选择器把文本写到用户选择的位置。

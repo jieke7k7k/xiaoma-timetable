@@ -84,11 +84,18 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
   bool _importantShown = false;
 
   Future<void> _loadChannel() async {
-    final cached = await ChannelService.cached();
-    final seen = await ChannelService.seenIds();
-    final dismissed = await ChannelService.dismissedIds();
-    final dismissedCode = await ChannelService.dismissedVersionCode();
-    final pkg = await PackageInfo.fromPlatform();
+    // 五项读取互不依赖（1.3.2 启动提速）：一次性发起再逐个收，
+    // 原本串行 await 五次（每次都要走一遍 path_provider 通道读状态文件）。
+    final cachedFuture = ChannelService.cached();
+    final seenFuture = ChannelService.seenIds();
+    final dismissedFuture = ChannelService.dismissedIds();
+    final dismissedCodeFuture = ChannelService.dismissedVersionCode();
+    final pkgFuture = PackageInfo.fromPlatform();
+    final cached = await cachedFuture;
+    final seen = await seenFuture;
+    final dismissed = await dismissedFuture;
+    final dismissedCode = await dismissedCodeFuture;
+    final pkg = await pkgFuture;
     if (!mounted) return;
     setState(() {
       _channel = cached;
@@ -158,10 +165,16 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
       if (mounted) setState(() {});
     });
     final todayWeek = ref.read(todayWeekProvider);
-    _pageController = PageController(
-      initialPage: todayWeek > 0 ? todayWeek - 1 : 0,
-    );
-    _loadChannel();
+    final totalWeeks = ref.read(currentSemesterProvider).value?.totalWeeks ?? 0;
+    // 页码按钳制后的周次算：今天超出总周数时（学期已结束）落在最后一周，
+    // 否则 PageController 的 initialPage 越界直接崩
+    final page = WeekCalc.clampForPage(todayWeek, totalWeeks) - 1;
+    _pageController = PageController(initialPage: page < 0 ? 0 : page);
+    // 1.3.2 启动提速：公告/更新检查要读本地状态文件 + 取包名（平台通道），
+    // 挪到首帧之后再跑，别和课表首帧抢时间；横幅晚一帧出现对体验无影响。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_loadChannel());
+    });
   }
 
   @override
@@ -185,7 +198,46 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
   void _goToday() {
     final todayWeek = ref.read(todayWeekProvider);
     if (todayWeek <= 0) return;
-    _jumpToWeek(todayWeek);
+    // 今天超出总周数时钳到最后一周，避免「回到本周」点了没反应
+    final totalWeeks = ref.read(currentSemesterProvider).value?.totalWeeks ?? 0;
+    _jumpToWeek(WeekCalc.clampForPage(todayWeek, totalWeeks));
+  }
+
+  /// 新建方式选择：手动新建课程 / 导入课表（ICS / 图片 OCR / PDF）
+  ///
+  /// 2.0.0：原先是底栏中间的「新建」页签，底栏改成「AI / 主页 / 设置」三键后
+  /// 挪到主页右上角（+ 按钮），内容与原来逐字一致。
+  void _showCreateSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('手动新建课程'),
+              subtitle: const Text('逐项填写课程信息'),
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.pushNamed(context, '/course-edit');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.upload_file_outlined),
+              title: const Text('导入课表'),
+              subtitle: const Text('ICS / 图片 OCR / PDF，支持冲突检测'),
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.pushNamed(context, '/import');
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   /// 表头某天有考试时点开看详情（考试红点配套）
@@ -278,7 +330,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
       autoCollapse,
     );
     final dates = WeekCalc.weekDatesOf(
-      DateTime.parse(semester.startDate),
+      semester.startDateParsed,
       displayWeek,
     );
     // 本周考试标记（1.2.0）：按日期聚合设置了考试日期的课程，表头打红点
@@ -306,6 +358,12 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
         (_) => OngoingNoticeService.instance.refresh(),
       );
     }
+
+    // 左上角单双周小标识：开关在「界面设置 → 左上角单双周小标识」（默认开）。
+    // 用的是「今天是第几周」而不是正在浏览的周次，翻到别的周时它仍指当前周
+    final parityText = ui.showWeekParity
+        ? WeekCalc.parityLabel(todayWeek, totalWeeks: semester.totalWeeks)
+        : null;
 
     // 学期切换联动：semester 变化时把 PageController 跳到新学期的「本周」，
     // 并 clamp 防止旧学期残留的页码超出新学期总周数导致越界
@@ -368,6 +426,28 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
                     ),
                   ],
                 ),
+                // 当前周的单/双周小标识（2.0.0）：口径是 WeekCalc 的当前周，
+                // 未开学（week ≤ 0）或学期已结束时 parityLabel 返回 null，整个不显示
+                if (parityText != null) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(AppRadii.chip),
+                    ),
+                    child: Text(
+                      parityText,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                ],
                 Icon(_showJumper ? Icons.expand_less : Icons.expand_more),
               ],
             ),
@@ -396,6 +476,13 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
                 );
               },
             ),
+          // 「新建」入口（2.0.0）：底栏三键改版后，原来的「新建」页签挪到这里。
+          // 点开就是原来那套新建方式选择（手动填 / 导入课表），与编辑模式无关——
+          // 这两条都是完整的表单页流程，不需要先开编辑模式。
+          IconButton(
+            icon: const Icon(Icons.add_outlined),
+            onPressed: _showCreateSheet,
+          ),
           // 「更多」菜单（1.2.0）：顶栏只留铅笔（状态按钮）在外，
           // 其余入口收进菜单——学期管理首次上主页，另含搜索/空闲/导出图等
           PopupMenuButton<String>(
@@ -894,7 +981,7 @@ class _GridArea extends ConsumerWidget {
     // 今天列高亮：正在看的就是本周且今天在显示列里时才算（开关 1.2.6）
     final nowDate = DateTime.now();
     final thisWeekNo = WeekCalc.currentWeek(
-      DateTime.parse(semester.startDate),
+      semester.startDateParsed,
       nowDate,
     );
     final highlightDay =
