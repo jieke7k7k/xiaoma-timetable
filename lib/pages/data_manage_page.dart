@@ -14,6 +14,7 @@ import '../services/backup_service.dart';
 import '../services/notification_service.dart';
 import '../services/ongoing_notice_service.dart';
 import '../services/widget_service.dart';
+import '../widgets/app_dialog.dart';
 
 /// 数据管理页（1.2.4）：存储占用总览 + 备份/恢复快捷入口 + 恢复出厂。
 /// 设置页原有的备份入口保留不动，这里是把数据相关的事归拢到一页。
@@ -108,25 +109,14 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
       if (path == null) return;
       final data = await BackupService.instance.readBackup(path);
       if (!mounted) return;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('确认恢复备份？'),
-          content: Text(
-            '备份中包含 ${data.semesters.length} 个学期、${data.courses.length} 门课程。'
+      // 2.0.2（WB-202 第 4 项）：切统一确认弹窗（破坏性标红）
+      final confirmed = await showAppConfirmDialog(
+        context,
+        title: '确认恢复备份？',
+        message: '备份中包含 ${data.semesters.length} 个学期、${data.courses.length} 门课程。'
             '\n\n恢复会覆盖现有全部数据（含节次时间与设置），且无法撤销。',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('覆盖并恢复'),
-            ),
-          ],
-        ),
+        confirmLabel: '覆盖并恢复',
+        destructive: true,
       );
       if (confirmed != true || !mounted) return;
       await BackupService.instance.restore(data);
@@ -143,49 +133,22 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
   }
 
   Future<void> _factoryReset() async {
-    final first = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('恢复出厂？'),
-        content: const Text(
-          '将删除全部学期、课程、设置与导入的字体，回到刚安装时的状态。\n\n'
+    // 2.0.2（WB-202 第 4 项）：两步确认都切统一确认弹窗（破坏性标红）
+    final first = await showAppConfirmDialog(
+      context,
+      title: '恢复出厂？',
+      message: '将删除全部学期、课程、设置与导入的字体，回到刚安装时的状态。\n\n'
           '此操作不可撤销。建议先导出一份备份。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('继续'),
-          ),
-        ],
-      ),
+      confirmLabel: '继续',
+      destructive: true,
     );
     if (first != true || !mounted) return;
-    final second = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('最后确认'),
-        content: const Text('真的要清空全部数据吗？删除后只能通过备份文件恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('再想想'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('清空全部数据'),
-          ),
-        ],
-      ),
+    final second = await showAppConfirmDialog(
+      context,
+      title: '最后确认',
+      message: '真的要清空全部数据吗？删除后只能通过备份文件恢复。',
+      confirmLabel: '清空全部数据',
+      destructive: true,
     );
     if (second != true || !mounted) return;
     try {

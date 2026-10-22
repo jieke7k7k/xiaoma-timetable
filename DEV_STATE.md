@@ -1,8 +1,52 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-10-22（2.0.1：真机反馈修复包 P1–P7）
+> 更新时间：2026-10-22（2.0.2 第二批：WB-202 第 2、4 项 + 第 3 项补充）
 
 ## 做到哪了
+
+## 2026-10-22（WB-202 第二批：第 2 项 + 第 4 项 + 第 3 项补充，未跑命令）
+
+目标版本 2.0.2+17（版本号 / CHANGELOG / 提交发布由小马统一做，WB 未动）。只落地规格第 2、4 项与第 3 项补充；沿用 Riverpod 手写 Notifier / Dao 单例 / 中文文案注释。`flutter analyze` / `flutter test` 由你执行。
+
+### 第 2 项 设置页按 A 方案重组
+
+- `lib/pages/settings_page.dart` 重排（条目一个不能丢、路由尽量复用）：**学期设置**（学期名称 / 开学日期 / 总周数；学期管理移出）/ **外观**（原「界面设置」改名；主题三档、显示非本周、周末收起、刷新小部件、部件状态、节次时间原样）/ **提醒**（原「提醒设置」改名；上课播报开关从外观页移入本组）/ **课表工具**（一行入口）/ **智能助手**（「和智能助手聊聊」+「智能助手设置」两行，表单收进二级页）/ **学期与数据**（导入课表、学期管理、备份到文件、从备份恢复、导出课表 ICS、自动备份只读行、数据管理）/ **权限**（单列一行）/ **关于小马课表**（单列一行）/ 桌面小组件说明（原样保留）。
+- 新增 `lib/pages/course_tools_page.dart`（路由 `/course-tools`，main.dart 注册）：课程搜索 / 空闲时段 / 考试倒计时 / 导出课表图片 / 日期备注五个功能入口，路由全部复用原页面（`/course-search` `/free-time` `/exam-countdown` `/share-image` `/notes`）。
+- 拆解「高级与数据」：AI 桥入口并入智能助手二级页；备份 / 恢复 / 导出 ICS / 数据管理与教务导入、学期管理同组为「学期与数据」；权限、关于上浮一级页单列。`advanced_page.dart` 内容全部迁出、`/advanced` 路由移除，文件已清空为占位说明（提交时 `git rm lib/pages/advanced_page.dart`）；`_PermissionSummaryTile` 与备份 / 恢复 / ICS 导出实现随迁 `settings_page.dart`。
+- `lib/pages/ui_settings_page.dart`：删「上课播报」开关（移设置页提醒组）；页面标题「界面设置」→「外观」。
+
+### 第 4 项 说明卡片改小图标弹窗 + 弹窗风格统一
+
+- 新增 `lib/widgets/app_dialog.dart`：全 App 统一弹窗组件 `AppDialog`（标题 / 正文 / 按钮区的圆角、内边距、排版同一套规范，圆角取 `AppRadii.dialog`）+ `showAppInfoDialog`（ⓘ 信息弹窗，单按钮「知道了」）+ `showAppConfirmDialog`（确认弹窗，取消 TextButton / 主动 FilledButton，破坏性 `destructive: true` 标红）+ `AppInfoIconButton`（条目标题旁 18 号小 ⓘ）。
+- `lib/ui/app_styles.dart`：新增 `AppRadii.dialog = 20`。
+- `lib/pages/ai_settings_page.dart`：「怎么领一个免费的 Key」长说明卡片移入表单标题旁 ⓘ 弹窗（正文一字未改，见顶部常量 `kFreeKeyGuide`）；新增「测试对话」区放页面最底部（发一句话验证接口连通，不进聊天历史、不带课表上下文）；AI 桥入口并入本页；原卡片底部的密钥安全小注保留为小字。
+- `lib/pages/bridge_page.dart`：桥页顶部说明（原 `_ConnectCard` 平铺文案）同法改 ⓘ 弹窗（正文一字未改），卡片只留标题与「连接 GitHub」主按钮。
+- 设置区与主页高频弹窗已切统一组件：settings_page（设置总周数 / 开启精确闹钟 / 确认恢复备份 / 恢复进度遮罩）、ui_settings_page（删除导入字体 / 自定义主题色）、data_manage_page（确认恢复备份 / 恢复出厂两步）、week_view_page（重要公告 / 考试详情 / 删除课程）。其余页面（course_edit / notes / semester_manage / import / about / time_settings 等）不在本批范围，后续迁移也必须用它。
+- **长期规范（WB-202 第 4 项，本轮起执行）**：① 新弹窗一律用 `lib/widgets/app_dialog.dart`，不再各页面手搓 AlertDialog；② 长说明不再以卡片平铺——条目标题旁放小 ⓘ（`AppInfoIconButton`）+ `showAppInfoDialog` 显示全文；③ 确认弹窗用 `showAppConfirmDialog`，破坏性操作传 `destructive: true`。
+
+### 第 3 项补充 冷启动标题周与网格周不一致
+
+- 根因（第一批遗留观察已记）：PageController 在 initState 里创建，那一刻学期还没加载完（todayWeek 读成 0、总周数读成 0），initialPage 只能停第 1 周；而 displayWeekProvider 的首值要到 build 里才第一次求值、ref.listen 不因首值触发，出现「标题第 6 周、网格第 1 周」，切一下周才同步。
+- 修法：PageController 延迟到学期就绪后的首次 build 里懒创建，initialPage 直接取钳制后的显示周（新增纯函数 `weekViewInitialPage(displayWeek, totalWeeks)`，与 `DisplayWeekNotifier` 同一套 `clampForPage` 口径），标题与网格首帧即一致，无跳转、无闪烁；initState 不再读 todayWeek。
+- 测试：新增 `test/week_view_initial_page_test.dart`（5 例：第 6 周 → 第 6 页、第 1 周、学期已结束钳最后一周、未开学钳第 1 周、总周数未知不封顶）。
+- 真机验证方式：杀进程冷启动 → 首帧标题周与网格周一致（第 6 周的标题就是第 6 周的内容），不需要切周；切周 / 回到本周 / 换学期等原有交互不变。
+
+## 2026-10-22（WB-202 第一批：第 1 项 + 第 3 项，未跑命令）
+
+目标版本 2.0.2+17（版本号 / CHANGELOG / 提交发布由小马统一做，WB 未动）。只落地规格第 1、3 项，第 2、4 项未碰；沿用 Riverpod 手写 Notifier / Dao 单例 / 中文文案注释。`flutter analyze` / `flutter test` 由你执行。
+
+### 第 1 项 底部留白 + 主页按钮等大
+- `lib/main.dart`：`_HomeBottomBar` 去掉 Stack 与凸起大圆按钮，中间「主页」改用与左右完全一致的 `_SideButton`（图标 26、文字 11 号常显、同高度），三键等大平铺；选中态沿用主题色 + 加粗即可辨。顺带删除 `_HomeButton` 类，更新 HomeShell / _HomeBottomBar / _SideButton 的注释（凸起相关描述移除，「不用 NavigationBar、不包 Tooltip」的理由保留）。
+- `lib/pages/week_view_page.dart` `_GridArea`：删掉 2.0.1 加的 `padding: bottom kBottomBarHeight` 与 `bottomPad` 扣除——autoFit 行高与 contentHeight 恢复直接用 `constraints.maxHeight`，课表区恢复贴合到底栏（与 2.0.0 一致，不再空一大截）。
+- `lib/ui/grid_metrics.dart`：`kBottomBarHeight = 72` 保留（底栏自身高度仍引用它），注释改为「网格不再按它留底部内边距」。
+
+### 第 3 项 冷启动显示「本周没有课程」
+- 根因：课程数据链路没有加载门闩。冷启动（杀进程后重进）时 `currentSemesterProvider` 先就绪、`coursesProvider` 的 DB 查询还在 AsyncLoading，旧代码一句 `ref.watch(coursesProvider).value ?? []` 把「加载中」的 null 当成空列表，`_WeekGrid` 的 `visible.isEmpty` 直接渲染「本周没有课程」空状态；且启动瞬间的通知重排 / 小部件刷新 / AI 桥同步还在抢同一条 DB 连接，这个窗口被拉得更长，足以被用户看到并截图（第 6 周实际满周有课）。
+- 修法（链路根因，非延时糊弄）：`week_view_page.dart` 新增纯函数门闩 `weekDataNotReady`（AsyncLoading 且无值 → 未就绪）；`WeekViewPage.build` 在学期门闩后补课程 / 调课 / 作息三个 provider 的门闩，未就绪一律转圈；数据一到 provider 推 AsyncData，Riverpod 自动重建周视图呈现真实课程，不需要用户切周或重启。数据就绪后的空列表仍是合法空状态（本周真没课才显示）。
+- 测试：新增 `test/week_view_load_gate_test.dart`，覆盖「加载中无值 → 未就绪」「有数据 / 空列表 → 已就绪」「错误不算未就绪」四种情形。
+
+### 遗留观察（不在本批规格内，真机验收时留意）
+- 冷启动页码疑似不同步：`displayWeekProvider` 的首值要到 build 里才第一次求值（build #1 学期未就绪早返回，没读过它），求出来即「本周」；而 `ref.listen(displayWeekProvider)` 只在值变化时触发、不因首值触发，PageController 又停在 initState 按「学期未加载」算出的 initialPage=0（第 1 周）——冷启动后可能出现「标题第 6 周、网格第 1 周内容」，切一下周才同步。本批只修规格内的空状态问题，未动页码逻辑；真机如能复现，建议下一批单独修（别在 build 里直接 jumpToPage，会和用户滑动打架）。
 
 ## 2026-10-22（2.0.1 真机反馈修复包：P1–P7，未跑命令）
 

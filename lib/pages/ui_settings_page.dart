@@ -14,12 +14,15 @@ import '../utils/color_schemes.dart';
 import '../utils/morandi_palette.dart';
 import '../utils/override_effect.dart';
 import '../utils/slot_layout.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/course_card.dart';
 
-/// 界面设置页（1.1.1）：格子外观、显示内容、课程配色、主题颜色、显示字体。
+/// 外观设置页（2.0.2 起由「界面设置」改名「外观」）：格子外观、显示内容、
+/// 课程配色、主题颜色、显示字体。
 ///
 /// 顶部是实时预览：所有调节都会立即反映到预览（以及整个 App——主题色/
 /// 字体在 MaterialApp 层监听同一份设置），所见即所得。
+/// 上课播报开关 2.0.2 起挪到设置页「提醒」组（与提醒类开关同组），本页不再保留。
 class UiSettingsPage extends ConsumerWidget {
   const UiSettingsPage({super.key});
 
@@ -49,7 +52,7 @@ class UiSettingsPage extends ConsumerWidget {
     final slots = ref.watch(timeSlotsProvider).value ?? const <TimeSlot>[];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('界面设置'), centerTitle: true),
+      appBar: AppBar(title: const Text('外观'), centerTitle: true),
       body: ListView(
         children: [
           const _Header('实时预览'),
@@ -110,12 +113,6 @@ class UiSettingsPage extends ConsumerWidget {
             subtitle: const Text('开时左上角显示「第 X 周 · 单周/双周」，关时只显示「第 X 周」，默认关'),
             value: ui.showWeekParity,
             onChanged: (v) => apply(ui.copyWith(showWeekParity: v)),
-          ),
-          SwitchListTile(
-            title: const Text('上课播报'),
-            subtitle: const Text('主页顶部显示当前/下一节课状态条，默认关'),
-            value: ui.showClassBroadcast,
-            onChanged: (v) => apply(ui.copyWith(showClassBroadcast: v)),
           ),
           SwitchListTile(
             title: const Text('今天整列边框高亮'),
@@ -416,8 +413,9 @@ class _HsvPickerDialogState extends State<_HsvPickerDialog> {
   @override
   Widget build(BuildContext context) {
     final color = _hsv.toColor();
-    return AlertDialog(
-      title: const Text('自定义主题色'),
+    // 2.0.2（WB-202 第 4 项）：切全 App 统一弹窗组件（自定义内容 + 标准按钮区）
+    return AppDialog(
+      title: '自定义主题色',
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -815,22 +813,13 @@ class _FontSectionState extends State<_FontSection> {
   }
 
   Future<void> _removeFont(ImportedFont font) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除导入字体'),
-        content: Text('确定删除「${font.name}」吗？删除后使用该字体的设置会回到系统默认。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    // 2.0.2（WB-202 第 4 项）：切统一确认弹窗（破坏性标红）
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '删除导入字体',
+      message: '确定删除「${font.name}」吗？删除后使用该字体的设置会回到系统默认。',
+      confirmLabel: '删除',
+      destructive: true,
     );
     if (ok != true) return;
     await FontsService.removeFont(font);

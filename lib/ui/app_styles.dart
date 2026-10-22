@@ -17,6 +17,10 @@ class AppRadii {
 
   /// 启动页 Logo 等大块圆角
   static const double logo = 24;
+
+  /// 弹窗圆角（WB-202 第 4 项：全 App 统一弹窗组件 AppDialog 专用，
+  /// 信息弹窗与确认弹窗都走这一个值，不要再在各页面手搓 AlertDialog）
+  static const double dialog = 20;
 }
 
 class AppSpacing {

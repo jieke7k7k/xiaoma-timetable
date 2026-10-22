@@ -6,13 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models/ui_settings.dart';
 import 'database/dao.dart';
 import 'pages/about_page.dart';
-import 'pages/advanced_page.dart';
 import 'pages/ai_chat_page.dart';
 import 'pages/ai_settings_page.dart';
 import 'pages/announcements_page.dart';
 import 'pages/bridge_page.dart';
 import 'pages/changelog_page.dart';
 import 'pages/course_edit_page.dart';
+import 'pages/course_tools_page.dart';
 import 'pages/data_manage_page.dart';
 import 'pages/course_override_page.dart';
 import 'pages/course_search_page.dart';
@@ -250,7 +250,7 @@ class SimpleTimetableApp extends ConsumerWidget {
         '/course-edit': (context) => const CourseEditPage(),
         // 作息时间设置
         '/time-settings': (context) => const TimeSettingsPage(),
-        // 界面设置（格子外观/配色方案/主题色/字体）
+        // 外观设置（2.0.2 起由「界面设置」改名：格子外观/配色方案/主题色/字体）
         '/ui-settings': (context) => const UiSettingsPage(),
         // 课程导入入口
         '/import': (context) => const ImportPage(),
@@ -280,14 +280,14 @@ class SimpleTimetableApp extends ConsumerWidget {
         '/ai-chat': (context) => const AiChatPage(),
         // AI 助手设置（接口地址 / 模型 / Key）
         '/ai-settings': (context) => const AiSettingsPage(),
+        // 课表工具（2.0.2：课程搜索 / 空闲时段 / 考试倒计时 / 导出课表图片 / 日期备注）
+        '/course-tools': (context) => const CourseToolsPage(),
         // 权限（通知 / 精确闹钟 / 电池优化，首次启动会引导一次）
         '/permissions': (context) => const PermissionPage(),
         // 数据管理页（1.2.4：占用/备份快捷入口/恢复出厂）
         '/data-manage': (context) => const DataManagePage(),
-        // AI 桥（1.3.6：把 GitHub 私有仓当命令信箱）
+        // AI 桥（1.3.6：把 GitHub 私有仓当命令信箱；2.0.2 起入口在智能助手设置页）
         '/bridge': (context) => const BridgePage(),
-        // 高级与数据（2.0.1：AI 桥 / 权限 / 数据管理 / 关于 的二级页）
-        '/advanced': (context) => const AdvancedPage(),
       },
     );
   }
@@ -324,9 +324,9 @@ class _RootGate extends ConsumerWidget {
 /// 原来的「新建」页签不再占底栏，改成主页右上角的「+」按钮（见 WeekViewPage），
 /// 弹出的仍是原来那套「手动新建 / 导入课表」选择框。
 ///
-/// 底栏是自绘的 [_HomeBottomBar]（不用 NavigationBar）：中间主页按钮要明显
-/// 大于两侧，而且**长按不许弹名称气泡**——NavigationDestination 的长按会浮出
-/// label 气泡（用户发过截图），自绘按钮天然没有这个行为，也不包 Tooltip。
+/// 底栏是自绘的 [_HomeBottomBar]（不用 NavigationBar）：NavigationDestination
+/// 长按会浮出 label 气泡（用户发过截图），自绘按钮天然没有这个行为，也不包
+/// Tooltip。2.0.2 起三键等大平铺，中间不再是凸起大圆钮（见 [_HomeBottomBar]）。
 ///
 /// 1.3.6 起是 [ConsumerStatefulWidget]：AI 桥的静默同步可能产生数据变更，
 /// 改完要失效 coursesProvider/notesProvider 并联动三个服务，这些都得有 ref。
@@ -457,11 +457,13 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   }
 }
 
-/// 底栏：左「智能助手」、中「主页」（凸起大圆按钮）、右「设置」
+/// 底栏：左「智能助手」、中「主页」、右「设置」，三键等大平铺
 ///
-/// **刻意不用 NavigationBar**：一是中间按钮要比两侧明显大（凸起圆形），
-/// 二是 NavigationDestination 长按会浮出 label 气泡（用户明确要求不要），
-/// 自绘后两个问题一起消失。名称一律用常显的小字，不用 Tooltip。
+/// **刻意不用 NavigationBar**：NavigationDestination 长按会浮出 label 气泡
+/// （用户明确要求不要），自绘按钮天然没有这个行为，也不包 Tooltip。
+/// 2.0.2（WB-202 第 1 项）：中间按钮取消凸起圆形样式，与左右两键完全一致——
+/// 同图标大小（26）、同文字（11 号常显小字）、同高度，三键等大；选中态沿用
+/// 主题色 + 加粗即可辨（见 [_SideButton]）。
 class _HomeBottomBar extends StatelessWidget {
   const _HomeBottomBar({required this.index, required this.onChanged});
 
@@ -473,67 +475,54 @@ class _HomeBottomBar extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return SizedBox(
       height: kBottomBarHeight,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHigh,
-                border: Border(
-                  top: BorderSide(
-                    color: scheme.outlineVariant.withValues(alpha: 0.4),
-                  ),
-                ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHigh,
+          border: Border(
+            top: BorderSide(
+              color: scheme.outlineVariant.withValues(alpha: 0.4),
+            ),
+          ),
+        ),
+        // 三键等大：各占三分之一宽，图标/文字/高度完全一致
+        child: Row(
+          children: [
+            Expanded(
+              child: _SideButton(
+                icon: index == 0
+                    ? Icons.smart_toy
+                    : Icons.smart_toy_outlined,
+                label: '智能助手',
+                selected: index == 0,
+                onTap: () => onChanged(0),
               ),
             ),
-          ),
-          // 两侧按钮：横向铺满，点击区比图标大得多
-          Positioned.fill(
-            child: Row(
-              children: [
-                Expanded(
-                  child: _SideButton(
-                    icon: index == 0
-                        ? Icons.smart_toy
-                        : Icons.smart_toy_outlined,
-                    label: '智能助手',
-                    selected: index == 0,
-                    onTap: () => onChanged(0),
-                  ),
-                ),
-                // 中间给凸起的主页按钮让位（它的点击区是那个圆，不在这行里）
-                const SizedBox(width: 96),
-                Expanded(
-                  child: _SideButton(
-                    icon: index == 2 ? Icons.settings : Icons.settings_outlined,
-                    label: '设置',
-                    selected: index == 2,
-                    onTap: () => onChanged(2),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // 中间主页按钮：48px 圆 + 小字，整体上移形成凸起（2.0.1 收窄防遮挡课表）
-          Positioned(
-            left: 0,
-            right: 0,
-            top: -8,
-            child: Center(
-              child: _HomeButton(
+            Expanded(
+              child: _SideButton(
+                icon: index == 1
+                    ? Icons.calendar_view_week
+                    : Icons.calendar_view_week_outlined,
+                label: '主页',
                 selected: index == 1,
                 onTap: () => onChanged(1),
               ),
             ),
-          ),
-        ],
+            Expanded(
+              child: _SideButton(
+                icon: index == 2 ? Icons.settings : Icons.settings_outlined,
+                label: '设置',
+                selected: index == 2,
+                onTap: () => onChanged(2),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// 两侧的普通按钮（图标 + 常显小字）
+/// 底栏三个按钮共用（2.0.2 起中间「主页」也是这一样式）：图标 + 常显小字
 class _SideButton extends StatelessWidget {
   const _SideButton({
     required this.icon,
@@ -565,58 +554,6 @@ class _SideButton extends StatelessWidget {
               fontSize: 11,
               color: color,
               fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 中间的「主页」凸起圆按钮（明显大于两侧）
-class _HomeButton extends StatelessWidget {
-  const _HomeButton({required this.selected, required this.onTap});
-
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      customBorder: const CircleBorder(),
-      // 不包 Tooltip：长按不许弹名称气泡（用户明确要求）
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: selected ? scheme.primary : scheme.primaryContainer,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: scheme.shadow.withValues(alpha: 0.2),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Icon(
-              Icons.calendar_view_week,
-              size: 26,
-              color: selected ? scheme.onPrimary : scheme.onPrimaryContainer,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            '主页',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: selected ? scheme.primary : scheme.onSurfaceVariant,
             ),
           ),
         ],

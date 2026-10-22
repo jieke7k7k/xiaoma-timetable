@@ -2,6 +2,12 @@
 
 > 每完成一个阶段更新本文件，防止上下文丢失。
 
+## 2.0.2 变更（2026-10-22，WB-202 第二批：第 2、4 项 + 第 3 项补充）
+
+- 设置页 A 方案重组：新增二级页 `lib/pages/course_tools_page.dart`（路由 `/course-tools`，收课程搜索 / 空闲时段 / 考试倒计时 / 导出课表图片 / 日期备注，路由全部复用）；「高级与数据」拆解——AI 桥入口并入 `lib/pages/ai_settings_page.dart`（与接口地址 / 模型 / Key / 测试对话同页，测试对话在最底部），备份 / 恢复 / 导出 ICS / 数据管理与导入课表、学期管理同组「学期与数据」，权限与关于小马课表上浮一级页各单列一行；`/advanced` 路由与 `lib/pages/advanced_page.dart` 移除（文件留占位说明，提交时 `git rm`）。「界面设置」改名「外观」（`ui_settings_page.dart` 标题同步），上课播报开关从外观页移入设置页「提醒」组。
+- 全 App 统一弹窗（长期规范）：新增 `lib/widgets/app_dialog.dart`（`AppDialog` / `showAppInfoDialog` / `showAppConfirmDialog` / `AppInfoIconButton`，圆角取 `AppRadii.dialog`=20，`lib/ui/app_styles.dart` 新增该常量）；长说明（领 Key、桥页顶部说明）改为条目标题旁 ⓘ 信息弹窗；设置区与主页高频确认弹窗（settings / ui_settings / data_manage / week_view）已切该组件，规范条文写进 DEV_STATE.md。
+- 冷启动页码修复（WB-202 第 3 项补充）：`lib/pages/week_view_page.dart` 的 PageController 改为学期就绪后首次 build 懒创建，initialPage 取纯函数 `weekViewInitialPage(displayWeek, totalWeeks)`（与 DisplayWeekNotifier 同一套 clampForPage 口径），修掉「标题第 6 周、网格第 1 周」；单测 `test/week_view_initial_page_test.dart`。
+
 ## 2.0.1 变更（2026-10-22，真机反馈修复包 P1–P7）
 
 - 设置页分组：低频项（AI 桥 / 权限 / 数据管理 / 关于）收进新二级页 `lib/pages/advanced_page.dart`，路由 `/advanced`（main.dart 注册）；设置页本体重排为学期设置 / 界面设置 / 提醒设置 / 课程与工具 / 备注 / AI 设置（智能助手）/ 高级与数据。

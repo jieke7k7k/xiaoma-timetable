@@ -2,16 +2,28 @@ import 'package:flutter/material.dart';
 
 import '../services/ai_service.dart';
 import '../ui/app_styles.dart';
+import '../widgets/app_dialog.dart';
 
-/// 智能助手设置（设置 → AI 设置（智能助手）那一组，也可整页打开：/ai-settings）
+/// 领 Key 说明全文（WB-202 第 4 项：从长说明卡片平铺改为条目标题旁 ⓘ 弹窗，
+/// 正文一字不改）。
+const String kFreeKeyGuide =
+    '1. 打开 open.bigmodel.cn，注册并登录（手机号即可）；\n'
+    '2. 右上角「API Keys」→ 添加新的 API Key；\n'
+    '3. 复制那串 Key，粘回上面的输入框保存。\n\n'
+    '智谱的 Flash 型号有免费额度，日常问答基本够用；'
+    '若官方出了更新的 Flash 型号，直接改模型名即可。\n\n'
+    '也可以换成任意 OpenAI 兼容服务：改接口地址与模型名，'
+    '再填那家的 Key，其它逻辑完全一样。';
+
+/// 智能助手设置（设置 → 智能助手 → 智能助手设置）：/ai-settings
 ///
-/// 三个字段（接口地址 / 模型名 / API Key）都是纯文本，存 app_settings，
-/// 只落本机。预设值给的是智谱（open.bigmodel.cn）的 OpenAI 兼容地址与
-/// Flash 型号——免费额度够日常问答；换成任何 OpenAI 兼容服务只改前两项。
-///
-/// 表单抽成 [AiSettingsForm] 是为了两处复用：设置页里内嵌一组（用户要求
-/// 「设置页加 AI 助手一组」），聊天页顶部齿轮再整页打开同一份表单，
-/// 不用把三个字段与保存逻辑写两遍。
+/// 2.0.2（WB-202 第 2 项·A 方案）起本页是智能助手的二级页，与设置页一级
+/// 界面的两行入口配套，内容包括四块：
+/// 1. 接口地址 / 模型名 / API Key 表单（[AiSettingsForm]）；
+/// 2. 「怎么领一个免费的 Key」长说明——不再卡片平铺，改为表单标题旁的 ⓘ
+///    信息图标弹窗（正文见 [kFreeKeyGuide]，一字未改）；
+/// 3. AI 桥入口（原「高级与数据」组并入本页）；
+/// 4. 测试对话（放最底部，配好 Key 后发一句话验证连通）。
 class AiSettingsPage extends StatelessWidget {
   const AiSettingsPage({super.key});
 
@@ -23,7 +35,9 @@ class AiSettingsPage extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 24),
         children: const [
           AiSettingsForm(),
-          AiSettingsTips(),
+          _KeySecurityNote(),
+          _BridgeEntry(),
+          _AiTestChat(),
         ],
       ),
     );
@@ -118,9 +132,23 @@ class _AiSettingsFormState extends State<AiSettingsForm> {
             ? Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '接口（OpenAI 兼容）',
-                    style: Theme.of(context).textTheme.titleSmall,
+                  // 标题旁的 ⓘ（WB-202 第 4 项）：领 Key 长说明移入信息弹窗，
+                  // 不再以整张卡片平铺占地方；正文见 kFreeKeyGuide（一字未改）
+                  Row(
+                    children: [
+                      Text(
+                        '接口（OpenAI 兼容）',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      AppInfoIconButton(
+                        tooltip: '怎么领一个免费的 Key',
+                        onPressed: () => showAppInfoDialog(
+                          context,
+                          title: '怎么领一个免费的 Key',
+                          message: kFreeKeyGuide,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: AppSpacing.s),
                   TextField(
@@ -201,60 +229,169 @@ class _AiSettingsFormState extends State<AiSettingsForm> {
   }
 }
 
-/// 领 Key 的说明（整页与设置页「AI 助手」那组共用同一份文案）
-class AiSettingsTips extends StatelessWidget {
-  const AiSettingsTips({super.key});
+/// 密钥安全小注（原说明卡片底部的补充文案，不是长说明，保留为小字）
+class _KeySecurityNote extends StatelessWidget {
+  const _KeySecurityNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.l),
+      child: Text(
+        'API Key 只保存在本机、只用于请求头，不会写进日志；'
+        '备份文件里也不含密钥，可以放心导出（恢复时以本机这边的密钥为准）。',
+        style: Theme.of(context)
+            .textTheme
+            .bodySmall
+            ?.copyWith(color: Theme.of(context).colorScheme.outline),
+      ),
+    );
+  }
+}
+
+/// AI 桥入口（WB-202 第 2 项：原「高级与数据」组并入智能助手二级页）
+class _BridgeEntry extends StatelessWidget {
+  const _BridgeEntry();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.hub_outlined),
+      title: const Text('AI 桥'),
+      subtitle: const Text('把私有仓库当命令信箱：外部 AI 下指令改课表，删除类指令会先等你确认'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => Navigator.pushNamed(context, '/bridge'),
+    );
+  }
+}
+
+/// 测试对话（WB-202 第 2 项·A 方案）：配好 Key 后在这里发一句话验证连通。
+///
+/// 放在智能助手设置页最底部：不占用聊主页，也不写进聊天历史；只发用户这句
+/// 原文（不带课表上下文），成功显示回复、失败显示中文原因，用来判断
+/// 「接口地址 / 模型名 / Key 有没有配错」，不用切到底栏左键去试。
+class _AiTestChat extends StatefulWidget {
+  const _AiTestChat();
+
+  @override
+  State<_AiTestChat> createState() => _AiTestChatState();
+}
+
+class _AiTestChatState extends State<_AiTestChat> {
+  final TextEditingController _input = TextEditingController();
+
+  bool _sending = false;
+
+  /// 最近一次回复（成功时）
+  String? _reply;
+
+  /// 最近一次失败原因（中文）
+  String? _error;
+
+  @override
+  void dispose() {
+    _input.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final text = _input.text.trim();
+    if (text.isEmpty || _sending) return;
+    setState(() {
+      _sending = true;
+      _reply = null;
+      _error = null;
+    });
+    final result = await AiService.instance.chat(
+      [AiMessage(role: 'user', content: text)],
+    );
+    if (!mounted) return;
+    setState(() {
+      _sending = false;
+      if (result.ok) {
+        final t = result.text.trim();
+        _reply = t.isEmpty ? '（接口返回了空回复）' : result.text;
+      } else {
+        _error = result.error ?? '请求失败';
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Card(
-          margin: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.m),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '怎么领一个免费的 Key',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: AppSpacing.s),
-                const Text(
-                  '1. 打开 open.bigmodel.cn，注册并登录（手机号即可）；\n'
-                  '2. 右上角「API Keys」→ 添加新的 API Key；\n'
-                  '3. 复制那串 Key，粘回上面的输入框保存。\n\n'
-                  '智谱的 Flash 型号有免费额度，日常问答基本够用；'
-                  '若官方出了更新的 Flash 型号，直接改模型名即可。',
-                ),
-                const SizedBox(height: AppSpacing.s),
-                Text(
-                  '也可以换成任意 OpenAI 兼容服务：改接口地址与模型名，'
-                  '再填那家的 Key，其它逻辑完全一样。',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: scheme.outline),
-                ),
-              ],
+    return Card(
+      margin: const EdgeInsets.all(AppSpacing.l),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.m),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '测试对话',
+              style: Theme.of(context).textTheme.titleSmall,
             ),
-          ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              '配好后在这里发一句话，验证接口通不通，不用切到聊天页',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: scheme.outline),
+            ),
+            const SizedBox(height: AppSpacing.s),
+            TextField(
+              controller: _input,
+              minLines: 1,
+              maxLines: 3,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _send(),
+              decoration: const InputDecoration(
+                hintText: '例如：你好，确认一下连通',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.s),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: _sending ? null : _send,
+                icon: _sending
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send_outlined, size: 18),
+                label: const Text('发送'),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: AppSpacing.s),
+              Text(
+                _error!,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: scheme.error),
+              ),
+            ],
+            if (_reply != null) ...[
+              const SizedBox(height: AppSpacing.s),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(AppSpacing.s),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(AppRadii.chip),
+                ),
+                child: Text(_reply!),
+              ),
+            ],
+          ],
         ),
-        Padding(
-          padding: const EdgeInsets.all(AppSpacing.l),
-          child: Text(
-            'API Key 只保存在本机、只用于请求头，不会写进日志；'
-            '备份文件里也不含密钥，可以放心导出（恢复时以本机这边的密钥为准）。',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: scheme.outline),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

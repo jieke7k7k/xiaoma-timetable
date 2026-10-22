@@ -21,6 +21,7 @@ import '../utils/slot_layout.dart';
 import '../utils/week_calc.dart';
 import '../ui/app_styles.dart';
 import '../ui/grid_metrics.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/course_card.dart';
 import '../widgets/course_detail_sheet.dart';
 import '../widgets/empty_state.dart';
@@ -54,6 +55,32 @@ int bandsBefore(int section, List<GridBand> activeBands) {
   }
   return n;
 }
+
+/// 周视图数据门闩（WB-202 第 3 项）：异步数据尚未就绪时返回 true。
+///
+/// 冷启动 bug 的根因：课程 / 调课 / 作息 provider 首次构建还在 AsyncLoading 时
+/// `.value` 是 null，旧代码一句 `?? []` 把「加载中」当成「没有课程」，
+/// _WeekGrid 的 `visible.isEmpty` 直接渲染出「本周没有课程」空状态——杀进程
+/// 冷启动时 DB 查询还没回来，用户就看到空课表（截图为证：第 6 周实际满周有课）。
+/// 修法不是延时糊弄：数据未就绪就转圈，provider 推 AsyncData 时 Riverpod 自动
+/// 重建周视图，真实课程自己出现，不需要用户切周或重启。
+/// 纯函数，单测直接覆盖（见 test/week_view_load_gate_test.dart）。
+bool weekDataNotReady<T>(AsyncValue<T> async) =>
+    async.isLoading && async.value == null;
+
+/// WB-202 第 3 项补充：PageController 的初始页码。
+///
+/// 冷启动 bug 的根因：旧代码在 initState 里读 todayWeekProvider——那一刻
+/// currentSemesterProvider 还没就绪（value 为 null → 今天周次算成 0），
+/// PageController 只能停在 initialPage=0（第 1 周）；而 displayWeekProvider
+/// 的首值要到 build 里才第一次求值、ref.listen 不因首值触发，标题已经是
+/// 「第 6 周」网格却还停在第 1 周，切一下周才同步。
+/// 修法：PageController 延迟到学期就绪后的首次 build 里创建，initialPage
+/// 直接取钳制后的显示周（本函数），标题与网格首帧即一致，不需要跳页、
+/// 也不会闪烁。钳制口径与 DisplayWeekNotifier 完全一致（见 clampForPage）。
+/// 纯函数，单测直接覆盖（见 test/week_view_initial_page_test.dart）。
+int weekViewInitialPage(int displayWeek, int totalWeeks) =>
+    WeekCalc.clampForPage(displayWeek, totalWeeks) - 1;
 
 class _WeekViewPageState extends ConsumerState<WeekViewPage> {
   PageController? _pageController;
@@ -124,11 +151,12 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
     final a = pending.first;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      // 2.0.2（WB-202 第 4 项）：切全 App 统一弹窗组件
       showDialog<void>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(a.title),
-          content: Text(a.body),
+        builder: (ctx) => AppDialog(
+          title: a.title,
+          content: AppDialogText(a.body),
           actions: [
             FilledButton(
               onPressed: () async {
@@ -164,12 +192,9 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
     _focusTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
-    final todayWeek = ref.read(todayWeekProvider);
-    final totalWeeks = ref.read(currentSemesterProvider).value?.totalWeeks ?? 0;
-    // 页码按钳制后的周次算：今天超出总周数时（学期已结束）落在最后一周，
-    // 否则 PageController 的 initialPage 越界直接崩
-    final page = WeekCalc.clampForPage(todayWeek, totalWeeks) - 1;
-    _pageController = PageController(initialPage: page < 0 ? 0 : page);
+    // WB-202 第 3 项补充：PageController 不在这里创建了——initState 时刻
+    // 学期通常还没加载完（todayWeek 读成 0、总周数读成 0），initialPage 只能
+    // 瞎猜成 0；改为学期就绪后的首次 build 里按显示周懒创建（见 build）。
     // 1.3.2 启动提速：公告/更新检查要读本地状态文件 + 取包名（平台通道），
     // 挪到首帧之后再跑，别和课表首帧抢时间；横幅晚一帧出现对体验无影响。
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -248,8 +273,9 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
   ) {
     showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('${date.month}月${date.day}日的考试'),
+      // 2.0.2（WB-202 第 4 项）：切全 App 统一弹窗组件（自定义内容 + 标准按钮区）
+      builder: (ctx) => AppDialog(
+        title: '${date.month}月${date.day}日的考试',
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -310,11 +336,27 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
     if (semester == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    // WB-202 第 3 项 冷启动门闩：课程 / 调课 / 作息数据未就绪时显示加载中，
+    // 绝不把「加载中」渲染成「本周没有课程」空状态（根因与单测见 weekDataNotReady）
+    final coursesAsync = ref.watch(coursesProvider);
+    final overridesAsync = ref.watch(courseOverridesProvider);
+    final slotsAsync = ref.watch(timeSlotsProvider);
+    if (weekDataNotReady(coursesAsync) ||
+        weekDataNotReady(overridesAsync) ||
+        weekDataNotReady(slotsAsync)) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     final displayWeek = ref.watch(displayWeekProvider);
     final todayWeek = ref.watch(todayWeekProvider);
     final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
-    final courses = ref.watch(coursesProvider).value ?? [];
-    final overrides = ref.watch(courseOverridesProvider).value ?? [];
+    // WB-202 第 3 项补充：学期就绪后才创建 PageController，初始页即当前显示周
+    // （标题与网格首帧一致，不再出现「标题第 6 周、网格第 1 周」）。
+    // 创建后本页生命周期内只此一个实例；dispose 里统一回收。
+    _pageController ??= PageController(
+      initialPage: weekViewInitialPage(displayWeek, semester.totalWeeks),
+    );
+    final courses = coursesAsync.value ?? [];
+    final overrides = overridesAsync.value ?? [];
     final showOther = ref.watch(showOtherWeeksProvider);
     final autoCollapse = ref.watch(autoCollapseWeekendProvider);
     // 周末自适应收起也要看调课结果：某节课被单次调到周六/周日时不能收起
@@ -347,7 +389,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
       now: now,
       semester: semester,
       courses: courses,
-      timeSlots: ref.watch(timeSlotsProvider).value ?? const [],
+      timeSlots: slotsAsync.value ?? const [],
       overrides: overrides,
     );
     final focusSig =
@@ -987,31 +1029,31 @@ class _GridArea extends ConsumerWidget {
         final columnCount = displayDays.length;
         final cellWidth =
             (constraints.maxWidth - timeAxisWidth - 1) / columnCount;
-        // 底部给底栏（含凸起主页按钮）留内边距：最后一排课程卡不被遮挡（2.0.1）
-        final bottomPad = kBottomBarHeight;
         // 行高：默认用界面设置的固定格子高度；开启「自适应一屏」（B1）时
-        // 按可用高度均分（分隔带高度固定扣除），整表恰好一屏（扣除底部内边距后）
+        // 按可用高度均分（分隔带高度固定扣除），整表恰好一屏
         var rowHeight = ui.cellHeight;
         if (ui.autoFitHeight && constraints.maxHeight.isFinite) {
           final fit =
-              (constraints.maxHeight -
-                      bottomPad -
-                      activeBands.length * kBandHeight) /
+              (constraints.maxHeight - activeBands.length * kBandHeight) /
                   sectionCount;
           rowHeight = fit < 24 ? 24 : fit;
         }
         final totalHeight =
             sectionCount * rowHeight + activeBands.length * kBandHeight;
-        // 内容不足一屏时按「可视高 − 底部内边距」撑满（格子保持设定高度，空白留在底部）
-        final usableHeight = constraints.maxHeight - bottomPad;
-        final contentHeight = totalHeight < usableHeight ? usableHeight : totalHeight;
+        // 内容不足一屏时按可视高撑满（格子保持设定高度，空白留在底部）。
+        // 2.0.2（WB-202 第 1 项）：删掉 2.0.1 加的底部内边距——底栏三键改等大
+        // 平铺后没有凸起按钮，再留一层与底栏等高的内边距属于和底栏重复计算，
+        // 课表下方空一大截；网格区恢复贴合到底栏（与 2.0.0 一致）。
+        final contentHeight =
+            totalHeight < constraints.maxHeight
+                ? constraints.maxHeight
+                : totalHeight;
         return MediaQuery(
           // 降灵敏：子树手势触发距离 18 → 30，静置手指不再拖动课表
           data: MediaQuery.of(context).copyWith(
             gestureSettings: const DeviceGestureSettings(touchSlop: 30),
           ),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: kBottomBarHeight),
             physics: scrollLocked
                 ? const NeverScrollableScrollPhysics()
                 : const ClampingScrollPhysics(),
@@ -1862,22 +1904,13 @@ class _PositionedCourseCard extends StatelessWidget {
                 title: const Text('删除课程'),
                 onTap: () async {
                   Navigator.pop(ctx);
-                  final ok = await showDialog<bool>(
-                    context: context,
-                    builder: (d) => AlertDialog(
-                      title: const Text('删除课程'),
-                      content: Text('确定删除《${course.name}》吗？'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(d, false),
-                          child: const Text('取消'),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.pop(d, true),
-                          child: const Text('删除'),
-                        ),
-                      ],
-                    ),
+                  // 2.0.2（WB-202 第 4 项）：切统一确认弹窗（破坏性标红）
+                  final ok = await showAppConfirmDialog(
+                    context,
+                    title: '删除课程',
+                    message: '确定删除《${course.name}》吗？',
+                    confirmLabel: '删除',
+                    destructive: true,
                   );
                   if (ok == true && context.mounted) {
                     try {

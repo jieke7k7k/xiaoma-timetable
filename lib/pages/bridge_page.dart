@@ -10,6 +10,7 @@ import '../services/notification_service.dart';
 import '../services/widget_service.dart';
 import '../ui/app_styles.dart';
 import '../utils/bridge_codec.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/empty_state.dart';
 
 /// AI 桥（设置 → 高级与数据 → AI 桥）：把一个 GitHub 私有仓当**命令信箱**
@@ -478,14 +479,21 @@ class _SectionHeader extends StatelessWidget {
 }
 
 /// 未连接时的一句话说明 + 「连接 GitHub」大按钮
+///
+/// 2.0.2（WB-202 第 4 项）：原来整段平铺的说明文字移入标题旁的 ⓘ 信息弹窗
+/// （正文一字未改），卡片只留标题与主按钮，不再占半屏。
 class _ConnectCard extends StatelessWidget {
   const _ConnectCard({required this.onConnect});
 
   final VoidCallback onConnect;
 
+  /// AI 桥顶部说明全文（原卡片平铺文案，一字未改，移入 ⓘ 弹窗）
+  static const String _guide =
+      '用 GitHub 账号一步登录，App 会把一个私有仓库当命令信箱，'
+      '让外部 AI 帮你改课表（删除类指令会先等你确认）。';
+
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
       child: Padding(
@@ -493,13 +501,21 @@ class _ConnectCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '用 GitHub 账号一步登录，App 会把一个私有仓库当命令信箱，'
-              '让外部 AI 帮你改课表（删除类指令会先等你确认）。',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: scheme.onSurfaceVariant),
+            Row(
+              children: [
+                Text(
+                  '用 GitHub 账号一步登录',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                AppInfoIconButton(
+                  tooltip: 'AI 桥是什么',
+                  onPressed: () => showAppInfoDialog(
+                    context,
+                    title: 'AI 桥是什么',
+                    message: _guide,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: AppSpacing.m),
             SizedBox(
