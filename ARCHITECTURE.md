@@ -2,6 +2,13 @@
 
 > 每完成一个阶段更新本文件，防止上下文丢失。
 
+## 2.0.1 变更（2026-10-22，真机反馈修复包 P1–P7）
+
+- 设置页分组：低频项（AI 桥 / 权限 / 数据管理 / 关于）收进新二级页 `lib/pages/advanced_page.dart`，路由 `/advanced`（main.dart 注册）；设置页本体重排为学期设置 / 界面设置 / 提醒设置 / 课程与工具 / 备注 / AI 设置（智能助手）/ 高级与数据。
+- `UiSettings` 新增字段 `showClassBroadcast`（上课播报，默认关）；`showWeekParity` 语义由「左上角药丸」改为「标题单双周后缀」，默认 `true → false`（`showParityLabel` 字段保留兼容旧数据）。
+- 底栏主页按钮 56→48px、课表网格底部留 `kBottomBarHeight`(=72) 内边距（`lib/ui/grid_metrics.dart` 新增常量，main.dart 底栏与 week_view_page 网格共用）。
+- AI 桥改 GitHub 设备码登录：`BridgeService` 新增 `githubClientId` 常量与 `requestDeviceCode`/`pollDeviceToken`/`fetchGithubLogin`/`checkMailboxRepo`/`createMailboxRepo`/`saveDeviceLogin`/`disconnect`/`testConnection`；复用既有 `bridge_token`/`bridge_owner`/`bridge_repo` 三个 app_settings 键，无新表结构、无新依赖（url_launcher 已有）。信箱协议 / 同步 / 执行器未动。
+
 ## 项目信息
 
 - 项目路径：`D:\WorkBuddy\2026-10-14-16-48-07\simple_timetable`

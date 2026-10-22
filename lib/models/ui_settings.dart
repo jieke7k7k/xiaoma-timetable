@@ -22,7 +22,8 @@ class UiSettings {
     this.themeCustomColor,
     this.fontId = 'system',
     this.showParityLabel = true,
-    this.showWeekParity = true,
+    this.showWeekParity = false,
+    this.showClassBroadcast = false,
     this.autoFitHeight = true,
     this.highlightTodayColumn = false,
   });
@@ -85,15 +86,20 @@ class UiSettings {
   /// smiley 得意黑 / noto 思源黑体；imp_ 开头为用户导入字体（见 FontsService）
   final String fontId;
 
-  /// 标题是否显示单双周（1.2.3）：关掉后左上角只显示「第 X 周」，默认显示
+  /// 标题是否显示单双周（1.2.3）。2.0.1 起已由 [showWeekParity] 取代——
+  /// 保留此字段只为兼容老用户已存的旧值，不再参与界面显示。
   final bool showParityLabel;
 
-  /// 主页左上角是否显示当前周的单/双周小标识（2.0.0），默认显示。
+  /// 标题是否显示单双周后缀（2.0.1 起接管原 showParityLabel 的职责）：
+  /// 开时左上角标题为「第 X 周 · 单周/双周」，关时只显示「第 X 周」。默认关。
   ///
-  /// 与 [showParityLabel] 是**两个不同的东西**：那个管的是标题文字
-  /// 「第 3 周 · 单周」里的后缀，这个管的是左上角那枚「单周」小字标识。
-  /// 口径都是 WeekCalc 的当前周，学期外/未开学时都不显示。
+  /// 2.0.0 时这个字段管的是左上角那枚「单周/双周」小药丸，与标题里的后缀重复；
+  /// 2.0.1 删掉药丸、由它统一控制标题后缀，默认改为关（只影响没手动改过的用户）。
   final bool showWeekParity;
+
+  /// 主页顶部是否显示上课播报（当前/下一节课状态条，2.0.1），默认关。
+  /// 只影响主页顶部那条播报条，常驻通知不受此开关控制。
+  final bool showClassBroadcast;
 
   /// 行高自适应一屏（1.2.3）：开启后按可用高度均分行高、整表恰好一屏，
   /// 此时格子高度设置不生效；1.2.5 起默认开（新用户首开即一屏）
@@ -135,6 +141,7 @@ class UiSettings {
     String? fontId,
     bool? showParityLabel,
     bool? showWeekParity,
+    bool? showClassBroadcast,
     bool? autoFitHeight,
     bool? highlightTodayColumn,
   }) {
@@ -156,6 +163,7 @@ class UiSettings {
       fontId: fontId ?? this.fontId,
       showParityLabel: showParityLabel ?? this.showParityLabel,
       showWeekParity: showWeekParity ?? this.showWeekParity,
+      showClassBroadcast: showClassBroadcast ?? this.showClassBroadcast,
       autoFitHeight: autoFitHeight ?? this.autoFitHeight,
       highlightTodayColumn: highlightTodayColumn ?? this.highlightTodayColumn,
     );
@@ -177,6 +185,7 @@ class UiSettings {
     'fontId': fontId,
     'showParityLabel': showParityLabel,
     'showWeekParity': showWeekParity,
+    'showClassBroadcast': showClassBroadcast,
     'autoFitHeight': autoFitHeight,
     'highlightTodayColumn': highlightTodayColumn,
   };
@@ -229,7 +238,8 @@ class UiSettings {
             : null,
         fontId: st('fontId', 'system'),
         showParityLabel: bl('showParityLabel', true),
-        showWeekParity: bl('showWeekParity', true),
+        showWeekParity: bl('showWeekParity', false),
+        showClassBroadcast: bl('showClassBroadcast', false),
         autoFitHeight: bl('autoFitHeight', true),
         highlightTodayColumn: bl('highlightTodayColumn', false),
       );

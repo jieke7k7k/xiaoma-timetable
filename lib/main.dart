@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models/ui_settings.dart';
 import 'database/dao.dart';
 import 'pages/about_page.dart';
+import 'pages/advanced_page.dart';
 import 'pages/ai_chat_page.dart';
 import 'pages/ai_settings_page.dart';
 import 'pages/announcements_page.dart';
@@ -40,6 +41,7 @@ import 'services/notification_service.dart';
 import 'services/ongoing_notice_service.dart';
 import 'services/widget_service.dart';
 import 'ui/app_styles.dart';
+import 'ui/grid_metrics.dart';
 
 /// 全局异常日志的持久化键（app_settings 表）。
 /// 只保留最近一条，值为「时间 + 摘要」，供用户反馈/自查时查看。
@@ -284,6 +286,8 @@ class SimpleTimetableApp extends ConsumerWidget {
         '/data-manage': (context) => const DataManagePage(),
         // AI 桥（1.3.6：把 GitHub 私有仓当命令信箱）
         '/bridge': (context) => const BridgePage(),
+        // 高级与数据（2.0.1：AI 桥 / 权限 / 数据管理 / 关于 的二级页）
+        '/advanced': (context) => const AdvancedPage(),
       },
     );
   }
@@ -314,7 +318,7 @@ class _RootGate extends ConsumerWidget {
   }
 }
 
-/// 主框架：底栏三键「AI / 主页 / 设置」（2.0.0 改版）
+/// 主框架：底栏三键「智能助手 / 主页 / 设置」（2.0.0 改版，2.0.1 AI 改名智能助手）
 ///
 /// IndexedStack 常驻三个页：AI 聊天、课表主页、设置；默认停在**主页**。
 /// 原来的「新建」页签不再占底栏，改成主页右上角的「+」按钮（见 WeekViewPage），
@@ -334,7 +338,7 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 class _HomeShellState extends ConsumerState<HomeShell> {
-  /// 当前常驻页：0 = AI，1 = 主页，2 = 设置
+  /// 当前常驻页：0 = 智能助手，1 = 主页，2 = 设置
   int _index = 1;
 
   @override
@@ -453,7 +457,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   }
 }
 
-/// 底栏：左「AI」、中「主页」（凸起大圆按钮）、右「设置」
+/// 底栏：左「智能助手」、中「主页」（凸起大圆按钮）、右「设置」
 ///
 /// **刻意不用 NavigationBar**：一是中间按钮要比两侧明显大（凸起圆形），
 /// 二是 NavigationDestination 长按会浮出 label 气泡（用户明确要求不要），
@@ -468,7 +472,7 @@ class _HomeBottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return SizedBox(
-      height: 72,
+      height: kBottomBarHeight,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -493,7 +497,7 @@ class _HomeBottomBar extends StatelessWidget {
                     icon: index == 0
                         ? Icons.smart_toy
                         : Icons.smart_toy_outlined,
-                    label: 'AI',
+                    label: '智能助手',
                     selected: index == 0,
                     onTap: () => onChanged(0),
                   ),
@@ -511,7 +515,7 @@ class _HomeBottomBar extends StatelessWidget {
               ],
             ),
           ),
-          // 中间主页按钮：56px 圆 + 小字，整体上移形成凸起
+          // 中间主页按钮：48px 圆 + 小字，整体上移形成凸起（2.0.1 收窄防遮挡课表）
           Positioned(
             left: 0,
             right: 0,
@@ -587,8 +591,8 @@ class _HomeButton extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 56,
-            height: 56,
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
               color: selected ? scheme.primary : scheme.primaryContainer,
               shape: BoxShape.circle,
@@ -602,7 +606,7 @@ class _HomeButton extends StatelessWidget {
             ),
             child: Icon(
               Icons.calendar_view_week,
-              size: 30,
+              size: 26,
               color: selected ? scheme.onPrimary : scheme.onPrimaryContainer,
             ),
           ),

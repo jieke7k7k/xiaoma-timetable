@@ -18,11 +18,12 @@ void main() {
       expect(ui.themeCustomColor, isNull);
       expect(ui.fontId, 'system');
       expect(ui.fontFamily, isNull);
-      // 1.2.3 新增：单双周默认显示、自适应默认关
-      expect(ui.showParityLabel, isTrue);
+      // 1.2.3 新增：单双周默认显示、自适应默认开
+      expect(ui.showParityLabel, isTrue); // 老字段保留默认，仅兼容旧数据
       expect(ui.autoFitHeight, isTrue); // 1.2.5 起默认开
       expect(ui.highlightTodayColumn, isFalse); // 1.2.6 边框高亮默认关
-      expect(ui.showWeekParity, isTrue); // 2.0.0 左上角单双周小标识默认开
+      expect(ui.showWeekParity, isFalse); // 2.0.1 标题单双周默认关
+      expect(ui.showClassBroadcast, isFalse); // 2.0.1 上课播报默认关
       expect(UiSettings.fromEncoded('').cellHeight, 46);
       expect(UiSettings.fromEncoded('坏掉的 json').cellHeight, 46);
     });
@@ -43,6 +44,8 @@ void main() {
         themeCustomColor: 0xFF123456,
         fontId: 'lxgw',
         showParityLabel: false,
+        showWeekParity: true,
+        showClassBroadcast: true,
         autoFitHeight: true,
         highlightTodayColumn: true,
       );
@@ -61,6 +64,8 @@ void main() {
       expect(back.fontId, 'lxgw');
       expect(back.fontFamily, 'LXGWWenKai');
       expect(back.showParityLabel, isFalse);
+      expect(back.showWeekParity, isTrue);
+      expect(back.showClassBroadcast, isTrue);
       expect(back.autoFitHeight, isTrue);
       expect(back.highlightTodayColumn, isTrue);
     });

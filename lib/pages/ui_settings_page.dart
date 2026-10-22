@@ -107,16 +107,15 @@ class UiSettingsPage extends ConsumerWidget {
           ),
           SwitchListTile(
             title: const Text('标题显示单双周'),
-            subtitle: const Text('关掉后左上角只显示「第 X 周」'),
-            value: ui.showParityLabel,
-            onChanged: (v) => apply(ui.copyWith(showParityLabel: v)),
-          ),
-          SwitchListTile(
-            title: const Text('左上角单双周小标识'),
-            subtitle: const Text('在主页左上角显示当前周是「单周」还是「双周」，'
-                '未开学或学期已结束时不显示'),
+            subtitle: const Text('开时左上角显示「第 X 周 · 单周/双周」，关时只显示「第 X 周」，默认关'),
             value: ui.showWeekParity,
             onChanged: (v) => apply(ui.copyWith(showWeekParity: v)),
+          ),
+          SwitchListTile(
+            title: const Text('上课播报'),
+            subtitle: const Text('主页顶部显示当前/下一节课状态条，默认关'),
+            value: ui.showClassBroadcast,
+            onChanged: (v) => apply(ui.copyWith(showClassBroadcast: v)),
           ),
           SwitchListTile(
             title: const Text('今天整列边框高亮'),

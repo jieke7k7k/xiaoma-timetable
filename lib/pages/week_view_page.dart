@@ -359,12 +359,6 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
       );
     }
 
-    // 左上角单双周小标识：开关在「界面设置 → 左上角单双周小标识」（默认开）。
-    // 用的是「今天是第几周」而不是正在浏览的周次，翻到别的周时它仍指当前周
-    final parityText = ui.showWeekParity
-        ? WeekCalc.parityLabel(todayWeek, totalWeeks: semester.totalWeeks)
-        : null;
-
     // 学期切换联动：semester 变化时把 PageController 跳到新学期的「本周」，
     // 并 clamp 防止旧学期残留的页码超出新学期总周数导致越界
     ref.listen(currentSemesterProvider, (prev, next) {
@@ -411,7 +405,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      ui.showParityLabel
+                      ui.showWeekParity
                           ? WeekCalc.weekTitle(displayWeek)
                           : '第 $displayWeek 周',
                       style: const TextStyle(
@@ -426,28 +420,6 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
                     ),
                   ],
                 ),
-                // 当前周的单/双周小标识（2.0.0）：口径是 WeekCalc 的当前周，
-                // 未开学（week ≤ 0）或学期已结束时 parityLabel 返回 null，整个不显示
-                if (parityText != null) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(AppRadii.chip),
-                    ),
-                    child: Text(
-                      parityText,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
-                      ),
-                    ),
-                  ),
-                ],
                 Icon(_showJumper ? Icons.expand_less : Icons.expand_more),
               ],
             ),
@@ -551,8 +523,9 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
       ),
       body: Column(
         children: [
-          // 当前/下一节课状态条（1.2.0）：点一下回到本周
-          _ClassFocusBar(focus: focus, now: now, onTap: _goToday),
+          // 当前/下一节课状态条（1.2.0）：点一下回到本周；由「上课播报」开关控制显隐
+          if (ui.showClassBroadcast)
+            _ClassFocusBar(focus: focus, now: now, onTap: _goToday),
           // 更新提示横幅（1.2.4）：有新版且这个版本没被关过
           if (_channel != null &&
               _currentCode > 0 &&
@@ -1014,27 +987,31 @@ class _GridArea extends ConsumerWidget {
         final columnCount = displayDays.length;
         final cellWidth =
             (constraints.maxWidth - timeAxisWidth - 1) / columnCount;
+        // 底部给底栏（含凸起主页按钮）留内边距：最后一排课程卡不被遮挡（2.0.1）
+        final bottomPad = kBottomBarHeight;
         // 行高：默认用界面设置的固定格子高度；开启「自适应一屏」（B1）时
-        // 按可用高度均分（分隔带高度固定扣除），整表恰好一屏
+        // 按可用高度均分（分隔带高度固定扣除），整表恰好一屏（扣除底部内边距后）
         var rowHeight = ui.cellHeight;
         if (ui.autoFitHeight && constraints.maxHeight.isFinite) {
           final fit =
-              (constraints.maxHeight - activeBands.length * kBandHeight) /
-              sectionCount;
+              (constraints.maxHeight -
+                      bottomPad -
+                      activeBands.length * kBandHeight) /
+                  sectionCount;
           rowHeight = fit < 24 ? 24 : fit;
         }
         final totalHeight =
             sectionCount * rowHeight + activeBands.length * kBandHeight;
-        // 内容不足一屏时按可视高撑满（格子保持设定高度，空白留在底部）
-        final contentHeight = totalHeight < constraints.maxHeight
-            ? constraints.maxHeight
-            : totalHeight;
+        // 内容不足一屏时按「可视高 − 底部内边距」撑满（格子保持设定高度，空白留在底部）
+        final usableHeight = constraints.maxHeight - bottomPad;
+        final contentHeight = totalHeight < usableHeight ? usableHeight : totalHeight;
         return MediaQuery(
           // 降灵敏：子树手势触发距离 18 → 30，静置手指不再拖动课表
           data: MediaQuery.of(context).copyWith(
             gestureSettings: const DeviceGestureSettings(touchSlop: 30),
           ),
           child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: kBottomBarHeight),
             physics: scrollLocked
                 ? const NeverScrollableScrollPhysics()
                 : const ClampingScrollPhysics(),

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/ai_service.dart';
 import '../ui/app_styles.dart';
 
-/// AI 助手设置（设置 → AI 助手 的那一组，也可整页打开：/ai-settings）
+/// 智能助手设置（设置 → AI 设置（智能助手）那一组，也可整页打开：/ai-settings）
 ///
 /// 三个字段（接口地址 / 模型名 / API Key）都是纯文本，存 app_settings，
 /// 只落本机。预设值给的是智谱（open.bigmodel.cn）的 OpenAI 兼容地址与
@@ -18,7 +18,7 @@ class AiSettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('AI 助手设置'), centerTitle: true),
+      appBar: AppBar(title: const Text('智能助手设置'), centerTitle: true),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 24),
         children: const [

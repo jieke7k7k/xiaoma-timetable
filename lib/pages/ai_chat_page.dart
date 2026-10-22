@@ -14,7 +14,7 @@ import '../utils/ai_context.dart';
 import '../utils/override_effect.dart';
 import '../widgets/empty_state.dart';
 
-/// 内置 AI 助手聊天页（底栏左「AI」）
+/// 内置智能助手聊天页（底栏左「智能助手」，2.0.1 由「AI」改名）
 ///
 /// 三件事：
 /// 1. 发送时**现取**课表上下文（学期/本周课表/临近考试/今明备注）塞进 system 提示，
@@ -193,7 +193,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AI 助手'),
+        title: const Text('智能助手'),
         centerTitle: true,
         actions: [
           IconButton(
@@ -240,11 +240,11 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                               padding: const EdgeInsets.all(AppSpacing.l),
                               child: EmptyState(
                                 icon: Icons.smart_toy_outlined,
-                                title: '还没配置 AI',
+                                title: '还没配置智能助手',
                                 message: '填好接口地址、模型名和 API Key 就能用。'
                                     '默认填的是智谱（open.bigmodel.cn），'
                                     '注册后在「API Keys」里免费领一个 Key。',
-                                actionLabel: '去 AI 设置',
+                                actionLabel: '去智能助手设置',
                                 onAction: () async {
                                   await Navigator.pushNamed(
                                     context,

@@ -1,8 +1,44 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-10-22（2.0.0：内置 AI 助手 + 界面改版 + 首次权限）
+> 更新时间：2026-10-22（2.0.1：真机反馈修复包 P1–P7）
 
 ## 做到哪了
+
+## 2026-10-22（2.0.1 真机反馈修复包：P1–P7，未跑命令）
+
+目标版本 2.0.1+16。逐项修 2.0.0 真机反馈，未改规格之外的功能；沿用 Riverpod 手写 Notifier / Dao 单例 / 中文文案注释。`flutter analyze` / `flutter test` 由你执行。
+
+### P1 单双周重复显示 + 开关默认关
+- `lib/models/ui_settings.dart`：`showWeekParity` 默认 `true → false`（构造默认 + `fromEncoded` 的 `bl('showWeekParity', false)`），注释改为「标题是否显示单双周后缀」；`showParityLabel` 字段保留仅兼容旧数据、不再参与显示。
+- `lib/pages/week_view_page.dart`：删掉标题旁那枚「单周/双周」药丸与 `parityText` 计算；标题后缀由 `showParityLabel` 改读 `showWeekParity`。
+- `lib/pages/ui_settings_page.dart`：删「左上角单双周小标识」开关；「标题显示单双周」开关改绑 `showWeekParity`，副标题注明默认关。
+
+### P2 上课播报开关（默认关）
+- `UiSettings` 新增 `showClassBroadcast`（默认关，JSON 键 `showClassBroadcast`）。
+- `lib/pages/ui_settings_page.dart` 加「上课播报」开关；`week_view_page.dart` 状态条 `_ClassFocusBar` 改由 `ui.showClassBroadcast` 控制显隐（常驻通知不受影响）。
+
+### P3 主页按钮过大遮挡课表
+- `lib/ui/grid_metrics.dart` 新增 `kBottomBarHeight = 72`。
+- `lib/main.dart`：主页圆按钮 56→48、图标 30→26；底栏高度改引 `kBottomBarHeight`。
+- `lib/pages/week_view_page.dart` `_GridArea`：滚动体加 `padding: bottom kBottomBarHeight`，autoFit 与 contentHeight 计算同步扣除该内边距，保证任何状态最后一排课程卡不被底栏/按钮遮挡。
+
+### P4 AI 按钮改名
+- 底栏「AI」→「智能助手」（`main.dart`）；聊天页标题「AI 助手」→「智能助手」、空态「还没配置 AI」→「还没配置智能助手」、「去 AI 设置」→「去智能助手设置」（`ai_chat_page.dart`）；设置页标题「AI 助手设置」→「智能助手设置」（`ai_settings_page.dart`）。服务名/类名不动。
+
+### P5 设置页分组 + 低频收二级
+- 新增 `lib/pages/advanced_page.dart`（路由 `/advanced`，`main.dart` 注册）：收 AI 桥 / 权限 / 数据管理（备份、恢复、导出 ICS、数据管理）/ 关于小马课表。
+- `lib/pages/settings_page.dart` 重排为：学期设置 / 界面设置（含主题三档、显示非本周、周末收起、小部件刷新与状态、节次时间）/ 提醒设置 / 课程与工具（含导入课表）/ 备注 / AI 设置（智能助手）/ 高级与数据。入口一个不少、路由不变。
+
+### P6 AI 桥设备码登录
+- `lib/services/bridge_service.dart`：新增 `githubClientId = 'Ov23liosvFFdJSTw827b'` 常量与设备码流程方法 `requestDeviceCode` / `pollDeviceToken` / `fetchGithubLogin` / `checkMailboxRepo` / `createMailboxRepo` / `saveDeviceLogin` / `disconnect` / `testConnection` 及 `DeviceCodeResponse` / `DeviceTokenStatus` / `DeviceTokenResponse` 类型。信箱协议、同步逻辑、执行器一律未动。
+- `lib/pages/bridge_page.dart` 重写：未连接只显示一句话 + 「连接 GitHub」；点后大字展示 user_code + verification_uri + 「打开 GitHub 输码」（url_launcher）+ 取消；按 interval 轮询（pending 继续、slow_down 加长、expired/denied 给人话并允许重试）；成功存 `bridge_token`、`bridge_owner` 自动取 login、`bridge_repo` 默认 `xiaoma-app-bridge`；查仓 404 给「一键创建信箱仓」（POST /user/repos + 三个 .gitkeep）；已连接显示「已连接为 @login · 仓库」+ 同步/待确认（位置下移）+ 断开连接；底部「高级」折叠区保留手动令牌方式（保存 + 测试连接=只读列 commands）。
+
+### P7 小米负一屏仍无小部件（按调研结论执行，未改元数据）
+- 未动 `course_widget_info.xml` 与 Manifest 部件声明。结论：本应用部件元数据完整（widgetCategory=home_screen、previewImage/previewLayout、targetCell 4×3、description、receiver+APPWIDGET_UPDATE+meta-data 均在），桌面小部件选择器能正常列出并添加，AppWidgetManager 侧无问题；小米智能助理的添加列表按服务器下发目录 + 已安装应用匹配，-1 屏若设为「Google 发现」则没有添加入口，应用侧不存在能保证被负一屏收录的元数据。
+- 手机侧排查清单：① 设置 → 主屏幕，确认 -1 屏选的是「智能助理」而非「Google 发现」；② 把智能助理更新到最新版；③ 重启手机后，进负一屏编辑页 → 添加小部件 → 在「安卓小部件」分类里找「今日课程」。
+
+### 测试
+- `test/ui_settings_test.dart`：`showWeekParity` 默认断言 `isTrue → isFalse`；新增 `showClassBroadcast` 默认关断言；往返用例补 `showWeekParity` / `showClassBroadcast` 字段。
 
 ## 2026-10-22（2.0.0 收官大包：内置 AI + 底栏三键 + 首次权限，307 → 340 测试基线，未跑命令）
 

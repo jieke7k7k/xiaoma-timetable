@@ -39,6 +39,10 @@ class BridgeService {
   static const String pendingKey = 'bridge_pending';
   static const String lastSyncKey = 'last_bridge_sync';
 
+  /// GitHub OAuth App 的 Client ID（公开标识符，设备码流程用，直接写死即可，
+  /// 无需保密——它只用于「申请一个设备码」，真正敏感的是换回来的 access_token）。
+  static const String githubClientId = 'Ov23liosvFFdJSTw827b';
+
   // ---------- 仓库内的固定路径 ----------
 
   static const String commandsDir = 'commands';
@@ -84,6 +88,298 @@ class BridgeService {
     final raw = await Dao.instance.getSetting(lastSyncKey);
     if (raw == null || raw.trim().isEmpty) return null;
     return raw;
+  }
+
+  // ---------- 设备码登录（GitHub Device Flow）----------
+  //
+  // 普通用户走这条「一步登录」：App 向 GitHub 申请设备码 → 用户在浏览器输码授权 →
+  // App 轮询拿到 access_token → 自动取 login 填 bridge_owner。信箱协议 / 同步逻辑 /
+  // 执行器一律不动，只换「令牌从哪来」。
+
+  /// 申请设备码（第一步）：POST https://github.com/login/device/code。
+  /// 成功返回 user_code 等信息；失败时 [DeviceCodeResponse.error] 为中文原因。
+  Future<DeviceCodeResponse> requestDeviceCode() async {
+    final res = await _deviceFlowPost(
+      'https://github.com/login/device/code',
+      const {'client_id': githubClientId, 'scope': 'repo'},
+    );
+    final map = res.json;
+    if (res.status < 200 || res.status >= 300 || map is! Map<String, dynamic>) {
+      return DeviceCodeResponse(
+        deviceCode: '',
+        userCode: '',
+        verificationUri: '',
+        intervalSeconds: 5,
+        error: res.error ?? _deviceErrorText(res.status, map),
+      );
+    }
+    final deviceCode = map['device_code'];
+    final userCode = map['user_code'];
+    final verificationUri = map['verification_uri'];
+    if (deviceCode is! String ||
+        deviceCode.isEmpty ||
+        userCode is! String ||
+        userCode.isEmpty ||
+        verificationUri is! String) {
+      return const DeviceCodeResponse(
+        deviceCode: '',
+        userCode: '',
+        verificationUri: '',
+        intervalSeconds: 5,
+        error: 'GitHub 返回的内容无法识别，请稍后重试',
+      );
+    }
+    final interval = map['interval'];
+    return DeviceCodeResponse(
+      deviceCode: deviceCode,
+      userCode: userCode,
+      verificationUri: verificationUri,
+      intervalSeconds: interval is int && interval > 0 ? interval : 5,
+    );
+  }
+
+  /// 轮询令牌（第二步）：POST https://github.com/login/oauth/access_token。
+  /// [deviceCode] 为第一步拿到的 device_code。
+  Future<DeviceTokenResponse> pollDeviceToken(String deviceCode) async {
+    final res = await _deviceFlowPost(
+      'https://github.com/login/oauth/access_token',
+      {
+        'client_id': githubClientId,
+        'device_code': deviceCode,
+        'grant_type': 'urn:ietf:params:oauth:grant-type:device_code',
+      },
+    );
+    final map = res.json;
+    if (res.status < 200 || res.status >= 300 || map is! Map<String, dynamic>) {
+      return DeviceTokenResponse(
+        status: DeviceTokenStatus.error,
+        error: res.error ?? '授权请求失败（HTTP ${res.status}）',
+      );
+    }
+    final token = map['access_token'];
+    if (token is String && token.isNotEmpty) {
+      return DeviceTokenResponse(
+        status: DeviceTokenStatus.success,
+        accessToken: token,
+      );
+    }
+    switch (map['error']?.toString()) {
+      case 'authorization_pending':
+        return const DeviceTokenResponse(status: DeviceTokenStatus.pending);
+      case 'slow_down':
+        return const DeviceTokenResponse(status: DeviceTokenStatus.slowDown);
+      case 'expired_token':
+        return const DeviceTokenResponse(
+          status: DeviceTokenStatus.expired,
+          error: '设备码已过期，请重新申请',
+        );
+      case 'access_denied':
+        return const DeviceTokenResponse(
+          status: DeviceTokenStatus.denied,
+          error: '你拒绝了授权，可以重新申请',
+        );
+      default:
+        return DeviceTokenResponse(
+          status: DeviceTokenStatus.error,
+          error: '授权失败：${map['error'] ?? '未知错误'}',
+        );
+    }
+  }
+
+  /// 用 access_token 取当前登录用户的 login（`GET /user`）。失败返回 null。
+  Future<String?> fetchGithubLogin(String token) async {
+    final res = await _githubApiRequest('GET', '/user', token: token);
+    final map = res.json;
+    if (res.status < 200 || res.status >= 300 || map is! Map<String, dynamic>) {
+      return null;
+    }
+    final login = map['login'];
+    return login is String && login.isNotEmpty ? login : null;
+  }
+
+  /// 检查信箱仓是否存在：true 存在、false 不存在（404）、null 不确定（网络/权限等）。
+  Future<bool?> checkMailboxRepo({
+    required String owner,
+    required String repo,
+    required String token,
+  }) async {
+    final res = await _githubApiRequest(
+      'GET',
+      '/repos/$owner/$repo',
+      token: token,
+    );
+    if (res.status == 404) return false;
+    if (res.status >= 200 && res.status < 300) return true;
+    return null;
+  }
+
+  /// 一键创建信箱仓：POST /user/repos（private + auto_init），再用 Contents API
+  /// 建 commands/.gitkeep、results/.gitkeep、state/.gitkeep 三个占位文件。
+  /// 返回 null 表示成功，否则为中文错误原因。
+  Future<String?> createMailboxRepo({
+    required String owner,
+    required String repo,
+    required String token,
+  }) async {
+    final create = await _githubApiRequest(
+      'POST',
+      '/user/repos',
+      token: token,
+      body: {'name': repo, 'private': true, 'auto_init': true},
+    );
+    if (create.status < 200 || create.status >= 300) {
+      return create.error ?? '创建仓库失败（HTTP ${create.status}）';
+    }
+    final cfg = BridgeSettings.clean(owner: owner, repo: repo, token: token);
+    for (final dir in const ['commands', 'results', 'state']) {
+      final err = await writeRemoteFile(cfg, '$dir/.gitkeep', 'bridge');
+      if (err != null) return err;
+    }
+    return null;
+  }
+
+  /// 设备码登录成功后落库：写令牌 / 归属名（login）/ 默认仓库名。
+  Future<void> saveDeviceLogin({
+    required String token,
+    required String owner,
+    required String repo,
+  }) async {
+    await Dao.instance.setSetting(tokenKey, token);
+    await Dao.instance.setSetting(ownerKey, owner);
+    await Dao.instance.setSetting(repoKey, repo);
+  }
+
+  /// 断开连接：清令牌与归属名（仓库名保留默认值，下次连接再覆盖）。
+  Future<void> disconnect() async {
+    await Dao.instance.setSetting(tokenKey, '');
+    await Dao.instance.setSetting(ownerKey, '');
+  }
+
+  /// 测试连接（高级手动方式）：只读列 commands/ 目录，验证 owner/repo/令牌能访问。
+  /// 成功返回目录里的文件名列表（404 也算连接成功，只是目录还空着）；失败抛中文异常。
+  Future<List<String>> testConnection({
+    required String owner,
+    required String repo,
+    required String token,
+  }) async {
+    final cfg = BridgeSettings.clean(owner: owner, repo: repo, token: token);
+    final errors = <String>[];
+    final names = await _listCommandFiles(cfg, errors);
+    if (errors.isNotEmpty) {
+      throw Exception(errors.first);
+    }
+    return names;
+  }
+
+  /// GitHub 设备码流程的 form 表单 POST（auth 域名，非 api 域名；表单编码，
+  /// Accept: application/json）。返回与 [_request] 同构的 HttpResult。
+  Future<HttpResult> _deviceFlowPost(
+    String url,
+    Map<String, String> form,
+  ) async {
+    final client = HttpClient()..connectionTimeout = _connectTimeout;
+    try {
+      final req = await client.postUrl(Uri.parse(url));
+      req.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      req.headers.set(HttpHeaders.userAgentHeader, 'xiaoma-timetable');
+      req.headers.contentType = ContentType(
+        'application',
+        'x-www-form-urlencoded',
+      );
+      req.write(Uri(queryParameters: form).query);
+      final resp = await req.close().timeout(_responseTimeout);
+      final raw = await resp
+          .transform(utf8.decoder)
+          .join()
+          .timeout(_responseTimeout);
+      Object? decoded;
+      if (raw.isNotEmpty) {
+        try {
+          decoded = jsonDecode(raw);
+        } catch (_) {
+          decoded = null;
+        }
+      }
+      return (status: resp.statusCode, json: decoded, error: null);
+    } on TimeoutException catch (_) {
+      return (status: -1, json: null, error: '请求超时');
+    } on SocketException catch (_) {
+      return (status: -1, json: null, error: '网络不可用');
+    } catch (e) {
+      final text = e.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+      return (
+        status: -1,
+        json: null,
+        error: '请求失败：${text.length > 120 ? text.substring(0, 120) : text}',
+      );
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// GitHub API 通用请求（Bearer 令牌 + JSON），供设备码流程取用户信息 / 查仓 /
+  /// 建仓用。与 [_request] 的区别：[_request] 绑定「仓库 Contents 路径 + 桥配置」，
+  /// 这里是 /user、/repos/{owner}/{repo}、/user/repos 等非 Contents 接口。
+  Future<HttpResult> _githubApiRequest(
+    String method,
+    String path, {
+    required String token,
+    Map<String, dynamic>? body,
+    Map<String, String>? query,
+  }) async {
+    final client = HttpClient()..connectionTimeout = _connectTimeout;
+    try {
+      final uri = Uri.https('api.github.com', path, query);
+      final req = await client.openUrl(method, uri);
+      req.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
+      req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+      req.headers.set(HttpHeaders.userAgentHeader, 'xiaoma-timetable');
+      req.headers.set('X-GitHub-Api-Version', '2022-11-28');
+      if (body != null) {
+        req.headers.contentType = ContentType.json;
+        req.write(jsonEncode(body));
+      }
+      final resp = await req.close().timeout(_responseTimeout);
+      final raw = await resp
+          .transform(utf8.decoder)
+          .join()
+          .timeout(_responseTimeout);
+      Object? decoded;
+      if (raw.isNotEmpty) {
+        try {
+          decoded = jsonDecode(raw);
+        } catch (_) {
+          decoded = null;
+        }
+      }
+      return (status: resp.statusCode, json: decoded, error: null);
+    } on TimeoutException catch (_) {
+      return (status: -1, json: null, error: '请求超时');
+    } on SocketException catch (_) {
+      return (status: -1, json: null, error: '网络不可用');
+    } on FormatException catch (_) {
+      return (status: -1, json: null, error: '返回内容不是合法 JSON');
+    } catch (e) {
+      final text = e.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+      return (
+        status: -1,
+        json: null,
+        error: '请求失败：${text.length > 120 ? text.substring(0, 120) : text}',
+      );
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// 设备码申请失败时，从错误响应里尽量抠一句人话（认 error / error_description）。
+  String _deviceErrorText(int status, Object? json) {
+    if (json is Map<String, dynamic>) {
+      final desc = json['error_description']?.toString();
+      if (desc != null && desc.isNotEmpty) return desc;
+      final err = json['error']?.toString();
+      if (err != null && err.isNotEmpty) return err;
+    }
+    return '申请设备码失败（HTTP $status）';
   }
 
   // ---------- 待确认队列 ----------
@@ -680,4 +976,66 @@ class _BatchOutcome {
   final int executed;
   final int failed;
   final int awaiting;
+}
+
+/// 设备码登录第一步（申请设备码）的结果
+class DeviceCodeResponse {
+  const DeviceCodeResponse({
+    required this.deviceCode,
+    required this.userCode,
+    required this.verificationUri,
+    required this.intervalSeconds,
+    this.error,
+  });
+
+  /// 轮询用，不展示给用户
+  final String deviceCode;
+
+  /// 用户要在 GitHub 页面输入的那串码（大字展示）
+  final String userCode;
+
+  /// 输码网址（一般就是 https://github.com/login/device）
+  final String verificationUri;
+
+  /// 建议轮询间隔（秒）
+  final int intervalSeconds;
+
+  /// 失败原因（中文）；成功为 null
+  final String? error;
+
+  bool get ok => error == null;
+}
+
+/// 设备码轮询的结果状态
+enum DeviceTokenStatus {
+  /// 用户还没授权，继续等
+  pending,
+
+  /// 用户还没输码，服务器让放慢轮询
+  slowDown,
+
+  /// 拿到令牌
+  success,
+
+  /// 设备码过期
+  expired,
+
+  /// 用户拒绝了授权
+  denied,
+
+  /// 其它错误（网络 / 服务器）
+  error,
+}
+
+/// 设备码轮询（第二步）的结果
+class DeviceTokenResponse {
+  const DeviceTokenResponse({required this.status, this.accessToken, this.error});
+
+  final DeviceTokenStatus status;
+
+  /// 成功时的 access_token
+  final String? accessToken;
+
+  /// 失败原因（中文）
+  final String? error;
 }
