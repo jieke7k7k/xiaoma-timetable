@@ -1,8 +1,18 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-10-22（2.0.2 第二批：WB-202 第 2、4 项 + 第 3 项补充）
+> 更新时间：2026-10-23（2.0.4+19：WB_SPEC_204 桥登录改 App 内嵌 WebView 自动填码）
 
 ## 做到哪了
+
+## 2026-10-23（2.0.4+19：WB_SPEC_204，未跑命令）
+
+规格见仓库根 `WB_SPEC_204.md`；`flutter analyze` / `flutter test` 由主会话代跑。沿用 Riverpod 手写 Notifier / 中文文案注释，未动规格无关文件。
+
+- 新增 `lib/pages/bridge_web_login_page.dart`：WebView 内嵌打开 GitHub 设备码页（`WebViewController` + `JavaScriptMode.unrestricted` + 主流 Chrome Android UA，仿 `web_import_page.dart` 写法）；AppBar 标题「GitHub 授权」，右侧刷新 / 在浏览器打开（url_launcher 同一地址），左上角关闭；底部小字「授权完成后关闭本页返回，App 会自动完成连接。」。轮询换令牌仍归桥页，本页不碰令牌。
+- 自动填码：`onPageFinished` 每次页面加载完后 `runJavaScriptReturningResult` 注入一段 JS（设备码以字面量带入）。触发条件：页面里「可见的、单字符文本输入框」（type 为 text/tel 或无 type、有 maxlength 且 <=2、有实际尺寸且未隐藏）**恰好 8 个**才填，否则什么都不做（登录页/选账号页等下一次页面加载再触发）。填法：去连字符取 8 字符，逐格用 `Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set` 原生 setter 赋值，并依次派发 `input`(bubbles) 与 `change` 事件。防重复填：Dart 侧 `Set<String> _filledKeys` 记「页面 URL + 设备码」，且只有 JS 回传 `filled`（真填上）才记 key——没填上不记，下一次页面加载还会再试；已记 key 的同一 URL 再次 onPageFinished 直接跳过，不覆盖用户手改。JS 全段 try/catch 回传状态串，Dart 侧注入异常也静默吞掉，不影响手动输入。
+- `lib/pages/bridge_page.dart`：设备码卡主按钮改「在 App 内打开并自动填码」（push `BridgeWebLoginPage`，带当前码与 verificationUri）；原「去 GitHub 粘贴」降为次要按钮并改名「在浏览器打开（手动输码）」；三步文案换新流程（① 点「在 App 内打开并自动填码」② 登录/确认账号，码已自动填好，点 Continue 并授权 ③ 关闭页面返回，App 自动完成连接）；2.0.3 的自动复制与「复制代码」按钮保留（复制成功 SnackBar 改为「已复制，可作为手动输码备用」）。类注释补 2.0.4 说明，`_openVerification` 改名 `_openInBrowser`。
+- 测试：新增 `test/bridge_page_test.dart`（桥页按钮存在性/文案）：sqflite_common_ffi 内存库 + `DbHelper.useDatabaseForTest` + `HttpOverrides` 假 GitHub（设备码申请返回 ABCD-1234、轮询恒 pending），断言新主按钮/次要按钮/「复制代码」/大字码/三步新文案存在、旧文案「去 GitHub 粘贴」消失；末尾点「取消登录」收掉轮询定时器。WebView 内嵌页按规格不测（平台限制）。仓库原先没有任何断言桥页按钮文案的测试，故无旧断言需要同步改。
+- `pubspec.yaml` 版本 2.0.3+18 → 2.0.4+19；webview_flutter 依赖已在（^4.14.1），未动。
 
 ## 2026-10-23（2.0.3+18：桥登录一键粘贴 + 设置页单页平铺）
 

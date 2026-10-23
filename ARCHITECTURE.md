@@ -2,6 +2,23 @@
 
 > 每完成一个阶段更新本文件，防止上下文丢失。
 
+## 2.0.4 变更（2026-10-23，WB_SPEC_204：桥登录改 App 内嵌 WebView 自动填码）
+
+真机实测结论：GitHub 输码页是「每格 maxlength=1」的 8 个单字符输入框，手机浏览器里粘贴整串设备码只进第一个格（剪贴板逐字提交被每格截断），一键粘贴不成立。解法：授权页搬进 App 的 WebView，页面加载完后 JS 逐格自动填码，用户只点 Continue 和授权。
+
+| 文件 | 改动 |
+|---|---|
+| `lib/pages/bridge_web_login_page.dart`（新建） | WebView 内嵌打开 `verificationUri`（回退 `https://github.com/login/device`）：`JavaScriptMode.unrestricted` + 主流 Chrome Android UA（防 GitHub 推 WebView 降级页）；AppBar「GitHub 授权」带刷新 / 在浏览器打开（url_launcher）/ 左上角关闭；底部小字「授权完成后关闭本页返回，App 会自动完成连接。」；`onPageFinished` 注入自动填码 JS。登录/选账号/输码/授权全在本页走完（cookie 留在 WebView），**不碰令牌** |
+| `lib/pages/bridge_page.dart` | 设备码卡主按钮改「在 App 内打开并自动填码」（push `BridgeWebLoginPage`）；原「去 GitHub 粘贴」降次要按钮改名「在浏览器打开（手动输码）」（`_openVerification` → `_openInBrowser`）；三步文案换新流程；2.0.3 自动复制与「复制代码」保留（SnackBar 改「已复制，可作为手动输码备用」）；轮询换令牌逻辑原样 |
+| `test/bridge_page_test.dart`（新建） | 桥页按钮存在性/文案：内存库 + `HttpOverrides` 假 GitHub（设备码申请/轮询），断言新主按钮、次要按钮、「复制代码」、大字码与三步新文案存在、旧文案消失 |
+| `pubspec.yaml` | 版本 2.0.3+18 → 2.0.4+19（webview_flutter 依赖已有，未动） |
+
+### 自动填码的设计决策（触发条件与防重复填）
+
+- **触发条件**：每次 `onPageFinished`（含授权流程里登录页 → 输码页 → 授权页的每一次整页跳转）都注入一次 JS。JS 只认「可见的、单字符文本输入框」——type 为 text/tel 或无 type、带 maxlength 属性且 <=2、有实际尺寸且未被隐藏——**恰好 8 个才填**；不是 8 个（登录页/选账号页/授权页）直接 `return 'skip'` 什么都不做，等下一次页面加载完再触发。
+- **填法**：设备码剔掉连字符（只留字母数字）得 8 字符，逐格用 `Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set` 原生 setter 赋值（绕过前端框架包装过的 value 属性），并依次 `dispatchEvent` `input`(bubbles) 与 `change`，保证 GitHub 前端脚本能感知。
+- **防重复填（Dart 侧守卫）**：`Set<String> _filledKeys` 记「页面 URL + 设备码」组合，且**只有 JS 回传 `filled`（真的填上 8 格）才记 key**。没填上不记——用户手动刷新后同一 URL 再次加载完还会再试一次；已记 key 的 URL 再次 `onPageFinished` 直接跳过，不覆盖用户的手改。JS 全段 try/catch 回传状态串，Dart 侧 `runJavaScriptReturningResult` 异常也静默吞掉，不影响用户手动输入（WebView 内正常打字有 GitHub 自带的自动跳格）。
+
 ## 2.0.2 变更（2026-10-22，WB-202 第二批：第 2、4 项 + 第 3 项补充）
 
 - 设置页 A 方案重组：新增二级页 `lib/pages/course_tools_page.dart`（路由 `/course-tools`，收课程搜索 / 空闲时段 / 考试倒计时 / 导出课表图片 / 日期备注，路由全部复用）；「高级与数据」拆解——AI 桥入口并入 `lib/pages/ai_settings_page.dart`（与接口地址 / 模型 / Key / 测试对话同页，测试对话在最底部），备份 / 恢复 / 导出 ICS / 数据管理与导入课表、学期管理同组「学期与数据」，权限与关于小马课表上浮一级页各单列一行；`/advanced` 路由与 `lib/pages/advanced_page.dart` 移除（文件留占位说明，提交时 `git rm`）。「界面设置」改名「外观」（`ui_settings_page.dart` 标题同步），上课播报开关从外观页移入设置页「提醒」组。

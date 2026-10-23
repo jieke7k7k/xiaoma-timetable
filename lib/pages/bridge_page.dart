@@ -13,11 +13,14 @@ import '../ui/app_styles.dart';
 import '../utils/bridge_codec.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/empty_state.dart';
+import 'bridge_web_login_page.dart';
 
-/// AI 桥（设置 → 高级与数据 → AI 桥）：把一个 GitHub 私有仓当**命令信箱**
+/// AI 桥（设置 → 智能助手设置 → AI 桥）：把一个 GitHub 私有仓当**命令信箱**
 ///
 /// 2.0.1 起普通用户走 GitHub 官方设备码流程（Device Flow）一步登录，不再手填令牌；
 /// 细粒度令牌仍可在底部「高级设置」折叠区手动配置。
+/// 2.0.4 起授权页改为在 App 内嵌 WebView 打开并自动填码（见
+/// [BridgeWebLoginPage]），外部浏览器降为「手动输码」兜底路径。
 ///
 /// 本页持有 ref，因此承担 [BridgeService] 明确不肯做的那半件事——**执行完之后的
 /// 联动刷新**（provider 重查 / 提醒重排 / 备注通知 / 小部件）。服务层只回一个
@@ -143,14 +146,15 @@ class _BridgePageState extends ConsumerState<BridgePage> {
     }
   }
 
-  /// 手动「复制代码」：再次复制并 SnackBar 提示
+  /// 手动「复制代码」：再次复制并 SnackBar 提示（2.0.4 起自动填码是主路径，
+  /// 复制只作「在浏览器打开（手动输码）」兜底时的备用）
   Future<void> _copyUserCode() async {
     final code = _deviceUserCode;
     if (code == null || code.isEmpty) return;
     try {
       await Clipboard.setData(ClipboardData(text: code));
       if (!mounted) return;
-      _snack('已复制，去 GitHub 点第一个格粘贴即可');
+      _snack('已复制，可作为手动输码备用');
     } catch (_) {
       if (!mounted) return;
       _snack('复制失败，请手动选中代码复制');
@@ -231,7 +235,26 @@ class _BridgePageState extends ConsumerState<BridgePage> {
     });
   }
 
-  Future<void> _openVerification() async {
+  /// 主路径（2.0.4）：在 App 内嵌 WebView 里打开 GitHub 授权页并自动填码。
+  /// 页面不返回结果——轮询换令牌仍由本页定时器负责，用户在 WebView 里授权后
+  /// 下一次轮询就会拿到令牌并自动完成连接。
+  Future<void> _openInApp() async {
+    final code = _deviceUserCode;
+    if (code == null || code.isEmpty) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BridgeWebLoginPage(
+          userCode: code,
+          verificationUri:
+              _deviceVerificationUri ?? 'https://github.com/login/device',
+        ),
+      ),
+    );
+  }
+
+  /// 兜底路径：在外部浏览器打开授权页（用户自己逐格手动输码）
+  Future<void> _openInBrowser() async {
     final uri = Uri.parse(
       _deviceVerificationUri ?? 'https://github.com/login/device',
     );
@@ -397,7 +420,8 @@ class _BridgePageState extends ConsumerState<BridgePage> {
                     userCode: _deviceUserCode ?? '',
                     verificationUri:
                         _deviceVerificationUri ?? 'https://github.com/login/device',
-                    onOpen: _openVerification,
+                    onOpenInApp: _openInApp,
+                    onOpenExternal: _openInBrowser,
                     onCopy: _copyUserCode,
                     onCancel: _cancelDevice,
                   ),
@@ -569,19 +593,27 @@ class _ConnectCard extends StatelessWidget {
   }
 }
 
-/// 设备码展示卡：大字 user_code + 三步说明 + 「去 GitHub 粘贴」+「复制代码」+ 取消
+/// 设备码展示卡：大字 user_code + 三步说明 + 「在 App 内打开并自动填码」主按钮
+/// + 「在浏览器打开（手动输码）」次要按钮 + 「复制代码」+ 取消
 class _DeviceCard extends StatelessWidget {
   const _DeviceCard({
     required this.userCode,
     required this.verificationUri,
-    required this.onOpen,
+    required this.onOpenInApp,
+    required this.onOpenExternal,
     required this.onCopy,
     required this.onCancel,
   });
 
   final String userCode;
   final String verificationUri;
-  final VoidCallback onOpen;
+
+  /// 主路径：App 内嵌 WebView 打开并自动填码（2.0.4）
+  final VoidCallback onOpenInApp;
+
+  /// 兜底路径：外部浏览器打开，用户自己手动输码
+  final VoidCallback onOpenExternal;
+
   final VoidCallback onCopy;
   final VoidCallback onCancel;
 
@@ -623,24 +655,32 @@ class _DeviceCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.m),
             const _StepLine(
               number: 1,
-              text: '代码已自动复制到剪贴板',
+              text: '点「在 App 内打开并自动填码」',
             ),
             const _StepLine(
               number: 2,
-              text: '点「去 GitHub 粘贴」，先确认登录账号，'
-                  '再点第一个格子粘贴一次，8 格会自动填满',
+              text: '在打开的页面里登录/确认账号，码已自动填好，点 Continue 并授权',
             ),
             const _StepLine(
               number: 3,
-              text: '点 Continue 并授权，回来这边会自动完成连接',
+              text: '关闭页面返回，App 自动完成连接',
             ),
             const SizedBox(height: AppSpacing.m),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: onOpen,
+                onPressed: onOpenInApp,
                 icon: const Icon(Icons.open_in_new),
-                label: const Text('去 GitHub 粘贴'),
+                label: const Text('在 App 内打开并自动填码'),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.s),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onOpenExternal,
+                icon: const Icon(Icons.public),
+                label: const Text('在浏览器打开（手动输码）'),
               ),
             ),
             const SizedBox(height: AppSpacing.s),
