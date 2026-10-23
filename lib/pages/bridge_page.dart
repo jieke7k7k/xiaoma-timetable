@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -50,6 +51,10 @@ class _BridgePageState extends ConsumerState<BridgePage> {
   Timer? _pollTimer;
   String _deviceCode = '';
   int _pollIntervalSeconds = 5;
+
+  // 已自动写入剪贴板的设备码值：守卫「只在新码到达时复制一次」，
+  // 轮询/重绘/状态刷新都不得重复覆盖剪贴板
+  String _copiedUserCode = '';
 
   // 已连接但信箱仓是否缺失（仅设备码流程成功后检查）
   bool? _repoMissing;
@@ -122,7 +127,34 @@ class _BridgePageState extends ConsumerState<BridgePage> {
       _deviceVerificationUri = resp.verificationUri;
       _pollIntervalSeconds = resp.intervalSeconds;
     });
+    // 新码到达自动写剪贴板一次（原样含连字符）；失败静默，按钮兜底
+    unawaited(_autoCopyNewCode(resp.userCode));
     _startPolling();
+  }
+
+  /// 新设备码自动复制：只在码值变化时触发一次，失败不报错不崩溃
+  Future<void> _autoCopyNewCode(String code) async {
+    if (code.isEmpty || code == _copiedUserCode) return;
+    _copiedUserCode = code;
+    try {
+      await Clipboard.setData(ClipboardData(text: code));
+    } catch (_) {
+      // 自动复制失败静默处理，靠「复制代码」按钮兜底
+    }
+  }
+
+  /// 手动「复制代码」：再次复制并 SnackBar 提示
+  Future<void> _copyUserCode() async {
+    final code = _deviceUserCode;
+    if (code == null || code.isEmpty) return;
+    try {
+      await Clipboard.setData(ClipboardData(text: code));
+      if (!mounted) return;
+      _snack('已复制，去 GitHub 点第一个格粘贴即可');
+    } catch (_) {
+      if (!mounted) return;
+      _snack('复制失败，请手动选中代码复制');
+    }
   }
 
   void _startPolling() {
@@ -366,6 +398,7 @@ class _BridgePageState extends ConsumerState<BridgePage> {
                     verificationUri:
                         _deviceVerificationUri ?? 'https://github.com/login/device',
                     onOpen: _openVerification,
+                    onCopy: _copyUserCode,
                     onCancel: _cancelDevice,
                   ),
                 ] else if (!_configured && _deviceError != null) ...[
@@ -536,18 +569,20 @@ class _ConnectCard extends StatelessWidget {
   }
 }
 
-/// 设备码展示卡：大字 user_code + 输码网址 + 「打开 GitHub 输码」+ 取消
+/// 设备码展示卡：大字 user_code + 三步说明 + 「去 GitHub 粘贴」+「复制代码」+ 取消
 class _DeviceCard extends StatelessWidget {
   const _DeviceCard({
     required this.userCode,
     required this.verificationUri,
     required this.onOpen,
+    required this.onCopy,
     required this.onCancel,
   });
 
   final String userCode;
   final String verificationUri;
   final VoidCallback onOpen;
+  final VoidCallback onCopy;
   final VoidCallback onCancel;
 
   @override
@@ -561,7 +596,7 @@ class _DeviceCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '在 GitHub 页面输入下面的码并授权',
+              '按下面三步完成 GitHub 登录',
               style: Theme.of(context).textTheme.titleSmall,
             ),
             const SizedBox(height: AppSpacing.m),
@@ -586,22 +621,35 @@ class _DeviceCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.m),
+            const _StepLine(
+              number: 1,
+              text: '代码已自动复制到剪贴板',
+            ),
+            const _StepLine(
+              number: 2,
+              text: '点「去 GitHub 粘贴」，先确认登录账号，'
+                  '再点第一个格子粘贴一次，8 格会自动填满',
+            ),
+            const _StepLine(
+              number: 3,
+              text: '点 Continue 并授权，回来这边会自动完成连接',
+            ),
+            const SizedBox(height: AppSpacing.m),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
                 onPressed: onOpen,
                 icon: const Icon(Icons.open_in_new),
-                label: const Text('打开 GitHub 输码'),
+                label: const Text('去 GitHub 粘贴'),
               ),
             ),
             const SizedBox(height: AppSpacing.s),
-            Center(
-              child: Text(
-                '授权后本页会自动检测，请稍候…',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: scheme.outline),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onCopy,
+                icon: const Icon(Icons.copy_outlined),
+                label: const Text('复制代码'),
               ),
             ),
             const SizedBox(height: AppSpacing.xs),
@@ -613,6 +661,32 @@ class _DeviceCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 设备码卡片里的一步说明行：序号 + 一行文案
+class _StepLine extends StatelessWidget {
+  const _StepLine({required this.number, required this.text});
+
+  final int number;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context)
+        .textTheme
+        .bodySmall
+        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('$number. ', style: style),
+          Expanded(child: Text(text, style: style)),
+        ],
       ),
     );
   }

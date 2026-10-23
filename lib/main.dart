@@ -26,7 +26,6 @@ import 'pages/share_image_page.dart';
 import 'pages/import_page.dart';
 import 'pages/semester_manage_page.dart';
 import 'pages/settings_page.dart';
-import 'pages/ui_settings_page.dart';
 import 'pages/time_settings_page.dart';
 import 'pages/week_view_page.dart';
 import 'providers/providers.dart';
@@ -188,8 +187,8 @@ class SimpleTimetableApp extends ConsumerWidget {
     // provider 加载完成前（首帧）先按跟随系统渲染，读库完成后立即切到持久化值
     final themeMode =
         ref.watch(themeSettingsProvider).value ?? ThemeMode.system;
-    // 主题种子色与显示字体由「界面设置」驱动（1.1.1）：种子色默认雾绿 0xFF6B8E7B，
-    // 用户可在界面设置里换预置或自定义；provider 未加载完时用默认值渲染首帧
+    // 主题种子色与显示字体由「外观」设置驱动（1.1.1）：种子色默认雾绿 0xFF6B8E7B，
+    // 用户可在外观设置里换预置或自定义；provider 未加载完时用默认值渲染首帧
     final uiSettings =
         ref.watch(uiSettingsProvider).value ?? const UiSettings();
     final seed = Color(uiSettings.themeSeedValue);
@@ -250,8 +249,6 @@ class SimpleTimetableApp extends ConsumerWidget {
         '/course-edit': (context) => const CourseEditPage(),
         // 作息时间设置
         '/time-settings': (context) => const TimeSettingsPage(),
-        // 外观设置（2.0.2 起由「界面设置」改名：格子外观/配色方案/主题色/字体）
-        '/ui-settings': (context) => const UiSettingsPage(),
         // 课程导入入口
         '/import': (context) => const ImportPage(),
         // 学期管理（新建/切换/删除学期）
