@@ -21,6 +21,8 @@ import 'bridge_web_login_page.dart';
 /// 细粒度令牌仍可在底部「高级设置」折叠区手动配置。
 /// 2.0.4 起授权页改为在 App 内嵌 WebView 打开并自动填码（见
 /// [BridgeWebLoginPage]），外部浏览器降为「手动输码」兜底路径。
+/// 2.0.5 起兜底路径改用 Chrome Custom Tab 打开（与用户默认浏览器共享登录态），
+/// 按钮改名「在浏览器打开（共享登录，手动输码）」。
 ///
 /// 本页持有 ref，因此承担 [BridgeService] 明确不肯做的那半件事——**执行完之后的
 /// 联动刷新**（provider 重查 / 提醒重排 / 备注通知 / 小部件）。服务层只回一个
@@ -253,13 +255,14 @@ class _BridgePageState extends ConsumerState<BridgePage> {
     );
   }
 
-  /// 兜底路径：在外部浏览器打开授权页（用户自己逐格手动输码）
+  /// 兜底路径：用 Chrome Custom Tab 打开授权页（与用户默认浏览器共享登录态，
+  /// 2.0.5，WB_SPEC_205 第 7 节）——页面以卡片形式滑出、关闭即回 App，手输 8 位码。
   Future<void> _openInBrowser() async {
     final uri = Uri.parse(
       _deviceVerificationUri ?? 'https://github.com/login/device',
     );
     try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
     } catch (_) {
       if (!mounted) return;
       _snack('打不开浏览器，请手动访问 $uri');
@@ -594,7 +597,7 @@ class _ConnectCard extends StatelessWidget {
 }
 
 /// 设备码展示卡：大字 user_code + 三步说明 + 「在 App 内打开并自动填码」主按钮
-/// + 「在浏览器打开（手动输码）」次要按钮 + 「复制代码」+ 取消
+/// + 「在浏览器打开（共享登录，手动输码）」次要按钮 + 「复制代码」+ 取消
 class _DeviceCard extends StatelessWidget {
   const _DeviceCard({
     required this.userCode,
@@ -665,6 +668,19 @@ class _DeviceCard extends StatelessWidget {
               number: 3,
               text: '关闭页面返回，App 自动完成连接',
             ),
+            // 2.0.5：浏览器方式（共享登录）的要点补充——已登录状态手输 8 位码即可，
+            // 粘贴只能填一格（GitHub 页面的限制），不想手输就用 App 内自动填码
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+              child: Text(
+                '补充：浏览器方式打开后已是登录状态，手输 8 位码即可；'
+                '粘贴只能填一格（GitHub 页面的限制），不想手输就用 App 内自动填码。',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: scheme.outline),
+              ),
+            ),
             const SizedBox(height: AppSpacing.m),
             SizedBox(
               width: double.infinity,
@@ -680,7 +696,7 @@ class _DeviceCard extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: onOpenExternal,
                 icon: const Icon(Icons.public),
-                label: const Text('在浏览器打开（手动输码）'),
+                label: const Text('在浏览器打开（共享登录，手动输码）'),
               ),
             ),
             const SizedBox(height: AppSpacing.s),

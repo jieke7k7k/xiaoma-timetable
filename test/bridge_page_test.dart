@@ -9,11 +9,12 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/pages/bridge_page.dart';
 
-/// 桥页设备码卡的按钮存在性/文案测试（2.0.4，WB_SPEC_204）
+/// 桥页设备码卡的按钮存在性/文案测试（2.0.4，WB_SPEC_204；2.0.5 更新文案）
 ///
-/// 覆盖规格第 4 条「桥页按钮存在性测试要跟上」：主按钮改
-/// 「在 App 内打开并自动填码」、外部浏览器降级改名「在浏览器打开（手动输码）」、
-/// 三步文案换新流程、2.0.3 的「复制代码」保留。
+/// 覆盖规格第 4 条「桥页按钮存在性测试要跟上」：主按钮
+/// 「在 App 内打开并自动填码」、浏览器兜底按钮（2.0.5 起改 Custom Tab 共享登录，
+/// 文案「在浏览器打开（共享登录，手动输码）」）、三步文案换新流程、
+/// 2.0.3 的「复制代码」保留、2.0.5 的「共享登录要点补充」句存在。
 ///
 /// WebView 内嵌页本身不测（平台限制，规格亦不强求）；这里用假 GitHub
 /// （HttpOverrides）把设备码申请与轮询都接到本地内存响应上，让设备码卡
@@ -78,8 +79,8 @@ void main() {
 
     // 2.0.4 主按钮：App 内嵌打开并自动填码
     expect(find.text('在 App 内打开并自动填码'), findsOneWidget);
-    // 原「去 GitHub 粘贴」降级为次要按钮并改名
-    expect(find.text('在浏览器打开（手动输码）'), findsOneWidget);
+    // 浏览器兜底按钮 2.0.5 改 Custom Tab 共享登录并改名
+    expect(find.text('在浏览器打开（共享登录，手动输码）'), findsOneWidget);
     // 2.0.3 的自动复制与「复制代码」按钮保留
     expect(find.text('复制代码'), findsOneWidget);
     // 大字设备码（假 GitHub 返回的 ABCD-1234，含连字符原样展示）
@@ -92,9 +93,16 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('关闭页面返回，App 自动完成连接'), findsOneWidget);
+    // 2.0.5 补充：浏览器方式（共享登录）要点说明存在
+    expect(
+      find.text('补充：浏览器方式打开后已是登录状态，手输 8 位码即可；'
+          '粘贴只能填一格（GitHub 页面的限制），不想手输就用 App 内自动填码。'),
+      findsOneWidget,
+    );
 
     // 旧流程文案不再出现
     expect(find.text('去 GitHub 粘贴'), findsNothing);
+    expect(find.text('在浏览器打开（手动输码）'), findsNothing);
 
     // 收尾：点「取消登录」停掉轮询定时器，避免测试挂起
     await tester.tap(find.text('取消登录'));

@@ -1,8 +1,10 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../models/chat_session.dart';
 import '../models/course.dart';
 import '../models/course_override.dart';
 import '../models/note.dart';
+import '../models/operation_log.dart';
 import '../models/semester.dart';
 import '../models/time_slot.dart';
 import 'db_helper.dart';
@@ -243,6 +245,52 @@ class Dao {
   Future<int> deleteNote(int id) async {
     final db = await _db;
     return db.delete('notes', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ---------- 智能助手对话历史（v4·2.0.5 第 3 节） ----------
+
+  /// 全部对话，按更新时间倒序（历史列表页顺序）。
+  Future<List<ChatSession>> getAllChatSessions() async {
+    final db = await _db;
+    final rows = await db.query('chat_sessions',
+        orderBy: 'updatedAt DESC, id DESC');
+    return rows.map(ChatSession.fromMap).toList();
+  }
+
+  /// 保存一段对话：有 id 则更新，没有则插入并返回新 id。
+  Future<int> saveChatSession(ChatSession s) async {
+    final db = await _db;
+    if (s.id == null) return db.insert('chat_sessions', s.toMap());
+    await db.update('chat_sessions', s.toMap(),
+        where: 'id = ?', whereArgs: [s.id]);
+    return s.id!;
+  }
+
+  /// 删除一段对话，返回受影响行数（0 表示 id 不存在）。
+  Future<int> deleteChatSession(int id) async {
+    final db = await _db;
+    return db.delete('chat_sessions', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ---------- 操作记录（v4·2.0.5 第 4 节 撤回） ----------
+
+  /// 全部操作记录，按时间倒序（最新在最上面）。
+  Future<List<OperationLog>> getAllOperationLogs() async {
+    final db = await _db;
+    final rows = await db.query('operation_log', orderBy: 'id DESC');
+    return rows.map(OperationLog.fromMap).toList();
+  }
+
+  Future<int> insertOperationLog(OperationLog log) async {
+    final db = await _db;
+    return db.insert('operation_log', log.toMap());
+  }
+
+  /// 把一条操作记录标记为「已撤回」。
+  Future<int> markOperationLogUndone(int id) async {
+    final db = await _db;
+    return db.update('operation_log', {'undone': 1},
+        where: 'id = ?', whereArgs: [id]);
   }
 
   // ---------- 应用设置（键值对，阶段四：提醒开关/提前分钟等） ----------

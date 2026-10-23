@@ -16,10 +16,14 @@ class EmptyState extends StatelessWidget {
     this.message,
     this.actionLabel,
     this.onAction,
+    this.iconImage,
   });
 
   /// 占位图标（推荐使用 *_outlined 线性图标，视觉更轻）
   final IconData icon;
+
+  /// 可选的图片图标（如像素小马 PNG）；非空时优先于 [icon] 渲染
+  final ImageProvider? iconImage;
 
   /// 一句话主文案，如「还没有设置考试日期」
   final String title;
@@ -50,7 +54,9 @@ class EmptyState extends StatelessWidget {
                 color: colorScheme.surfaceContainerHighest,
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 40, color: colorScheme.outline),
+              child: iconImage != null
+                  ? Image(image: iconImage!, width: 40, height: 40)
+                  : Icon(icon, size: 40, color: colorScheme.outline),
             ),
             const SizedBox(height: AppSpacing.m),
             Text(

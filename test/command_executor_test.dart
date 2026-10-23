@@ -46,6 +46,7 @@ void main() {
     int endSection = 2,
     List<int> weeks = const [1, 2, 3],
     int colorValue = 0xFF6B8E7B,
+    String? note,
   }) =>
       Course(
         id: id,
@@ -56,6 +57,7 @@ void main() {
         startSection: startSection,
         endSection: endSection,
         weeks: weeks,
+        note: note,
       );
 
   Future<List<Course>> courses() =>
@@ -241,6 +243,85 @@ void main() {
     });
   });
 
+  group('set_course_remark', () {
+    test('按 courseName 定位设置课程备注', () async {
+      await Dao.instance.insertCourse(course(name: '药理学实验'));
+
+      final r = await ex.execute({
+        'type': 'set_course_remark',
+        'courseName': '药理学实验',
+        'remark': '二楼',
+      });
+
+      expect(r.success, isTrue);
+      expect(r.destructive, isFalse);
+      expect(r.message, contains('二楼'));
+      final c = (await courses()).single;
+      expect(c.note, '二楼');
+      // 只动 note，其余字段保持
+      expect(c.colorValue, 0xFF6B8E7B);
+    });
+
+    test('同名课程批量全改', () async {
+      await Dao.instance.insertCourse(course(name: '药理学实验'));
+      await Dao.instance.insertCourse(
+          course(name: '药理学实验', dayOfWeek: 2, startSection: 3, endSection: 4));
+
+      final r = await ex.execute({
+        'type': 'set_course_remark',
+        'courseName': '药理学实验',
+        'remark': '带实验服',
+      });
+
+      expect(r.success, isTrue);
+      expect(r.data?['changedCount'], 2);
+      final list = await courses();
+      expect(list.every((c) => c.note == '带实验服'), isTrue);
+    });
+
+    test('空字符串清除课程备注', () async {
+      final id = await Dao.instance.insertCourse(course(note: '二楼'));
+
+      final r = await ex.execute({
+        'type': 'set_course_remark',
+        'courseId': id,
+        'remark': '',
+      });
+
+      expect(r.success, isTrue);
+      expect(r.message, contains('清除'));
+      expect((await courses()).single.note, isNull);
+    });
+
+    test('找不到课程 / 缺参数 → 失败且不动数据', () async {
+      final id = await Dao.instance.insertCourse(course(note: '原备注'));
+
+      final notFound = await ex.execute({
+        'type': 'set_course_remark',
+        'courseName': '不存在的课',
+        'remark': '二楼',
+      });
+      expect(notFound.success, isFalse);
+      expect(notFound.message, contains('没有名为'));
+
+      final noLocate = await ex.execute({
+        'type': 'set_course_remark',
+        'remark': '二楼',
+      });
+      expect(noLocate.success, isFalse);
+      expect(noLocate.message, contains('缺少定位参数'));
+
+      final noRemark = await ex.execute({
+        'type': 'set_course_remark',
+        'courseId': id,
+      });
+      expect(noRemark.success, isFalse);
+      expect(noRemark.message, contains('缺少参数 remark'));
+
+      expect((await courses()).single.note, '原备注');
+    });
+  });
+
   group('add_note / delete_note', () {
     test('指定日期新增备注；不传日期默认今天', () async {
       // 刻意用一个远离今天的固定日期，避免与「默认今天」那条撞在同一个日期里
@@ -297,10 +378,86 @@ void main() {
       expect(again.message, contains('找不到 id 为 $id 的备注'));
     });
 
+    test('delete_note 按日期删除当天全部备注，报删了几条', () async {
+      await Dao.instance.insertNote(Note(
+        date: '2026-10-22', content: '第一条', createdAt: 1,
+      ));
+      await Dao.instance.insertNote(Note(
+        date: '2026-10-22', content: '第二条', createdAt: 2,
+      ));
+      await Dao.instance.insertNote(Note(
+        date: '2026-10-23', content: '别的日期', createdAt: 3,
+      ));
+
+      final r = await ex.execute({
+        'type': 'delete_note',
+        'date': '2026-10-22',
+      });
+
+      expect(r.success, isTrue);
+      expect(r.data?['deletedCount'], 2);
+      expect(r.message, contains('2 条'));
+      final notes = await Dao.instance.getAllNotes();
+      expect(notes.map((n) => n.content).toList(), ['别的日期']);
+    });
+
+    test('delete_note 按日期 + 关键词删除当天含关键词备注', () async {
+      await Dao.instance.insertNote(Note(
+        date: '2026-10-22', content: '带实验服', createdAt: 1,
+      ));
+      await Dao.instance.insertNote(Note(
+        date: '2026-10-22', content: '交作业', createdAt: 2,
+      ));
+      await Dao.instance.insertNote(Note(
+        date: '2026-10-23', content: '带实验服', createdAt: 3,
+      ));
+
+      final r = await ex.execute({
+        'type': 'delete_note',
+        'date': '2026-10-22',
+        'content': '实验',
+      });
+
+      expect(r.success, isTrue);
+      expect(r.data?['deletedCount'], 1);
+      final notes = await Dao.instance.getAllNotes();
+      expect(notes.map((n) => n.content).toList(), ['交作业', '带实验服']);
+    });
+
+    test('delete_note 日期/关键词定位不到 → 中文原因，不报「缺少参数 id」', () async {
+      await Dao.instance.insertNote(Note(
+        date: '2026-10-22', content: '交作业', createdAt: 1,
+      ));
+
+      final noDate = await ex.execute({
+        'type': 'delete_note',
+        'date': '2026-10-30',
+      });
+      expect(noDate.success, isFalse);
+      expect(noDate.message, contains('没有 2026-10-30 的备注'));
+
+      final noKeyword = await ex.execute({
+        'type': 'delete_note',
+        'date': '2026-10-22',
+        'content': '不存在的词',
+      });
+      expect(noKeyword.success, isFalse);
+      expect(noKeyword.message, contains('不存在的词'));
+
+      final noLocate = await ex.execute({'type': 'delete_note'});
+      expect(noLocate.success, isFalse);
+      expect(noLocate.message, contains('缺少定位参数'));
+      expect(noLocate.message, isNot(contains('缺少参数 id')));
+
+      // 定位失败不动数据
+      expect(await Dao.instance.getAllNotes(), hasLength(1));
+    });
+
     test('destructive 标记集中登记：只有删除类为 true', () {
       expect(CommandRegistry.destructiveOf('delete_note'), isTrue);
       expect(CommandRegistry.destructiveOf('add_course'), isFalse);
       expect(CommandRegistry.destructiveOf('set_course_color'), isFalse);
+      expect(CommandRegistry.destructiveOf('set_course_remark'), isFalse);
       expect(CommandRegistry.destructiveOf('add_note'), isFalse);
       expect(CommandRegistry.destructiveOf('add_exam'), isFalse);
       // 未登记的指令按非破坏性处理，不影响后续确认策略

@@ -162,23 +162,36 @@ String buildTimetableContext({
     }
   }
 
-  final todayKey = _dateKey(today);
-  final tomorrowKey = _dateKey(today.add(const Duration(days: 1)));
-  for (final entry in [
-    ('今天', todayKey),
-    ('明天', tomorrowKey),
-  ]) {
-    final list = [
-      for (final n in notes)
-        if (n.date == entry.$2 && n.content.trim().isNotEmpty) n.content.trim(),
-    ];
-    buf.writeln('【${entry.$1}备注 ${entry.$2}】');
-    if (list.isEmpty) {
-      buf.writeln('（无）');
-    } else {
-      for (final t in list) {
-        buf.writeln('- $t');
-      }
+  // 日期备注（全部，不只是今明两天）：每条带 id / 日期 / 内容，
+  // 让模型能按 id 精确删除（delete_note 支持 id / date / date+关键词）
+  buf.writeln('【日期备注（按天，只对某一天有效）】');
+  final dayNotes = [
+    for (final n in notes)
+      if (n.content.trim().isNotEmpty) n,
+  ]..sort((a, b) {
+      final d = a.date.compareTo(b.date);
+      return d != 0 ? d : (a.id ?? 0).compareTo(b.id ?? 0);
+    });
+  if (dayNotes.isEmpty) {
+    buf.writeln('（无）');
+  } else {
+    for (final n in dayNotes) {
+      buf.writeln('- [id=${n.id}] ${n.date} ${n.content.trim()}');
+    }
+  }
+
+  // 课程备注（挂在课程上、长期有效）：明确与日期备注区分开
+  buf.writeln('【课程备注（挂在课程上，长期有效）】');
+  final courseNotes = [
+    for (final c in courses)
+      if (c.note != null && c.note!.trim().isNotEmpty) c,
+  ];
+  if (courseNotes.isEmpty) {
+    buf.writeln('（无）');
+  } else {
+    for (final c in courseNotes) {
+      final idPart = c.id == null ? '' : '（id=${c.id}）';
+      buf.writeln('- 《${c.name}》$idPart：${c.note!.trim()}');
     }
   }
 
@@ -186,6 +199,9 @@ String buildTimetableContext({
 }
 
 /// 单门课程一行：「周一 第1-2节 高等数学｜张三｜A101｜第1-16周」
+///
+/// 课程备注不再写进课程行（2.0.5 起单列「课程备注」段落，明确与日期备注区分，
+/// 见 buildTimetableContext）。
 String _courseLine(Course c) {
   final parts = <String>[
     '周${_weekdayName(c.dayOfWeek)} 第${_sectionText(c.startSection, c.endSection)}节 ${c.name}',
@@ -197,8 +213,6 @@ String _courseLine(Course c) {
   if (c.weeks.isNotEmpty) parts.add('第${_compactWeeks(c.weeks)}周');
   if (c.weekType == 1) parts.add('仅单周');
   if (c.weekType == 2) parts.add('仅双周');
-  final note = c.note?.trim();
-  if (note != null && note.isNotEmpty) parts.add('备注：$note');
   return parts.join('｜');
 }
 
@@ -243,8 +257,11 @@ $timetableContext
 1. 课表相关的问题只依据上面的数据回答；数据里没有的就说没有。
 2. 用户问「明天/周几有什么课」「哪天有空」时，按上面的周次与星期推算，并说明依据（第几周、单双周）。
 3. 不要复述整张课表，挑相关的说。
+4. 备注分两类：「课程备注」挂在某门课上、长期有效；「日期备注」只对某一天有效。
+   用户说「给 XX 课加备注」默认指课程备注，用 set_course_remark；只有说「某天加个备注」
+   才用 add_note。
 
-需要改动课表时（用户明确要求新增课程、改颜色、加备注、删备注、设考试日期），
+需要改动课表时（用户明确要求新增课程、改颜色、改课程备注、加日期备注、删备注、设考试日期），
 在正常回复**之外**附一个 json 代码块，格式如下（不要加别的说明在块里）：
 
 ```json
@@ -254,8 +271,9 @@ $timetableContext
 可用指令：
 - add_course：name、dayOfWeek(1=周一)、startSection、endSection、weeks("1-16" 或数组)、teacher?、classroom?、color?
 - set_course_color：courseId 或 courseName、color("#RRGGBB")
-- add_note：content、date?（默认今天，yyyy-MM-dd）
-- delete_note：id（备注 id，删除类，用户需逐条确认）
+- set_course_remark：courseId 或 courseName、remark（给课程加/改课程备注，空字符串表示清除备注）
+- add_note：content、date?（默认今天，yyyy-MM-dd；这是「某一天」的日期备注）
+- delete_note：id（备注 id）或 date（删当天全部备注）或 date+content（删当天含关键词备注），删除类，用户需逐条确认
 - add_exam：courseId 或 courseName、date(yyyy-MM-dd)、time?("HH:mm")
 
 这些指令不会立刻执行：App 会把它们渲染成确认卡片，用户点了「执行」才生效。

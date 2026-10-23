@@ -1,8 +1,76 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-10-23（2.0.4+19：WB_SPEC_204 桥登录改 App 内嵌 WebView 自动填码）
+> 更新时间：2026-10-24（2.0.5+20：WB_SPEC_205 第 1~9 节）
 
 ## 做到哪了
+
+## 2026-10-24（2.0.5+20：WB_SPEC_205 第 9 节，未跑命令）
+
+承接前八节（已通过 382 项测试），本轮补齐第 9 节（设置项 ⓘ 说明按钮）。沿用 Riverpod 手写 Notifier / 中文文案注释；`flutter analyze` / `flutter test` 由主会话代跑。
+
+### 第 9 节 设置项 ⓘ 说明按钮
+
+- `lib/pages/settings_sections.dart`：新增私有 `_InfoTitle`（标题旁 `Row` 挂 `AppInfoIconButton`，点开 `showAppInfoDialog` 显示原文）；把各子页里「说明性副标题」从行内删掉、收进标题旁 ⓘ，行内只剩标题 + 控件，共 18 处——学期与数据 6 行、提醒 3 开关、外观组 8 项、外观子页节次时间入口 1 项。弹窗正文用原副标题文字一字未改。
+- 保留未动的副标题：学期子页三行当前值（学期名/开学日期/总周数）、提醒「提前 X 分钟」、各「加载中…/加载失败」与权限状态摘要/部件状态等状态类、设置首页 9+1 入口导航摘要、桌面小组件子页添加说明（说明页本体）。
+- 测试：`test/settings_sections_test.dart` 增断言——外观子页出现 `AppInfoIconButton` 且点开「行高自适应一屏」看到对应弹窗；提醒子页点开「上课提醒」看到「每节课提前提醒…」弹窗。
+
+## 2026-10-24（2.0.5+20：WB_SPEC_205 第 2/3/4 节，未跑命令）
+
+承接上一轮第 1/5/6/7 节，本轮落地剩下三节：第 2（AI 指令补全）、3（智能助手历史记录）、4（撤回操作）。沿用 Riverpod 手写 Notifier / 中文文案注释；`flutter analyze` / `flutter test` 由主会话代跑。
+
+### 第 2 节 AI 指令补全
+
+- `command_executor.dart`：新增 `set_course_remark`（courseId/courseName 定位、同名全改、空字符串清除，整对象重建写 note）；`delete_note` 扩展为「按 id / 按 date / 按 date+content 关键词」删除，命中多条全删并报条数，定位不到给中文原因（不再报「缺少参数 id」）；注册表补 `set_course_remark`（非破坏性）。
+- `command_describe.dart`：补 `set_course_remark` 人话描述；`delete_note` 描述支持 id/日期/关键词三种定位。
+- `ai_context.dart`：备注清单改为列**全部**日期备注（每条带 `[id=N] 日期 内容`）+ 单列「课程备注（长期有效）」节，与日期备注明确区分；课程行不再内嵌备注；系统提示词补 `set_course_remark` 参数与「给 XX 课加备注默认指课程备注、某天加备注才用 add_note」的默认语义。
+- 测试：`command_executor_test.dart` 增 set_course_remark（按名/同名全改/清除/失败路径）、delete_note 按日期/关键词/定位不到中文原因；`ai_context_test.dart` 改全部备注 + 课程备注节 + 提示词新断言。
+
+### 第 3 节 智能助手历史记录
+
+- 新表 `chat_sessions`（v4）：一段对话一行，messagesJson 整段存消息（角色/文本/时间/指令原文/执行结果状态）。模型 `lib/models/chat_session.dart`；`db_helper.dart` 版本 3→4 补建表；`dao.dart` 增会话列/存/删。
+- 服务 `lib/services/chat_session_service.dart`：列（更新时间倒序）/存（id 更新或插入）/删。
+- `ai_chat_page.dart`：AppBar 加「历史记录」「新对话」入口（替换原清空按钮）；聊天过程中 `_persistSession` 落库（首条定标题与 createdAt，之后更新）；`_ChatItem` 加 `time` 字段与 `fromMessage/toMessage` 往返；历史页选中会话 `pop` 回来恢复续聊。
+- 新页 `lib/pages/ai_history_page.dart`（路由 `/ai-history`）：Tab「对话」（列表/点开恢复/长按或左滑删除/空状态中文）+ Tab「操作记录」。
+- 测试：`chat_session_test.dart`（存取/更新/倒序/删除/消息指令往返）、`ai_history_page_test.dart`（对话列表存在性、空状态、操作记录 Tab 撤回按钮）。
+
+### 第 4 节 撤回操作
+
+- 新表 `operation_log`（v4）：时间/来源/中文摘要/执行前快照 JSON/是否已撤回。模型 `lib/models/operation_log.dart`；`dao.dart` 增操作记录列/插/标撤回。
+- `command_executor.dart`：`execute`/`executeAll` 加 `CommandSource? source`（ai/bridge），每条成功改数据指令在执行前取快照并落一条操作记录（新增类记新 id、删除类记全文、修改类记旧值）；撤回本身走 Dao、不再进执行器（防套娃）。
+- 服务 `lib/services/operation_log_service.dart`：`undo` 按快照还原（add_course 删课 / add_note 删备注 / delete_note 加回 / 修改类改回旧值），尽力还原、还原不了给中文提示不崩，并标已撤回。
+- 桥服务 `bridge_service.dart`：`_processBatch` / `resolvePending` 执行时传 `CommandSource.bridge`；AI 聊天页传 `CommandSource.ai`。
+- 测试：`operation_undo_test.dart`（add_course / delete_note / set_course_remark 三类执行→撤回往返 + 撤回不新增记录）。
+
+## 2026-10-24（2.0.5+20：WB_SPEC_205 第 1/5/6/7 节，未跑命令）
+
+规格见仓库根 `WB_SPEC_205.md`；本轮只落地第 1（设置页 QQ 式整顿）、5（像素小马图标）、6（实时预览今天列高亮修复）、7（桥登录 Custom Tab）四节，第 2/3/4 节（AI 指令 / 历史记录 / 撤回）未动、下一轮再派。沿用 Riverpod 手写 Notifier / 中文文案注释；`flutter analyze` / `flutter test` 由主会话代跑。
+
+### 第 1 节 设置页 QQ 式整顿（本版主项）
+
+- 新增 `lib/pages/settings_sections.dart`：6 个设置分类子页 + 从 settings_page.dart **原样搬来**的组件与逻辑——`SemesterSettingsPage`（/settings-semester，学期名称只读 / 开学日期 / 总周数）、`AppearanceSettingsPage`（/settings-appearance，实时预览 + `_AppearanceGroup` 整体 + 节次时间入口）、`RemindersSettingsPage`（/settings-reminders，上课提醒 / 上课播报 / 常驻通知 / 提前提醒，含三开关一选择）、`DataSettingsPage`（/settings-data，导入 / 学期管理 / 备份 / 恢复 / 导出 ICS / 数据管理 6 行）、`PermissionsSettingsPage`（/settings-permissions，原 `_PermissionSummaryTile` 内容）、`WidgetSettingsPage`（/settings-widget，小组件说明）。搬家原则：Consumer/回调/逻辑原样复用，不许丢项、不许改行为。
+- `lib/pages/settings_page.dart` 重写为纯入口首页：只保留 9 个分组标题 + 每类一行入口行（图标 + 名称 + 一行副标题 + ›），首页**无任何 Switch/Slider**；`_SectionHeader` / `_EntryTile` / `_XiaomaIcon` 留本文件，其余组件与全部业务方法（改开学日期/总周数/提醒开关/提前分钟/备份恢复/导出 ICS 等）迁到 settings_sections.dart。
+- `lib/main.dart` 注册 6 条新路由 /settings-semester、/settings-appearance、/settings-reminders、/settings-data、/settings-permissions、/settings-widget。
+- 长期规范改写：2.0.3 的「外观平铺首页」（设置类条目优先平铺在首页当场可改）被本节取代——设置首页只放分类入口，点进分类才看到该组的开关/滑杆等设置项（QQ 式分级）。
+- 测试：`test/settings_page_test.dart`（9 个分类入口 + 首页无 Switch/Slider）；`test/settings_sections_test.dart`（外观子页实时预览与主要外观项存在）。
+
+### 第 5 节 像素小马图标
+
+- `pubspec.yaml` assets 声明 `assets/icons/`（xiaoma_assistant_selected.png 玫红 / xiaoma_assistant_unselected.png 灰，文件已备好未动）。
+- 替换三处 `Icons.smart_toy(_outlined)`：main.dart 底栏智能助手 Tab（`_SideButton` 改 `iconBuilder`，选中玫红/未选灰 `Image.asset` 26dp，与文字标签状态同步）；ai_chat_page.dart 两处空状态（`EmptyState` 新增可选 `iconImage` 参数，玫红版）；settings_page.dart「和智能助手聊聊」入口（`_XiaomaIcon` 灰版 24dp）。
+
+### 第 6 节 实时预览今天列边框高亮
+
+- `Preview`（由 `_Preview` 改公开以便测试）改为展示「今天起连续三天」（列头真实星期 + 日期，今天第一列，日期圆点高亮）；`ui.highlightTodayColumn` 开时给第一列画整列边框（主页同款：主题色描边、线宽 1.5、圆角 6），关时不画；覆盖层 Key `kPreviewTodayHighlightKey` 供测试断言。预览随第 1 节迁入外观子页，效果在子页生效。
+- 测试：`test/settings_sections_test.dart` 断言 `Preview` 开/关时今天列边框覆盖层出现/消失。
+
+### 第 7 节 桥登录 Custom Tab
+
+- `bridge_page.dart`：`_openInBrowser` 改 `LaunchMode.inAppBrowserView`（Chrome Custom Tab，与用户默认浏览器共享登录态）；按钮文案「在浏览器打开（手动输码）」→「在浏览器打开（共享登录，手动输码）」；设备码卡三步说明下补一句要点（浏览器方式已登录、手输 8 位码即可；粘贴只能填一格，不想手输就用 App 内自动填码）。设备码申请/轮询/自动复制逻辑未动。
+- 测试：`test/bridge_page_test.dart` 同步更新按钮文案与新增要点句断言。
+
+### 版本
+
+- `pubspec.yaml` 版本 2.0.4+19 → 2.0.5+20。
 
 ## 2026-10-23（2.0.4+19：WB_SPEC_204，未跑命令）
 
@@ -17,7 +85,7 @@
 ## 2026-10-23（2.0.3+18：桥登录一键粘贴 + 设置页单页平铺）
 
 - 桥登录（bridge_page.dart）：设备码生成即自动复制剪贴板（_copiedUserCode 码值守卫，只触发一次、失败静默）；卡片加「复制代码」按钮与三步文案；原「打开 GitHub 输码」改名「去 GitHub 粘贴」。实测依据：GitHub 输码页第一个格粘贴整串可自动分格，链接带码不预填。
-- 设置页（settings_page.dart）：「外观」二级页 ui_settings_page.dart 已删，全部条目平铺进设置首页外观组（_AppearanceGroup）；首页重复的「自动备份」行删除（数据管理页保留）。长期规范补充：设置类条目优先平铺在首页当场可改，不再新设二级设置页；编辑器/管理页才点进。
+- 设置页（settings_page.dart）：「外观」二级页 ui_settings_page.dart 已删，全部条目平铺进设置首页外观组（_AppearanceGroup）；首页重复的「自动备份」行删除（数据管理页保留）。长期规范补充：设置类条目优先平铺在首页当场可改，不再新设二级设置页；编辑器/管理页才点进。（2.0.5 起该「外观平铺首页」规范被 QQ 式分级取代，见 WB_SPEC_205 第 1 节）
 - 复审：step-5-preview 只读复审「可发布」；旧外观页 15 个标题文本已与新首页逐项对账，无遗漏。analyze 零问题、357 测试全绿。
 
 ## 2026-10-22（WB-202 第二批：第 2 项 + 第 4 项 + 第 3 项补充，未跑命令）

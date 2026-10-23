@@ -6,17 +6,18 @@ import '../models/time_slot.dart';
 
 /// SQLite 数据库管理（单例）
 ///
-/// 设计说明：除 v2 的 app_settings、v3 的 notes 走版本升级补建外，
-/// 其余业务表在建库时一次性建好（含阶段五才用到的 course_overrides），
-/// 尽量避免迁移，降低维护成本。
+/// 设计说明：v2 的 app_settings、v3 的 notes、v4 的 chat_sessions 与
+/// operation_log 走版本升级补建外，其余业务表在建库时一次性建好
+/// （含阶段五才用到的 course_overrides），尽量避免迁移，降低维护成本。
 class DbHelper {
   DbHelper._();
   static final DbHelper instance = DbHelper._();
 
   static const _dbName = 'simple_timetable.db';
   /// v3（2026-10-22）：新增 notes 备注表。
-  /// 升级路径见 [_open] 的 onUpgrade——老库只补建这一张表 + 索引，数据零改动。
-  static const _dbVersion = 3;
+  /// v4（2026-10-24）：新增 chat_sessions（智能助手历史）、operation_log（撤回操作）。
+  /// 升级路径见 [_open] 的 onUpgrade——老库只补建这两张表，数据零改动。
+  static const _dbVersion = 4;
 
   /// 应用设置键值表 SQL（阶段四：提醒开关/提前分钟等轻量偏好持久化）
   static const _createSettingsTableSql = '''
@@ -37,6 +38,29 @@ class DbHelper {
       date TEXT NOT NULL,
       content TEXT NOT NULL,
       createdAt INTEGER NOT NULL
+    )
+  ''';
+
+  /// 智能助手对话历史表 SQL（v4）：一段对话一行，消息整体存 messagesJson。
+  static const _createChatSessionsTableSql = '''
+    CREATE TABLE IF NOT EXISTS chat_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL,
+      messagesJson TEXT NOT NULL
+    )
+  ''';
+
+  /// 操作记录表 SQL（v4）：AI / AI 桥每次改数据的执行前快照，供撤回。
+  static const _createOperationLogTableSql = '''
+    CREATE TABLE IF NOT EXISTS operation_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      createdAt INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      snapshotJson TEXT NOT NULL,
+      undone INTEGER NOT NULL DEFAULT 0
     )
   ''';
 
@@ -82,6 +106,7 @@ class DbHelper {
       onCreate: (db, version) => createSchema(db),
       // v1 -> v2：新增 app_settings 键值表（阶段四提醒设置持久化）
       // v2 -> v3：新增 notes 备注表（AI 备注功能），老用户无感升级
+      // v3 -> v4：新增 chat_sessions（智能助手历史）、operation_log（撤回操作）
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await db.execute(
@@ -94,6 +119,10 @@ class DbHelper {
           await db.execute(
             'CREATE INDEX IF NOT EXISTS idx_notes_date ON notes(date)',
           );
+        }
+        if (oldVersion < 4) {
+          await db.execute(_createChatSessionsTableSql);
+          await db.execute(_createOperationLogTableSql);
         }
       },
       // 降级（装回旧版本 App）时**不删库**（2.0.0 复审 C1）。
@@ -179,6 +208,10 @@ class DbHelper {
     // 备注表（v3：按日期的短备注，常驻通知与小组件按日取用）
     await db.execute(_createNotesTableSql);
     await db.execute('CREATE INDEX idx_notes_date ON notes(date)');
+
+    // 智能助手对话历史表（v4）+ 操作记录表（v4·撤回）
+    await db.execute(_createChatSessionsTableSql);
+    await db.execute(_createOperationLogTableSql);
 
     // 首次启动：创建默认学期（开学日期 2026-09-07，当天恰好是周一）和默认节次时间
     await db.insert('semesters', {

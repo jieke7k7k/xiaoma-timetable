@@ -201,17 +201,59 @@ void main() {
       expect(text, contains('还有 8 天'));
     });
 
-    test('今天与明天的备注分开列', () {
+    test('日期备注全部列出（不只今明两天），每条带 id / 日期 / 内容', () {
       final text = buildTimetableContext(
         semester: semester,
         courses: courses(),
-        notes: notes(),
+        notes: const [
+          Note(id: 1, date: '2026-10-22', content: '交作业', createdAt: 1),
+          Note(id: 2, date: '2026-10-23', content: '买面包', createdAt: 2),
+          // 远于今明两天的日期也要列出，证明是「全部」而非只今明
+          Note(id: 3, date: '2026-11-01', content: '运动会', createdAt: 3),
+        ],
         now: now,
       );
-      expect(text, contains('【今天备注 2026-10-22】'));
-      expect(text, contains('- 交作业'));
-      expect(text, contains('【明天备注 2026-10-23】'));
-      expect(text, contains('- 买面包'));
+      expect(text, contains('【日期备注（按天，只对某一天有效）】'));
+      expect(text, contains('- [id=1] 2026-10-22 交作业'));
+      expect(text, contains('- [id=2] 2026-10-23 买面包'));
+      expect(text, contains('- [id=3] 2026-11-01 运动会'));
+    });
+
+    test('课程备注单列一节，明确与日期备注区分', () {
+      final text = buildTimetableContext(
+        semester: semester,
+        courses: courses(),
+        notes: const [
+          Note(id: 9, date: '2026-10-25', content: '买药', createdAt: 1),
+        ],
+        now: now,
+      );
+      expect(text, contains('【课程备注（挂在课程上，长期有效）】'));
+      // 大学英语没有 note，课程备注节显示无
+      expect(text, contains('（无）'));
+    });
+
+    test('带课程备注的课程会出现在「课程备注」节，并带课程名', () {
+      final text = buildTimetableContext(
+        semester: semester,
+        courses: [
+          const Course(
+            id: 11,
+            semesterId: 1,
+            name: '高等数学',
+            colorValue: 0xFF6B8E7B,
+            dayOfWeek: 2,
+            startSection: 1,
+            endSection: 2,
+            weeks: [1, 2, 3],
+            note: '二楼',
+          ),
+        ],
+        notes: const [],
+        now: now,
+      );
+      expect(text, contains('【课程备注（挂在课程上，长期有效）】'));
+      expect(text, contains('- 《高等数学》（id=11）：二楼'));
     });
 
     test('没有课程 / 没有考试 / 没有备注时都有兜底文案', () {
@@ -266,8 +308,13 @@ void main() {
       expect(prompt, contains('"commands"'));
       expect(prompt, contains('add_course'));
       expect(prompt, contains('delete_note'));
+      expect(prompt, contains('set_course_remark'));
       // 必须写明「不会立刻执行」，避免模型以为发出去就生效
       expect(prompt, contains('不会立刻执行'));
+      // 2.0.5 第 2 节：明确两类备注的默认语义，让模型不再把课程备注塞成日期备注
+      expect(prompt, contains('课程备注'));
+      expect(prompt, contains('日期备注'));
+      expect(prompt, contains('给 XX 课加备注'));
     });
   });
 }

@@ -2,6 +2,56 @@
 
 > 每完成一个阶段更新本文件，防止上下文丢失。
 
+## 2.0.5 变更（2026-10-24，WB_SPEC_205 第 1/5/6/7 节：设置页 QQ 式分级 + 像素小马 + 预览高亮修复 + 桥 Custom Tab）
+
+本轮只落地第 1/5/6/7 四节，第 2/3/4 节（AI 指令补全 / 历史记录 / 撤回）未动。
+
+| 文件 | 改动 |
+|---|---|
+| `lib/pages/settings_sections.dart`（新建） | 6 个设置分类子页（学期 / 外观 / 提醒 / 学期与数据 / 权限 / 桌面小组件）；`_AppearanceGroup`、`Preview`（原 `_Preview` 改公开）、`_PreviewGridPainter`、`_FontSection`、`_PermissionSummaryTile` 等组件与全部业务方法从 settings_page.dart 原样搬来 |
+| `lib/pages/settings_page.dart` | 重写为纯入口首页：9 个分组标题 + 每类一行入口行（图标 + 名称 + 副标题 + ›），无任何 Switch/Slider；`_SectionHeader`/`_EntryTile`/`_XiaomaIcon` 保留 |
+| `lib/main.dart` | 注册 6 条新路由；`_SideButton` 改 `iconBuilder`，智能助手 Tab 换像素小马 PNG（选中玫红/未选灰） |
+| `lib/widgets/empty_state.dart` | 新增可选 `iconImage` 参数（非空时优先于 Icon 渲染），供 ai_chat_page 空状态用像素小马 |
+| `lib/pages/ai_chat_page.dart` | 两处空状态图标换玫红像素小马 |
+| `lib/pages/bridge_page.dart` | `_openInBrowser` 改 `LaunchMode.inAppBrowserView`（Custom Tab 共享登录）；按钮文案 + 三步说明补一句要点 |
+| `pubspec.yaml` | 版本 2.0.5+20；assets 声明 `assets/icons/` |
+| `test/settings_page_test.dart`（新建） | 首页 9 分类入口 + 无 Switch/Slider |
+| `test/settings_sections_test.dart`（新建） | 外观子页预览与主要项存在 + `Preview` 今天列高亮开/关结构断言 |
+| `test/bridge_page_test.dart` | 同步按钮文案与新增要点句断言 |
+
+### 关键设计决策
+
+- **QQ 式分级**：设置首页只放分类入口，点进分类才看到该组开关/滑杆；取代 2.0.3 的「外观平铺首页」。迁移是「搬家」——控件与业务逻辑整段复用、不许丢项不许改行为，因此新建 `settings_sections.dart` 承载全部下沉内容。
+- **像素小马**：选中玫红/未选灰两版 PNG 颜色已 baked in，渲染用 `Image.asset` 而非 `ImageIcon`（避免 IconTheme 对图片再着色破坏原有玫红/灰）；底栏 `_SideButton` 由 `IconData` 改为 `iconBuilder(Color)`，让图标按选中态换图、文字标签颜色仍同步。
+- **预览高亮**：`Preview` 展示「今天起连续三天」，`highlightTodayColumn` 开时给第一列画 `DecoratedBox` 整列边框（主页同款线宽 1.5、圆角 6），覆盖层带公开 Key `kPreviewTodayHighlightKey` 供测试做结构断言。
+
+## 2.0.5 变更（续 · 2026-10-24，WB_SPEC_205 第 2/3/4 节：AI 指令补全 + 历史记录 + 撤回）
+
+| 文件 | 改动 |
+|---|---|
+| `lib/models/chat_session.dart`（新建） | `ChatMessage`（role/text/time/commands/resolved/results，可 JSON 往返）+ `ChatSession`（title/createdAt/updatedAt/messagesJson） |
+| `lib/models/operation_log.dart`（新建） | 操作记录：时间/来源（ai/bridge）/中文摘要/执行前快照 JSON/undone 标记 |
+| `lib/models/course.dart` | 新增 `withMutableFields`（给定值原样覆盖 colorValue/note/examDate，null 即清空——补 `copyWith` 用 `??` 清不掉可空字段的缺口） |
+| `lib/database/db_helper.dart` | 版本 3→4，onUpgrade 与 createSchema 补建 `chat_sessions`、`operation_log` 两张表 |
+| `lib/database/dao.dart` | 会话列/存/删 + 操作记录列/插/标撤回 |
+| `lib/services/command_executor.dart` | 新增 `set_course_remark`；`delete_note` 支持 id/date/date+关键词；`execute`/`executeAll` 加 `CommandSource? source`，成功改数据时执行前取快照落操作记录 |
+| `lib/services/chat_session_service.dart`（新建） | 对话历史的存/列（倒序）/删 |
+| `lib/services/operation_log_service.dart`（新建） | 撤回：按快照还原数据（add_course 删课 / add_note 删备注 / delete_note 加回 / 修改类改回旧值），尽力还原、失败给中文提示、标已撤回；撤回不走执行器防套娃 |
+| `lib/utils/command_describe.dart` | 补 `set_course_remark` 描述；`delete_note` 描述支持 id/日期/关键词 |
+| `lib/utils/ai_context.dart` | 上下文列全部日期备注（带 id/日期/内容）+ 单列课程备注节；提示词补 set_course_remark 与两类备注默认语义 |
+| `lib/pages/ai_chat_page.dart` | AppBar 加历史/新对话入口；`_persistSession`/`_restoreSession`/`_startNewConversation`；执行指令传 `CommandSource.ai` |
+| `lib/pages/ai_history_page.dart`（新建） | 路由 `/ai-history`：Tab「对话」（恢复/删除/空状态）+ Tab「操作记录」（撤回按钮） |
+| `lib/main.dart` | 注册 `/ai-history` |
+| `lib/services/bridge_service.dart` | `_processBatch`/`resolvePending` 传 `CommandSource.bridge` |
+| 测试 | `command_executor_test.dart`（set_course_remark + delete_note 扩展）、`ai_context_test.dart`、`chat_session_test.dart`、`ai_history_page_test.dart`、`operation_undo_test.dart` |
+
+### 关键设计决策
+
+- **两类备注**：`courses.note`（课程备注，长期）与 `notes` 表（日期备注，按天）本就两套存储；本轮让上下文与提示词把二者讲清楚，模型才不再把「给课加备注」塞成日期备注。
+- **历史持久化选新表而非 app_settings**：要「列全部会话 + 按更新时间倒序 + 单条删除」，一张 `chat_sessions` 表比塞 app_settings 的 JSON 键更直接；消息整段存 messagesJson（量级是「人手聊几句」，拆表 join 是过度设计）。
+- **撤回快照在执行器内、执行前取**：新增类记新 id、删除类记被删全文、修改类记旧值，正好落在每个指令实现「读到旧对象」的地方；来源由 `CommandSource` 显式传入，AI 与桥两个调用方都覆盖。撤回走 Dao 直接还原、不再进执行器，天然不套娃。
+- **清除语义**：`Course.copyWith` 用 `??` 合并、传 null 清不掉 note/examDate，故新增 `withMutableFields`（给定值原样写）统一处理「清空备注 / 恢复旧值」。
+
 ## 2.0.4 变更（2026-10-23，WB_SPEC_204：桥登录改 App 内嵌 WebView 自动填码）
 
 真机实测结论：GitHub 输码页是「每格 maxlength=1」的 8 个单字符输入框，手机浏览器里粘贴整串设备码只进第一个格（剪贴板逐字提交被每格截断），一键粘贴不成立。解法：授权页搬进 App 的 WebView，页面加载完后 JS 逐格自动填码，用户只点 Continue 和授权。
@@ -60,14 +110,16 @@
 - **compileSdk 版本**：Flutter 3.47 默认 compileSdk=36，但 `file_picker 8.x` 硬编码 34 导致 AAR metadata 报错，已升到 `file_picker 13.x`（其 API 从 `FilePicker.platform.pickFiles` 改为 `FilePicker.pickFiles` 返回 `List<PlatformFile>`）
 - **PDF 文本提取库选型**：`dart_pdf` 已无文本提取 API；`pdfrx 1.x` 与 Dart 3.13 不兼容（null 安全 bug）、`pdfrx 2.x` 需运行时下载 GitHub 的 PDFium（校园网不可达）；最终用 **`syncfusion_flutter_pdf`（纯 Dart）**，其 `PdfDocument(inputBytes:)` + `PdfTextExtractor.extractText()`
 
-## 数据表结构（v3，notes 表走版本升级补建，其余建库时一次性建好，含阶段五预留字段/表）
+## 数据表结构（v4，app_settings / notes / chat_sessions / operation_log 走版本升级补建，其余建库时一次性建好，含阶段五预留字段/表）
 
 - **semesters**：`id` PK、`name`、`startDate`(TEXT, ISO yyyy-MM-dd)、`totalWeeks`(默认20)、`isCurrent`(0/1)
 - **time_slots**：`section` PK(1~12)、`startTime`、`endTime`（首启内置 12 节默认时间）
 - **courses**：`id` PK、`semesterId` FK、`name`、`teacher?`、`classroom?`、`colorValue`(ARGB int)、`dayOfWeek`(1~7)、`startSection`、`endSection`、`weeksJson`(周次数组 JSON)、`weekType`(0全部/1单/2双)、`note?`、`examDate?`(毫秒时间戳，阶段五预留)；索引 `idx_courses_semester(semesterId, dayOfWeek)`
 - **course_overrides**（阶段五预留）：`id` PK、`courseId` FK、`originalWeek`、`targetWeek`(-1=停课标记 `CourseOverride.cancelFlag`)、`targetDayOfWeek?`、`targetStartSection?`、`targetEndSection?`、`targetClassroom?`
-- **app_settings**（v2 新增，阶段四提醒设置持久化）：`key` PK、`value`；当前键 `reminder_enabled`("1"/"0")、`reminder_advance_minutes`("15")、`ongoing_enabled`("1"/"0")、`theme_mode`("system"/"light"/"dark"，阶段五)、`lunch_after_section`("5")、`dinner_after_section`("9")（阶段六·作息三段化）、`last_error_log`（1.3.1 全局异常日志，只留最近一条「时间 + 摘要」）。`_dbVersion=3`，`onUpgrade` 对 v1 库补建此表、对 v1/v2 库补建 notes 表。1.3.6 新增 AI 桥五键：`bridge_owner` / `bridge_repo` / `bridge_token`（**只存本机，注意"备份到文件"会把它们带上，别外发备份**）/ `processed_command_ids`(JSON 数组，最多 200 条) / `bridge_pending`(JSON 数组，待确认队列) / `last_bridge_sync`（时间 + 摘要文案）。2.0.0 新增内置 AI 三键 `ai_base_url` / `ai_model` / `ai_api_key`（**同样只存本机、同样会被备份带走**）与首次权限引导标记 `permissions_asked_v1`（'1' = 已引导过）。
+- **app_settings**（v2 新增，阶段四提醒设置持久化）：`key` PK、`value`；当前键 `reminder_enabled`("1"/"0")、`reminder_advance_minutes`("15")、`ongoing_enabled`("1"/"0")、`theme_mode`("system"/"light"/"dark"，阶段五)、`lunch_after_section`("5")、`dinner_after_section`("9")（阶段六·作息三段化）、`last_error_log`（1.3.1 全局异常日志，只留最近一条「时间 + 摘要」）。`_dbVersion=4`，`onUpgrade` 对 v1 库补建 app_settings、对 v1/v2 库补建 notes、对 v1~v3 库补建 chat_sessions 与 operation_log。1.3.6 新增 AI 桥五键：`bridge_owner` / `bridge_repo` / `bridge_token`（**只存本机，注意"备份到文件"会把它们带上，别外发备份**）/ `processed_command_ids`(JSON 数组，最多 200 条) / `bridge_pending`(JSON 数组，待确认队列) / `last_bridge_sync`（时间 + 摘要文案）。2.0.0 新增内置 AI 三键 `ai_base_url` / `ai_model` / `ai_api_key`（**同样只存本机、同样会被备份带走**）与首次权限引导标记 `permissions_asked_v1`（'1' = 已引导过）。
 - **notes**（v3 新增，AI 备注）：`id` PK、`date`(TEXT, yyyy-MM-dd)、`content`、`createdAt`(毫秒时间戳)；索引 `idx_notes_date(date)`。与学期/课程无外键，备注页维护，供常驻通知与桌面小部件按日取用；`onCreate`（新装）与 `onUpgrade(oldVersion<3)`（老用户无感升级）都会建这张表。
+- **chat_sessions**（v4 新增，智能助手对话历史）：`id` PK、`title`、`createdAt`(毫秒时间戳)、`updatedAt`(毫秒时间戳)、`messagesJson`(整段消息数组 JSON)。一段对话一行，消息整体存 messagesJson；历史记录页维护。
+- **operation_log**（v4 新增，AI / AI 桥操作撤回）：`id` PK、`createdAt`(毫秒时间戳)、`source`("ai"/"bridge")、`summary`、`snapshotJson`(执行前快照 JSON)、`undone`(0/1)。`onUpgrade(oldVersion<4)`（老用户无感升级）与 `onCreate`（新装）都会建这张表。
 
 首启自动创建：默认学期（2026-09-07 开学、20 周、isCurrent=1）+ 12 节默认节次时间。
 

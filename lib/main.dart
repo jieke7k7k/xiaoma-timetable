@@ -7,6 +7,7 @@ import 'models/ui_settings.dart';
 import 'database/dao.dart';
 import 'pages/about_page.dart';
 import 'pages/ai_chat_page.dart';
+import 'pages/ai_history_page.dart';
 import 'pages/ai_settings_page.dart';
 import 'pages/announcements_page.dart';
 import 'pages/bridge_page.dart';
@@ -26,6 +27,7 @@ import 'pages/share_image_page.dart';
 import 'pages/import_page.dart';
 import 'pages/semester_manage_page.dart';
 import 'pages/settings_page.dart';
+import 'pages/settings_sections.dart';
 import 'pages/time_settings_page.dart';
 import 'pages/week_view_page.dart';
 import 'providers/providers.dart';
@@ -277,6 +279,8 @@ class SimpleTimetableApp extends ConsumerWidget {
         '/ai-chat': (context) => const AiChatPage(),
         // AI 助手设置（接口地址 / 模型 / Key）
         '/ai-settings': (context) => const AiSettingsPage(),
+        // 智能助手历史记录 / 操作记录（2.0.5：对话续聊与撤回入口）
+        '/ai-history': (context) => const AiHistoryPage(),
         // 课表工具（2.0.2：课程搜索 / 空闲时段 / 考试倒计时 / 导出课表图片 / 日期备注）
         '/course-tools': (context) => const CourseToolsPage(),
         // 权限（通知 / 精确闹钟 / 电池优化，首次启动会引导一次）
@@ -285,6 +289,13 @@ class SimpleTimetableApp extends ConsumerWidget {
         '/data-manage': (context) => const DataManagePage(),
         // AI 桥（1.3.6：把 GitHub 私有仓当命令信箱；2.0.2 起入口在智能助手设置页）
         '/bridge': (context) => const BridgePage(),
+        // 设置分类子页（2.0.5：设置首页 QQ 式分级，见 settings_sections.dart）
+        '/settings-semester': (context) => const SemesterSettingsPage(),
+        '/settings-appearance': (context) => const AppearanceSettingsPage(),
+        '/settings-reminders': (context) => const RemindersSettingsPage(),
+        '/settings-data': (context) => const DataSettingsPage(),
+        '/settings-permissions': (context) => const PermissionsSettingsPage(),
+        '/settings-widget': (context) => const WidgetSettingsPage(),
       },
     );
   }
@@ -486,9 +497,14 @@ class _HomeBottomBar extends StatelessWidget {
           children: [
             Expanded(
               child: _SideButton(
-                icon: index == 0
-                    ? Icons.smart_toy
-                    : Icons.smart_toy_outlined,
+                // 2.0.5：智能助手 Tab 换成像素小马图标（选中玫红 / 未选灰两版 PNG）
+                iconBuilder: (color) => Image.asset(
+                  index == 0
+                      ? 'assets/icons/xiaoma_assistant_selected.png'
+                      : 'assets/icons/xiaoma_assistant_unselected.png',
+                  width: 26,
+                  height: 26,
+                ),
                 label: '智能助手',
                 selected: index == 0,
                 onTap: () => onChanged(0),
@@ -496,9 +512,13 @@ class _HomeBottomBar extends StatelessWidget {
             ),
             Expanded(
               child: _SideButton(
-                icon: index == 1
-                    ? Icons.calendar_view_week
-                    : Icons.calendar_view_week_outlined,
+                iconBuilder: (color) => Icon(
+                  index == 1
+                      ? Icons.calendar_view_week
+                      : Icons.calendar_view_week_outlined,
+                  size: 26,
+                  color: color,
+                ),
                 label: '主页',
                 selected: index == 1,
                 onTap: () => onChanged(1),
@@ -506,7 +526,11 @@ class _HomeBottomBar extends StatelessWidget {
             ),
             Expanded(
               child: _SideButton(
-                icon: index == 2 ? Icons.settings : Icons.settings_outlined,
+                iconBuilder: (color) => Icon(
+                  index == 2 ? Icons.settings : Icons.settings_outlined,
+                  size: 26,
+                  color: color,
+                ),
                 label: '设置',
                 selected: index == 2,
                 onTap: () => onChanged(2),
@@ -520,15 +544,19 @@ class _HomeBottomBar extends StatelessWidget {
 }
 
 /// 底栏三个按钮共用（2.0.2 起中间「主页」也是这一样式）：图标 + 常显小字
+///
+/// 图标由 [iconBuilder] 按选中态配色生成（主页/设置用 Icon，智能助手用像素小马
+/// PNG，2.0.5），颜色与文字标签同步。
 class _SideButton extends StatelessWidget {
   const _SideButton({
-    required this.icon,
+    required this.iconBuilder,
     required this.label,
     required this.selected,
     required this.onTap,
   });
 
-  final IconData icon;
+  /// 根据当前选中态颜色生成图标 Widget（尺寸约 26dp）
+  final Widget Function(Color color) iconBuilder;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -543,7 +571,7 @@ class _SideButton extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 26, color: color),
+          SizedBox(width: 26, height: 26, child: iconBuilder(color)),
           const SizedBox(height: 2),
           Text(
             label,

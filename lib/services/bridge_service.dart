@@ -539,6 +539,7 @@ class BridgeService {
     final split = splitByDestructive(batch.commands);
     final results = await _executor.executeAll(
       [for (final s in split.safe) s.command],
+      source: CommandSource.bridge,
     );
     final entries = <BridgeResultEntry>[];
     var executedOk = 0;
@@ -636,7 +637,8 @@ class BridgeService {
     if (!approve) {
       message = '用户拒绝了这条指令';
     } else {
-      final result = await _executor.execute(item.command);
+      final result = await _executor.execute(item.command,
+          source: CommandSource.bridge);
       // 批准了但执行失败（比如那条备注已经被删过）也要如实写回 success=false
       success = result.success;
       changed = success;

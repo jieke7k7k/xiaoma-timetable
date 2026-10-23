@@ -26,9 +26,22 @@ String describeCommand(
       if (date.isEmpty) return '新增备注：$content';
       return '新增 $date 的备注：$content';
     case 'delete_note':
-      // 桥侧会把「日期 + 内容」作为 detail 传进来（查库得到），查不到时退化成 id
+      // 桥侧会把「日期 + 内容」作为 detail 传进来（查库得到），查不到时按
+      // id / date / 关键词退化成对应的定位描述
+      if (hasNote) return '删除备注 $note';
       final id = command['id'] ?? command['noteId'];
-      return '删除备注 ${hasNote ? note : 'id=${id ?? '未知'}'}';
+      if (id != null) return '删除备注 id=$id';
+      final date = _str(command['date']);
+      final keyword = _str(command['content'] ?? command['keyword']);
+      if (date.isNotEmpty && keyword.isNotEmpty) {
+        return '删除 $date 里含「$keyword」的备注';
+      }
+      if (date.isNotEmpty) return '删除 $date 的全部备注';
+      return '删除备注（未指定定位方式）';
+    case 'set_course_remark':
+      final remark = _str(command['remark']);
+      final target = _targetName(command);
+      return remark.isEmpty ? '清除$target的课程备注' : '把$target的课程备注改为：$remark';
     case 'add_exam':
       return '把${_targetName(command)}的考试日期设为 ${_examDateText(command)}';
     default:

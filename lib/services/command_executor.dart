@@ -1,10 +1,16 @@
 import '../database/dao.dart';
 import '../models/course.dart';
 import '../models/note.dart';
+import '../models/operation_log.dart';
 import '../utils/conflict_detector.dart';
 import '../utils/morandi_palette.dart';
 import '../utils/note_notice.dart';
 import '../utils/week_parser.dart';
+
+/// 指令来源（2.0.5 第 4 节·撤回）：AI 与 AI 桥都走同一份执行器，
+/// 执行成功且带来源时才落操作记录（供「撤回」用）。不传来源的调用
+/// （如旧单测、纯计算）只执行不记录，行为与之前完全一致。
+enum CommandSource { ai, bridge }
 
 /// 结构化指令执行器（地基层：本轮不接网络、不接 AI）
 ///
@@ -44,18 +50,24 @@ class CommandExecutor {
       );
 
   /// 执行一批指令，逐条返回结果（顺序与入参一致）。
+  /// [source] 非空时，每条成功执行的改数据指令会落一条操作记录（可撤回）。
   Future<List<CommandResult>> executeAll(
-    List<Map<String, dynamic>> commands,
-  ) async {
+    List<Map<String, dynamic>> commands, {
+    CommandSource? source,
+  }) async {
     final results = <CommandResult>[];
     for (final command in commands) {
-      results.add(await execute(command));
+      results.add(await execute(command, source: source));
     }
     return results;
   }
 
   /// 执行单条指令。任何异常都在这里被兜成失败结果，不会向上抛。
-  Future<CommandResult> execute(Map<String, dynamic> command) async {
+  /// [source] 非空时，成功执行的改数据指令会落一条操作记录（可撤回）。
+  Future<CommandResult> execute(
+    Map<String, dynamic> command, {
+    CommandSource? source,
+  }) async {
     final rawType = command['type'];
     if (rawType is! String || rawType.trim().isEmpty) {
       return const CommandResult(
@@ -79,15 +91,17 @@ class CommandExecutor {
     try {
       switch (type) {
         case 'add_course':
-          return await _addCourse(command);
+          return await _addCourse(command, source);
         case 'set_course_color':
-          return await _setCourseColor(command);
+          return await _setCourseColor(command, source);
+        case 'set_course_remark':
+          return await _setCourseRemark(command, source);
         case 'add_note':
-          return await _addNote(command);
+          return await _addNote(command, source);
         case 'delete_note':
-          return await _deleteNote(command);
+          return await _deleteNote(command, source);
         case 'add_exam':
-          return await _addExam(command);
+          return await _addExam(command, source);
         default:
           return _failure(type, '不支持的指令类型：$type');
       }
@@ -103,7 +117,10 @@ class CommandExecutor {
 
   /// add_course：按课程全字段新增到当前学期。
   /// 落库前做冲突检测，**冲突只作为结果提示，不拦截入库**（与手动建课同口径）。
-  Future<CommandResult> _addCourse(Map<String, dynamic> cmd) async {
+  Future<CommandResult> _addCourse(
+    Map<String, dynamic> cmd,
+    CommandSource? source,
+  ) async {
     const type = 'add_course';
     final semester = await _dao.getCurrentSemester();
     if (semester == null || semester.id == null) {
@@ -161,12 +178,20 @@ class CommandExecutor {
     }
 
     final id = await _dao.insertCourse(candidate);
+    final message = warning == null
+        ? '已新增《$name》（周${_weekdayName(dayOfWeek)} 第${_sectionText(startSection, endSection)}节）'
+        : '已新增《$name》，但 $warning';
+    if (source != null) {
+      await _recordOperation(
+        source: source,
+        summary: message,
+        snapshot: {'kind': 'add_course', 'courseId': id},
+      );
+    }
     return CommandResult(
       type: type,
       success: true,
-      message: warning == null
-          ? '已新增《$name》（周${_weekdayName(dayOfWeek)} 第${_sectionText(startSection, endSection)}节）'
-          : '已新增《$name》，但 $warning',
+      message: message,
       destructive: false,
       data: {'courseId': id, 'conflicts': warning != null},
     );
@@ -174,7 +199,10 @@ class CommandExecutor {
 
   /// set_course_color：按 courseId 或 courseName 定位（重名多门时批量全改）。
   /// 只改颜色，不动其他字段；找不到目标是失败（避免「静默什么都没做」）。
-  Future<CommandResult> _setCourseColor(Map<String, dynamic> cmd) async {
+  Future<CommandResult> _setCourseColor(
+    Map<String, dynamic> cmd,
+    CommandSource? source,
+  ) async {
     const type = 'set_course_color';
     final semester = await _dao.getCurrentSemester();
     if (semester == null || semester.id == null) {
@@ -207,20 +235,112 @@ class CommandExecutor {
       await _dao.updateCourse(c.copyWith(colorValue: colorValue));
     }
     final first = targets.first;
+    final message = targets.length == 1
+        ? '已把《${first.name}》的颜色改为 ${_colorText(colorValue)}'
+        : '已把 ${targets.length} 门同名课程《${first.name}》的颜色'
+            '改为 ${_colorText(colorValue)}';
+    if (source != null) {
+      await _recordOperation(
+        source: source,
+        summary: message,
+        snapshot: {
+          'kind': 'set_course_color',
+          'courses': [
+            for (final c in targets)
+              {'courseId': c.id, 'oldColorValue': c.colorValue},
+          ],
+        },
+      );
+    }
     return CommandResult(
       type: type,
       success: true,
-      message: targets.length == 1
-          ? '已把《${first.name}》的颜色改为 ${_colorText(colorValue)}'
-          : '已把 ${targets.length} 门同名课程《${first.name}》的颜色'
-              '改为 ${_colorText(colorValue)}',
+      message: message,
+      destructive: false,
+      data: {'changedCount': targets.length},
+    );
+  }
+
+  /// set_course_remark（2.0.5 第 2 节）：把课程的 `note` 字段（课程备注）设为
+  /// remark，空字符串 = 清除备注。定位逻辑与 set_course_color / add_exam 同款：
+  /// courseId 优先，否则按 courseName 精确匹配，同名课程批量全改。
+  Future<CommandResult> _setCourseRemark(
+    Map<String, dynamic> cmd,
+    CommandSource? source,
+  ) async {
+    const type = 'set_course_remark';
+    final semester = await _dao.getCurrentSemester();
+    if (semester == null || semester.id == null) {
+      throw const _CommandError('还没有当前学期，无法修改课程备注');
+    }
+    // 不能用 _optionalString：空字符串是「清除备注」的合法值，会被它误判成 null
+    final rawRemark = cmd['remark'];
+    if (rawRemark == null) {
+      throw const _CommandError('缺少参数 remark（课程备注内容，空字符串表示清除）');
+    }
+    final remark = rawRemark.toString().trim();
+
+    final courseId = _optionalInt(cmd, 'courseId');
+    final name = _optionalString(cmd, 'courseName');
+    if (courseId == null && name == null) {
+      throw const _CommandError('缺少定位参数：需要 courseId 或 courseName');
+    }
+    final all = await _dao.getCoursesBySemester(semester.id!);
+    final targets = [
+      for (final c in all)
+        if (courseId != null && c.id == courseId) c else if (name != null && c.name == name) c,
+    ];
+    if (targets.isEmpty) {
+      throw _CommandError(
+        courseId != null
+            ? '当前学期没有 id 为 $courseId 的课程'
+            : '当前学期没有名为《$name》的课程',
+      );
+    }
+    // copyWith 用 ?? 合并、传 null 清不掉 note，所以用整对象重建（与 _addExam 同口径）
+    for (final c in targets) {
+      await _dao.updateCourse(
+        c.withMutableFields(
+          colorValue: c.colorValue,
+          note: remark.isEmpty ? null : remark,
+          examDate: c.examDate,
+        ),
+      );
+    }
+    final first = targets.first;
+    final message = targets.length == 1
+        ? (remark.isEmpty
+            ? '已清除《${first.name}》的课程备注'
+            : '已把《${first.name}》的课程备注改为：$remark')
+        : (remark.isEmpty
+            ? '已清除 ${targets.length} 门同名课程《${first.name}》的课程备注'
+            : '已把 ${targets.length} 门同名课程《${first.name}》的课程备注改为：$remark');
+    if (source != null) {
+      await _recordOperation(
+        source: source,
+        summary: message,
+        snapshot: {
+          'kind': 'set_course_remark',
+          'courses': [
+            for (final c in targets) {'courseId': c.id, 'oldNote': c.note},
+          ],
+        },
+      );
+    }
+    return CommandResult(
+      type: type,
+      success: true,
+      message: message,
       destructive: false,
       data: {'changedCount': targets.length},
     );
   }
 
   /// add_note：date（默认今天）+ content 新增备注
-  Future<CommandResult> _addNote(Map<String, dynamic> cmd) async {
+  Future<CommandResult> _addNote(
+    Map<String, dynamic> cmd,
+    CommandSource? source,
+  ) async {
     const type = 'add_note';
     final content = _requireString(cmd, 'content');
     final rawDate = _optionalString(cmd, 'date');
@@ -232,32 +352,94 @@ class CommandExecutor {
       content: content,
       createdAt: DateTime.now().millisecondsSinceEpoch,
     ));
+    final message = '已新增 $dateKey 的备注：$content';
+    if (source != null) {
+      await _recordOperation(
+        source: source,
+        summary: message,
+        snapshot: {'kind': 'add_note', 'noteId': id},
+      );
+    }
     return CommandResult(
       type: type,
       success: true,
-      message: '已新增 $dateKey 的备注：$content',
+      message: message,
       destructive: false,
       data: {'noteId': id, 'date': dateKey},
     );
   }
 
-  /// delete_note：按 id 删除（destructive=true）
-  Future<CommandResult> _deleteNote(Map<String, dynamic> cmd) async {
+  /// delete_note：按 id，或按 date（+ 可选 content 关键词）删除（destructive=true）。
+  ///
+  /// 2.0.5 第 2 节扩展：除原有按 id 删除外，支持按日期定位、按「日期 + 内容关键词」
+  /// 定位删除当天备注；命中多条时全部删除并在结果里报删了几条；定位不到时给中文
+  /// 原因，不再报「缺少参数 id」这种死胡同。
+  Future<CommandResult> _deleteNote(
+    Map<String, dynamic> cmd,
+    CommandSource? source,
+  ) async {
     const type = 'delete_note';
     final id = _optionalInt(cmd, 'id') ?? _optionalInt(cmd, 'noteId');
-    if (id == null) {
-      throw const _CommandError('缺少参数 id（要删除的备注 id）');
+    final rawDate = _optionalString(cmd, 'date');
+    final keyword =
+        _optionalString(cmd, 'content') ?? _optionalString(cmd, 'keyword');
+
+    final List<Note> targets;
+    if (id != null) {
+      // 按 id：先读全文（为撤回留快照），读不到才报「找不到」
+      final all = await _dao.getAllNotes();
+      final found = [for (final n in all) if (n.id == id) n];
+      if (found.isEmpty) {
+        throw _CommandError('找不到 id 为 $id 的备注，可能已经删除过了');
+      }
+      targets = found;
+    } else if (rawDate != null) {
+      final dateKey = _normalizeDateKey(rawDate);
+      final dayNotes = await _dao.getNotesByDate(dateKey);
+      targets = [
+        for (final n in dayNotes)
+          if (keyword == null || n.content.contains(keyword)) n,
+      ];
+      if (targets.isEmpty) {
+        throw _CommandError(
+          keyword == null
+              ? '没有 $dateKey 的备注，无法删除'
+              : '没有 $dateKey 里包含「$keyword」的备注，无法删除',
+        );
+      }
+    } else {
+      throw const _CommandError('缺少定位参数：需要 id，或 date（可再配 content 关键词）');
     }
-    final rows = await _dao.deleteNote(id);
-    if (rows == 0) {
-      throw _CommandError('找不到 id 为 $id 的备注，可能已经删除过了');
+
+    for (final n in targets) {
+      await _dao.deleteNote(n.id!);
+    }
+    final String message;
+    if (targets.length == 1) {
+      final n = targets.first;
+      message = '已删除备注（${n.date} ${n.content}）';
+    } else {
+      message = '已删除 ${targets.length} 条备注';
+    }
+    if (source != null) {
+      await _recordOperation(
+        source: source,
+        summary: message,
+        snapshot: {
+          'kind': 'delete_note',
+          'notes': [for (final n in targets) n.toMap()],
+        },
+      );
     }
     return CommandResult(
       type: type,
       success: true,
-      message: '已删除备注（id=$id）',
+      message: message,
       destructive: true,
-      data: {'noteId': id},
+      data: {
+        'deletedCount': targets.length,
+        'noteIds': [for (final n in targets) n.id],
+      },
     );
   }
 
@@ -267,7 +449,10 @@ class CommandExecutor {
   /// （毫秒时间戳，课程编辑页与考试倒计时页的数据源），因此本指令的字段
   /// 对齐的就是这个模型——先按 courseId / courseName 定位课程，再写 examDate。
   /// 将来若拆出独立考试表，这里改落库目标即可，指令签名不用动。
-  Future<CommandResult> _addExam(Map<String, dynamic> cmd) async {
+  Future<CommandResult> _addExam(
+    Map<String, dynamic> cmd,
+    CommandSource? source,
+  ) async {
     const type = 'add_exam';
     final semester = await _dao.getCurrentSemester();
     if (semester == null || semester.id == null) {
@@ -320,30 +505,41 @@ class CommandExecutor {
     // 因此整对象重建后 updateCourse（与课程编辑页同一处理口径）
     int count = 0;
     for (final c in matches) {
-      await _dao.updateCourse(Course(
-        id: c.id,
-        semesterId: c.semesterId,
-        name: c.name,
-        teacher: c.teacher,
-        classroom: c.classroom,
-        colorValue: c.colorValue,
-        dayOfWeek: c.dayOfWeek,
-        startSection: c.startSection,
-        endSection: c.endSection,
-        weeks: c.weeks,
-        weekType: c.weekType,
-        note: c.note,
-        examDate: examDate,
-      ));
+      await _dao.updateCourse(
+        c.withMutableFields(
+          colorValue: c.colorValue,
+          note: c.note,
+          examDate: examDate,
+        ),
+      );
       count++;
     }
     final first = matches.first;
     final dateText = _formatStamp(examDate);
+    final String message;
+    if (count > 1) {
+      message = '已把 $count 门同名课程《${first.name}》的考试日期设为 $dateText';
+    } else {
+      message = '已把《${first.name}》的考试日期设为 $dateText';
+    }
+    if (source != null) {
+      await _recordOperation(
+        source: source,
+        summary: message,
+        snapshot: {
+          'kind': 'add_exam',
+          'courses': [
+            for (final c in matches)
+              {'courseId': c.id, 'oldExamDate': c.examDate},
+          ],
+        },
+      );
+    }
     if (count > 1) {
       return CommandResult(
         type: type,
         success: true,
-        message: '已把 $count 门同名课程《${first.name}》的考试日期设为 $dateText',
+        message: message,
         destructive: false,
         data: {'changedCount': count, 'examDate': examDate},
       );
@@ -351,10 +547,29 @@ class CommandExecutor {
     return CommandResult(
       type: type,
       success: true,
-      message: '已把《${first.name}》的考试日期设为 $dateText',
+      message: message,
       destructive: false,
       data: {'courseId': first.id, 'examDate': examDate},
     );
+  }
+
+  /// 落一条操作记录（撤回用）。记录本身失败只打日志、不影响指令结果——
+  /// 撤回是「锦上添花」，不该因为写不了记录就让一次成功的改数据报错。
+  Future<void> _recordOperation({
+    required CommandSource source,
+    required String summary,
+    required Map<String, dynamic> snapshot,
+  }) async {
+    try {
+      await _dao.insertOperationLog(OperationLog(
+        createdAt: DateTime.now().millisecondsSinceEpoch,
+        source: source.name,
+        summary: summary,
+        snapshot: snapshot,
+      ));
+    } catch (_) {
+      // 静默：见方法注释
+    }
   }
 
   // ---------- 参数解析辅助 ----------
@@ -474,6 +689,7 @@ class CommandRegistry {
   static const Map<String, bool> _specs = {
     'add_course': false,
     'set_course_color': false,
+    'set_course_remark': false,
     'add_note': false,
     'delete_note': true, // 删除类：桥侧必须先确认
     'add_exam': false,

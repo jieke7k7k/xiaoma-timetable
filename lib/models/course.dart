@@ -117,4 +117,30 @@ class Course {
         note: note ?? this.note,
         examDate: examDate ?? this.examDate,
       );
+
+  /// 重建一份课程，只覆盖 [colorValue] / [note] / [examDate] 三个可变字段。
+  ///
+  /// 与 [copyWith] 的区别：copyWith 用 `??` 合并，传 null 清不掉可空字段
+  /// （note / examDate）；本方法按「给定值原样写」处理，null 就是清空。
+  /// 不想改的字段传原值即可（调用方手里通常有当前课程对象）。
+  Course withMutableFields({
+    required int colorValue,
+    required String? note,
+    required int? examDate,
+  }) =>
+      Course(
+        id: id,
+        semesterId: semesterId,
+        name: name,
+        teacher: teacher,
+        classroom: classroom,
+        colorValue: colorValue,
+        dayOfWeek: dayOfWeek,
+        startSection: startSection,
+        endSection: endSection,
+        weeks: weeks,
+        weekType: weekType,
+        note: note,
+        examDate: examDate,
+      );
 }

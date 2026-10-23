@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/chat_session.dart';
 import '../providers/providers.dart';
 import '../services/ai_service.dart';
+import '../services/chat_session_service.dart';
 import '../services/command_executor.dart';
 import '../services/notification_service.dart';
 import '../services/ongoing_notice_service.dart';
@@ -39,6 +41,12 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
   bool _sending = false;
   bool _configured = false;
   bool _loaded = false;
+
+  /// 当前对话 id（null = 还没落库，首条消息发出时才新建）；2.0.5 第 3 节
+  int? _sessionId;
+
+  /// 当前对话的创建时间（首次落库时定下，后续更新沿用，不随更新重写）
+  int? _sessionCreatedAt;
 
   @override
   void initState() {
@@ -96,6 +104,9 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
       _sending = true;
     });
     _scrollToEnd();
+    // 先把用户这句落库（await 保证 _sessionId 在发请求前就位，避免与回复落库
+    // 并发时插成两段重复会话）：请求中途退出也能保留这段对话
+    await _persistSession();
 
     final history = <AiMessage>[
       AiMessage(role: 'system', content: buildSystemPrompt(_contextNow())),
@@ -123,6 +134,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
         _sending = false;
       });
       _scrollToEnd();
+      unawaited(_persistSession());
       return;
     }
 
@@ -139,6 +151,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
       _sending = false;
     });
     _scrollToEnd();
+    unawaited(_persistSession());
   }
 
   /// 执行一批指令（确认卡片里点「执行」）
@@ -146,9 +159,10 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
     if (indices.isEmpty || item.busy) return;
     setState(() => item.busy = true);
     final executor = CommandExecutor();
-    final results = await executor.executeAll([
-      for (final i in indices) item.commands[i],
-    ]);
+    final results = await executor.executeAll(
+      [for (final i in indices) item.commands[i]],
+      source: CommandSource.ai,
+    );
     if (!mounted) return;
     setState(() {
       for (var k = 0; k < indices.length; k++) {
@@ -160,11 +174,13 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
     });
     // 与其它数据变更同一份联动（provider 重查 + 提醒重排 + 备注通知 + 小部件）
     _applyCommandChanges();
+    unawaited(_persistSession());
     _scrollToEnd();
   }
 
   void _ignore(_ChatItem item, int index) {
     setState(() => item.resolved[index] = false);
+    unawaited(_persistSession());
   }
 
   /// 指令改动数据后的联动刷新（与 BridgePage / HomeShell 同一份口径）
@@ -176,6 +192,69 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
     unawaited(OngoingNoticeService.instance.refresh());
     unawaited(WidgetService.instance.refreshWidgets());
   }
+
+  /// 把当前对话整段写进历史（2.0.5 第 3 节）。
+  ///
+  /// 首次调用时新建（定下 createdAt 与标题），之后更新同一段（createdAt 沿用）。
+  /// 空对话不落库——只有真聊过才进历史。
+  Future<void> _persistSession() async {
+    if (_items.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final session = ChatSession(
+      id: _sessionId,
+      title: _firstUserText(),
+      createdAt: _sessionCreatedAt ?? now,
+      updatedAt: now,
+      messages: [for (final it in _items) it.toMessage()],
+    );
+    _sessionId = await ChatSessionService.instance.saveSession(session);
+    _sessionCreatedAt ??= now;
+  }
+
+  /// 从历史列表恢复一段对话：把消息灌回当前页，接着聊。
+  void _restoreSession(ChatSession session) {
+    setState(() {
+      _items.clear();
+      _items.addAll([
+        for (final m in session.messages)
+          if (m.text.trim().isNotEmpty || m.commands.isNotEmpty)
+            _ChatItem.fromMessage(m),
+      ]);
+      _sessionId = session.id;
+      _sessionCreatedAt = session.createdAt;
+    });
+    _scrollToEnd();
+  }
+
+  /// 打开历史列表页；用户选了一段对话会 `pop` 回 ChatSession，接着恢复。
+  Future<void> _openHistory() async {
+    final result = await Navigator.pushNamed(context, '/ai-history');
+    if (!mounted || result is! ChatSession) return;
+    _restoreSession(result);
+  }
+
+  /// 开启一段新对话：当前对话（如果聊过）已经留在历史里，这里清空重来。
+  void _startNewConversation() {
+    if (_sending) return;
+    setState(() {
+      _items.clear();
+      _sessionId = null;
+      _sessionCreatedAt = null;
+    });
+  }
+
+  /// 标题取首条用户消息的前若干字（空则回退「新对话」）。
+  String _firstUserText() {
+    for (final it in _items) {
+      if (it.fromUser && it.text.trim().isNotEmpty) {
+        final t = it.text.trim();
+        return t.length <= kChatTitleMaxLen ? t : '${t.substring(0, kChatTitleMaxLen)}…';
+      }
+    }
+    return '新对话';
+  }
+
+  static const int kChatTitleMaxLen = 20;
 
   void _scrollToEnd() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -196,8 +275,21 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
         title: const Text('智能助手'),
         centerTitle: true,
         actions: [
+          // 历史记录 / 操作记录入口（2.0.5 第 3 / 4 节）
+          IconButton(
+            icon: const Icon(Icons.history_outlined),
+            tooltip: '历史记录',
+            onPressed: _openHistory,
+          ),
+          // 新对话（2.0.5 第 3 节：旧对话留在历史里，这里清空重来）
+          IconButton(
+            icon: const Icon(Icons.add_comment_outlined),
+            tooltip: '新对话',
+            onPressed: _startNewConversation,
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
+            tooltip: '智能助手设置',
             onPressed: () async {
               await Navigator.pushNamed(context, '/ai-settings');
               if (!mounted) return;
@@ -205,12 +297,6 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
               if (!mounted) return;
               setState(() => _configured = s.configured);
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_sweep_outlined),
-            onPressed: _items.isEmpty
-                ? null
-                : () => setState(() => _items.clear()),
           ),
         ],
       ),
@@ -224,6 +310,9 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                           padding: const EdgeInsets.all(AppSpacing.l),
                           child: EmptyState(
                             icon: Icons.smart_toy_outlined,
+                            iconImage: const AssetImage(
+                              'assets/icons/xiaoma_assistant_selected.png',
+                            ),
                             title: '问点什么吧',
                             message: '我带着你这一周的课表、临近考试和今明两天的备注，'
                                 '可以直接回答「我明天有什么课」「周三下午有空吗」；'
@@ -240,6 +329,9 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                               padding: const EdgeInsets.all(AppSpacing.l),
                               child: EmptyState(
                                 icon: Icons.smart_toy_outlined,
+                                iconImage: const AssetImage(
+                                  'assets/icons/xiaoma_assistant_selected.png',
+                                ),
                                 title: '还没配置智能助手',
                                 message: '填好接口地址、模型名和 API Key 就能用。'
                                     '默认填的是智谱（open.bigmodel.cn），'
@@ -589,10 +681,37 @@ class _ChatItem {
     this.failed = false,
     this.retryText,
     this.parseError,
-  }) : commands = commands ?? const [];
+    int? time,
+  })  : commands = commands ?? const [],
+        time = time ?? DateTime.now().millisecondsSinceEpoch;
+
+  /// 从持久化消息还原（历史记录「接着聊」用）。
+  /// 失败提示 / 解析报错这类一次性展示态不持久化，恢复时按普通消息对待。
+  factory _ChatItem.fromMessage(ChatMessage m) => _ChatItem(
+        fromUser: m.role == 'user',
+        text: m.text,
+        commands: m.commands,
+        time: m.time,
+      )..resolved.addAll({
+          for (final e in m.resolved.entries)
+            if (int.tryParse(e.key) != null) int.parse(e.key): e.value,
+        })..results.addAll(m.results);
+
+  /// 转成可持久化的消息（2.0.5 第 3 节）。
+  ChatMessage toMessage() => ChatMessage(
+        role: fromUser ? 'user' : 'assistant',
+        text: text,
+        time: time,
+        commands: commands,
+        resolved: {for (final e in resolved.entries) '${e.key}': e.value},
+        results: results,
+      );
 
   final bool fromUser;
   final String text;
+
+  /// 消息产生时间（毫秒时间戳，持久化用，UI 不展示）
+  final int time;
 
   /// 解析出的指令原文（空表示普通聊天消息）
   final List<Map<String, dynamic>> commands;
