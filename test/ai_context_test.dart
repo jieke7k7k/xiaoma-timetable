@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xiaoma_timetable/models/course.dart';
 import 'package:xiaoma_timetable/models/note.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
+import 'package:xiaoma_timetable/services/command_executor.dart';
 import 'package:xiaoma_timetable/utils/ai_context.dart';
 
 /// 内置 AI 的纯函数测试：指令块解析 + 课表上下文组装 + 系统提示
@@ -315,6 +316,145 @@ void main() {
       expect(prompt, contains('课程备注'));
       expect(prompt, contains('日期备注'));
       expect(prompt, contains('给 XX 课加备注'));
+    });
+  });
+
+  group('全部课程清单与指令示例（2.0.6 第 3 节）', () {
+    const semester = Semester(
+      id: 1,
+      name: '大三上学期',
+      startDate: '2026-09-07',
+      totalWeeks: 20,
+      isCurrent: true,
+    );
+    final now = DateTime(2026, 10, 22, 9, 30);
+
+    List<Course> allCourses() => [
+          Course(
+            id: 21,
+            semesterId: 1,
+            name: '药理学实验',
+            colorValue: 0xFF6B8E7B,
+            dayOfWeek: 4,
+            startSection: 3,
+            endSection: 4,
+            weeks: const [1, 2, 3],
+          ),
+          const Course(
+            id: 11,
+            semesterId: 1,
+            name: '高等数学',
+            colorValue: 0xFF6B8E7B,
+            dayOfWeek: 2,
+            startSection: 1,
+            endSection: 2,
+            weeks: [1, 2, 3],
+          ),
+        ];
+
+    test('buildCourseListContext 按课程名排序，行格式「《课程名》（id 编号、周X 第A-B节）」', () {
+      final list = buildCourseListContext(allCourses());
+      expect(list, contains('【全部课程（定位用）】'));
+      // 按课程名 compareTo（UTF-16 编码序）排序：药 U+836F < 高 U+9AD8，药理学实验在前
+      expect(list.indexOf('药理学实验'), lessThan(list.indexOf('高等数学')));
+      expect(list, contains('- 《高等数学》（id 11、周二 第1-2节）'));
+      expect(list, contains('- 《药理学实验》（id 21、周四 第3-4节）'));
+    });
+
+    test('buildTimetableContext 传 allCourses 时多出【全部课程（定位用）】节', () {
+      final text = buildTimetableContext(
+        semester: semester,
+        courses: allCourses(),
+        notes: const [],
+        now: now,
+        allCourses: allCourses(),
+      );
+      expect(text, contains('【全部课程（定位用）】'));
+      expect(text, contains('- 《高等数学》（id 11、周二 第1-2节）'));
+    });
+
+    test('allCourses 为空/null 时不输出这一节（兼容不传的调用方）', () {
+      final text = buildTimetableContext(
+        semester: semester,
+        courses: allCourses(),
+        notes: const [],
+        now: now,
+      );
+      expect(text, isNot(contains('【全部课程（定位用）】')));
+    });
+
+    test('buildSystemPrompt 含 set_course_remark 两条 JSON 示例与 courseName 原样复制硬规矩', () {
+      final prompt = buildSystemPrompt('【学期】测试');
+      expect(
+        prompt,
+        contains('{"type":"set_course_remark","courseName":"药理学实验","remark":"二楼"}'),
+      );
+      expect(
+        prompt,
+        contains('{"type":"set_course_remark","courseName":"药理学实验","remark":""}'),
+      );
+      expect(prompt, contains('清除备注'));
+      expect(prompt, contains('原样复制'));
+      expect(prompt, contains('不要改字'));
+      expect(prompt, contains('不要用简称'));
+      expect(prompt, contains('不要自己编 id'));
+    });
+  });
+
+  group('纠错重试判定（2.0.6 第 4 节）', () {
+    CommandResult fail(String msg) => CommandResult(
+          type: 'set_course_remark',
+          success: false,
+          message: msg,
+          destructive: false,
+        );
+    const ok = CommandResult(
+      type: 'set_course_remark',
+      success: true,
+      message: '已改好',
+      destructive: false,
+    );
+
+    test('参数类报错判为参数类失败', () {
+      expect(isParameterFailure('缺少参数 dayOfWeek'), isTrue);
+      expect(isParameterFailure('缺少定位参数：需要 courseId 或 courseName'), isTrue);
+      expect(isParameterFailure('当前学期没有名为《高等数学》的课程'), isTrue);
+      expect(isParameterFailure('当前学期没有 id 为 999 的课程'), isTrue);
+      expect(isParameterFailure('课程名「数学」能对上多门课：…'), isTrue);
+      expect(isParameterFailure('不支持的指令类型：stop_course'), isTrue);
+    });
+
+    test('非参数类报错不算参数类失败', () {
+      expect(isParameterFailure('还没有当前学期，无法修改课程备注'), isFalse);
+      expect(isParameterFailure('执行失败：数据库异常'), isFalse);
+    });
+
+    test('有参数类失败且未重试才重试；全成功 / 已重试都不重试', () {
+      expect(
+        shouldRetryForParameterError([ok, fail('缺少定位参数')], alreadyRetried: false),
+        isTrue,
+      );
+      expect(shouldRetryForParameterError([ok], alreadyRetried: false), isFalse);
+      expect(
+        shouldRetryForParameterError([fail('缺少定位参数')], alreadyRetried: true),
+        isFalse,
+      );
+    });
+
+    test('buildCorrectionPrompt 含用户原话 / 失败指令 / 报错 / 课程名单', () {
+      final prompt = buildCorrectionPrompt(
+        userText: '给药理学实验添加备注',
+        failedCommands: const [
+          {'type': 'set_course_remark', 'remark': '二楼'},
+        ],
+        failedMessages: const ['缺少定位参数：需要 courseId 或 courseName'],
+        courseList: '【全部课程（定位用）】\n- 《药理学实验》（id 21、周四 第3-4节）',
+      );
+      expect(prompt, contains('给药理学实验添加备注'));
+      expect(prompt, contains('"type": "set_course_remark"'));
+      expect(prompt, contains('缺少定位参数'));
+      expect(prompt, contains('【全部课程（定位用）】'));
+      expect(prompt, contains('{"commands":[...]}'));
     });
   });
 }

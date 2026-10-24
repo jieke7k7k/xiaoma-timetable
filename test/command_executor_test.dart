@@ -534,6 +534,85 @@ void main() {
     });
   });
 
+  group('定位参数别名与按名模糊匹配（2.0.6）', () {
+    test('courseName 别名：name / course / course_name / 课程名 都能定位', () async {
+      await Dao.instance.insertCourse(course(name: '高等数学'));
+
+      final r1 = await ex.execute(
+          {'type': 'set_course_remark', 'name': '高等数学', 'remark': 'A'});
+      expect(r1.success, isTrue);
+      final r2 = await ex.execute(
+          {'type': 'set_course_remark', 'course': '高等数学', 'remark': 'B'});
+      expect(r2.success, isTrue);
+      final r3 = await ex.execute(
+          {'type': 'set_course_remark', 'course_name': '高等数学', 'remark': 'C'});
+      expect(r3.success, isTrue);
+      final r4 = await ex.execute(
+          {'type': 'set_course_remark', '课程名': '高等数学', 'remark': 'D'});
+      expect(r4.success, isTrue);
+      expect((await courses()).single.note, 'D');
+    });
+
+    test('courseId 别名：id 也能定位', () async {
+      final id = await Dao.instance.insertCourse(course(name: '药理学'));
+      final r = await ex.execute(
+          {'type': 'set_course_color', 'id': id, 'color': '#B8BFC7'});
+      expect(r.success, isTrue);
+      expect((await courses()).single.colorValue, 0xFFB8BFC7);
+    });
+
+    test('add_exam 也认 courseName 的别名（course）', () async {
+      await Dao.instance.insertCourse(course(name: '高等数学'));
+      final r = await ex.execute(
+          {'type': 'add_exam', 'course': '高等数学', 'date': '2026-12-20'});
+      expect(r.success, isTrue);
+      expect((await courses()).single.examDate,
+          DateTime(2026, 12, 20).millisecondsSinceEpoch);
+    });
+
+    test('add_course 的 name 仍是新课名，不被当定位参数', () async {
+      final r = await ex.execute({
+        'type': 'add_course',
+        'name': '新课',
+        'dayOfWeek': 1,
+        'startSection': 1,
+        'weeks': '1-8',
+      });
+      expect(r.success, isTrue);
+      expect((await courses()).single.name, '新课');
+    });
+
+    test('按名模糊匹配：恰好 1 个候选就用它', () async {
+      await Dao.instance.insertCourse(course(name: '高等数学'));
+      final r = await ex.execute(
+          {'type': 'set_course_color', 'courseName': '数学', 'color': '#AFC3BB'});
+      expect(r.success, isTrue);
+      expect((await courses()).single.colorValue, 0xFFAFC3BB);
+    });
+
+    test('按名模糊匹配：多个候选报错并列候选课程名', () async {
+      await Dao.instance.insertCourse(course(name: '高等数学'));
+      await Dao.instance.insertCourse(
+          course(name: '数学分析', dayOfWeek: 2, startSection: 3, endSection: 4));
+      final r = await ex.execute(
+          {'type': 'set_course_remark', 'courseName': '数学', 'remark': 'X'});
+      expect(r.success, isFalse);
+      expect(r.message, contains('能对上多门课'));
+      expect(r.message, contains('高等数学'));
+      expect(r.message, contains('数学分析'));
+      // 定位失败不动数据
+      expect((await courses()).every((c) => c.note == null), isTrue);
+    });
+
+    test('按名模糊匹配：0 个候选维持「没有名为」报错', () async {
+      await Dao.instance.insertCourse(course(name: '高等数学'));
+      final r = await ex.execute(
+          {'type': 'set_course_color', 'courseName': '物理', 'color': '#AFC3BB'});
+      expect(r.success, isFalse);
+      expect(r.message, contains('没有名为'));
+    });
+  });
+
   group('批量与容错', () {
     test('缺 type / 未知 type → 该条失败，提示支持哪些指令', () async {
       final noType = await ex.execute({'name': '没有类型的指令'});

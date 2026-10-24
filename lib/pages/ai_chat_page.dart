@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/chat_session.dart';
+import '../models/course.dart';
 import '../providers/providers.dart';
 import '../services/ai_service.dart';
 import '../services/chat_session_service.dart';
@@ -48,6 +49,9 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
   /// 当前对话的创建时间（首次落库时定下，后续更新沿用，不随更新重写）
   int? _sessionCreatedAt;
 
+  /// 本轮对话是否已经自动纠错重试过一次（2.0.6 第 4 节：硬上限一次，防死循环/防刷接口）
+  bool _retriedThisRound = false;
+
   @override
   void initState() {
     super.initState();
@@ -88,13 +92,18 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
       courses: weekCourses,
       notes: notes,
       now: DateTime.now(),
+      allCourses: courses,
     );
   }
 
   Future<void> _send({String? retryText}) async {
     final text = (retryText ?? _input.text).trim();
     if (text.isEmpty || _sending) return;
-    if (retryText == null) _input.clear();
+    if (retryText == null) {
+      _input.clear();
+      // 新的用户消息开启新一轮对话：纠错重试的「已重试」标记归零
+      _retriedThisRound = false;
+    }
     setState(() {
       if (retryText != null && _items.isNotEmpty) {
         // 重试：把上一条失败提示删掉，避免错误提示越堆越多
@@ -176,11 +185,107 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
     _applyCommandChanges();
     unawaited(_persistSession());
     _scrollToEnd();
+
+    // 2.0.6（WB_SPEC_206 第 4 节）：参数类失败自动纠错重试一次。
+    // 纯问答不触发（执行器只在有指令时被调），全成功不触发；硬上限一次。
+    if (shouldRetryForParameterError(results, alreadyRetried: _retriedThisRound)) {
+      _retriedThisRound = true;
+      final failedCommands = <Map<String, dynamic>>[];
+      final failedMessages = <String>[];
+      for (var k = 0; k < indices.length; k++) {
+        final r = results[k];
+        if (!r.success && isParameterFailure(r.message)) {
+          failedCommands.add(item.commands[indices[k]]);
+          failedMessages.add(r.message);
+        }
+      }
+      await _autoCorrectCommands(
+        failedCommands: failedCommands,
+        failedMessages: failedMessages,
+      );
+    }
   }
 
   void _ignore(_ChatItem item, int index) {
     setState(() => item.resolved[index] = false);
     unawaited(_persistSession());
+  }
+
+  /// 自动纠错重试一次（2.0.6 第 4 节）：把失败指令 + 报错原文 + 课程名单打包成
+  /// 一段纠错提示再问一次模型，只回改好的指令（沿用现有指令块格式）。纠错回来的
+  /// 指令照常走原有路径（解析 → 确认卡片），纠错后仍失败就如实展示、不再重试。
+  Future<void> _autoCorrectCommands({
+    required List<Map<String, dynamic>> failedCommands,
+    required List<String> failedMessages,
+  }) async {
+    final allCourses = ref.read(coursesProvider).value ?? const <Course>[];
+    final correction = buildCorrectionPrompt(
+      userText: _lastUserText(),
+      failedCommands: failedCommands,
+      failedMessages: failedMessages,
+      courseList: buildCourseListContext(allCourses),
+    );
+
+    // 先按当前对话拼历史（不含马上要加的提示行，避免把 UI 提示喂回给模型）
+    final history = <AiMessage>[
+      AiMessage(role: 'system', content: buildSystemPrompt(_contextNow())),
+      for (final it in _items)
+        if (it.commands.isEmpty)
+          AiMessage(
+            role: it.fromUser ? 'user' : 'assistant',
+            content: it.text,
+          ),
+      AiMessage(role: 'user', content: correction),
+    ];
+
+    setState(() {
+      _items.add(_ChatItem(
+        fromUser: false,
+        text: '刚才的指令参数不对，我让它照着课程名单改一次',
+      ));
+      _sending = true;
+    });
+    _scrollToEnd();
+    unawaited(_persistSession());
+
+    final result = await AiService.instance.chat(history);
+    if (!mounted) return;
+
+    if (!result.ok) {
+      setState(() {
+        _items.add(_ChatItem(
+          fromUser: false,
+          text: '纠错失败：${result.error ?? '请求失败'}',
+          failed: true,
+        ));
+        _sending = false;
+      });
+      _scrollToEnd();
+      unawaited(_persistSession());
+      return;
+    }
+
+    final reply = parseAiReply(result.text);
+    setState(() {
+      _items.add(_ChatItem(
+        fromUser: false,
+        text: reply.text.isEmpty ? '（这次只有指令，没有文字回复）' : reply.text,
+        commands: reply.commands,
+        parseError: reply.commandParseError,
+      ));
+      _sending = false;
+    });
+    _scrollToEnd();
+    unawaited(_persistSession());
+  }
+
+  /// 最近一条用户消息的原文（纠错提示里的「用户的原话」）
+  String _lastUserText() {
+    for (var i = _items.length - 1; i >= 0; i--) {
+      final it = _items[i];
+      if (it.fromUser && it.text.trim().isNotEmpty) return it.text.trim();
+    }
+    return '';
   }
 
   /// 指令改动数据后的联动刷新（与 BridgePage / HomeShell 同一份口径）

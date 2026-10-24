@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../models/course.dart';
 import '../models/note.dart';
 import '../models/semester.dart';
+import '../services/command_executor.dart';
 import 'command_describe.dart' as cmd;
 import 'exam_countdown.dart';
 import 'week_calc.dart';
@@ -105,11 +106,17 @@ String describeAiCommand(Map<String, dynamic> command) =>
 ///
 /// [courses] 由调用方传「本周有效课程」（周视图同款口径，已应用单次调课）；
 /// 本函数不再按周次过滤一次，避免与调用方的口径打架。
+///
+/// [allCourses] 可选：当前学期**全部**课程（不经周次过滤），非空时上下文会多出
+/// 一节【全部课程（定位用）】——模型要定位已有课程（set_course_color /
+/// set_course_remark / add_exam）时从这里原样复制 courseName，避免它自己编名字。
+/// 为兼容桥等其他调用方，本参数可选，不传（null/空）时不输出这一节。
 String buildTimetableContext({
   required Semester? semester,
   required List<Course> courses,
   required List<Note> notes,
   required DateTime now,
+  List<Course>? allCourses,
 }) {
   final today = DateTime(now.year, now.month, now.day);
   final buf = StringBuffer();
@@ -144,6 +151,11 @@ String buildTimetableContext({
     for (final c in sorted) {
       buf.writeln('- ${_courseLine(c)}');
     }
+  }
+
+  if (allCourses != null && allCourses.isNotEmpty) {
+    buf.writeln(buildCourseListContext(allCourses));
+    buf.writeln();
   }
 
   final exams = _upcomingExams(courses, today);
@@ -195,6 +207,26 @@ String buildTimetableContext({
     }
   }
 
+  return buf.toString().trim();
+}
+
+/// 【全部课程（定位用）】清单（2.0.6 第 3 节）：每行《课程名》（id 编号、周X 第A-B节），
+/// 按课程名排序。供模型在执行「定位已有课程」的指令时原样复制 courseName，
+/// 也给纠错重试提示复用（同一份格式，避免两处漂移）。
+String buildCourseListContext(List<Course> allCourses) {
+  final buf = StringBuffer()..writeln('【全部课程（定位用）】');
+  if (allCourses.isEmpty) {
+    buf.writeln('（当前学期没有课程）');
+  } else {
+    final sorted = [...allCourses]..sort((a, b) => a.name.compareTo(b.name));
+    for (final c in sorted) {
+      final idPart = c.id == null ? '' : 'id ${c.id}、';
+      buf.writeln(
+        '- 《${c.name}》（${idPart}周${_weekdayName(c.dayOfWeek)} '
+        '第${_sectionText(c.startSection, c.endSection)}节）',
+      );
+    }
+  }
   return buf.toString().trim();
 }
 
@@ -276,6 +308,10 @@ $timetableContext
 - delete_note：id（备注 id）或 date（删当天全部备注）或 date+content（删当天含关键词备注），删除类，用户需逐条确认
 - add_exam：courseId 或 courseName、date(yyyy-MM-dd)、time?("HH:mm")
 
+set_course_remark 示例：{"type":"set_course_remark","courseName":"药理学实验","remark":"二楼"}
+清除备注：{"type":"set_course_remark","courseName":"药理学实验","remark":""}
+硬规矩：courseName 必须从上面的【全部课程（定位用）】清单里原样复制，不要改字、不要用简称、不要自己编 id。
+
 这些指令不会立刻执行：App 会把它们渲染成确认卡片，用户点了「执行」才生效。
 所以你只管给出指令，并在正文里说明你打算做什么。''';
 
@@ -313,3 +349,63 @@ const _weekdayNames = ['', '一', '二', '三', '四', '五', '六', '日'];
 
 String _weekdayName(int weekday) =>
     weekday >= 1 && weekday <= 7 ? _weekdayNames[weekday] : '$weekday';
+
+// ---------- 纠错重试（2.0.6 第 4 节） ----------
+
+/// 失败是否属于「参数类」（值得让模型照着课程名单纠错重试一次的那类中文报错）。
+///
+/// 认执行器里的这几类中文报错：缺少参数 / 缺少定位参数 / 没有名为…的课程 /
+/// 没有 id 为…的课程 / 课程名对上多门课 / 不支持的指令类型。
+bool isParameterFailure(String message) {
+  if (message.contains('缺少参数') || message.contains('缺少定位参数')) {
+    return true;
+  }
+  if (message.contains('没有名为') || message.contains('没有 id 为')) {
+    return true;
+  }
+  if (message.contains('能对上多门课')) return true;
+  if (message.contains('不支持的指令类型')) return true;
+  return false;
+}
+
+/// 一轮里执行完指令后，是否应该自动纠错重试一次。
+///
+/// [alreadyRetried] 为 true（本轮已重试过）时一律不再重试——硬上限一次，
+/// 防死循环、防刷接口。纯问答不触发（执行器只在有指令时被调），执行全成功不触发。
+bool shouldRetryForParameterError(
+  List<CommandResult> results, {
+  required bool alreadyRetried,
+}) {
+  if (alreadyRetried) return false;
+  return results.any((r) => !r.success && isParameterFailure(r.message));
+}
+
+/// 纠错重试时的提示（作为用户消息发给模型）：把用户原话、失败指令、报错原文、
+/// 课程名单打包，要求模型只回改好的指令（沿用现有指令块格式）。
+String buildCorrectionPrompt({
+  required String userText,
+  required List<Map<String, dynamic>> failedCommands,
+  required List<String> failedMessages,
+  required String courseList,
+}) {
+  final buf = StringBuffer();
+  buf.writeln(
+    '你刚才给出的指令没有执行成功。请照着下面的课程名单改好，'
+    '然后只回一个 json 指令块（格式 {"commands":[...]}），不要加别的说明。',
+  );
+  buf.writeln();
+  buf.writeln('用户原话：');
+  buf.writeln(userText);
+  buf.writeln();
+  buf.writeln('你发的指令（失败）：');
+  buf.writeln(const JsonEncoder.withIndent('  ').convert(failedCommands));
+  buf.writeln();
+  buf.writeln('执行器报错：');
+  for (final m in failedMessages) {
+    buf.writeln('- $m');
+  }
+  buf.writeln();
+  buf.writeln('全部课程（courseName 从这里原样复制）：');
+  buf.writeln(courseList);
+  return buf.toString().trim();
+}

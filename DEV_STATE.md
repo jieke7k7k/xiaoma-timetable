@@ -1,8 +1,38 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-10-24（2.0.5+20：WB_SPEC_205 第 1~9 节）
+> 更新时间：2026-10-24（2.0.6+21：WB_SPEC_206 第 1~5 节）
 
 ## 做到哪了
+
+## 2026-10-24（2.0.6+21：WB_SPEC_206 第 1~5 节，未跑命令）
+
+规格见仓库根 `WB_SPEC_206.md`（共五节）。沿用 Riverpod 手写 Notifier / 中文文案注释；`flutter analyze` / `flutter test` 由主会话代跑。
+
+### 第 1 节 设置首页去掉重复分组小标题
+
+- `lib/pages/settings_page.dart`：删除 `_SectionHeader` 组件与全部 9 处分组小标题（小标题与入口行同名，纯重复），首页只留入口行；组与组之间用 `SizedBox(AppSpacing.l)` 分隔，智能助手组内两行用 `SizedBox(AppSpacing.s)`。入口行本身、顺序、副标题、跳转全不动。
+- 测试：`test/settings_page_test.dart` 改断言——9+1 个入口行各 `findsOneWidget`；新增「学期设置/外观/提醒」等 8 个同名文字在首页各只出现一次；无 Switch/Slider 不变。
+
+### 第 2 节 指令定位参数容错
+
+- `command_executor.dart`：新增私有共用方法 `_locateTargetCourses`（set_course_color / set_course_remark / add_exam 三处共用）+ 私有 `_locateName` 别名读取。courseId 别名 `courseId`/`id`；courseName 别名 `courseName`/`name`/`course`/`course_name`/`课程名`；courseId 优先、精确匹配同名全改，精确落空做一次按名模糊匹配（课程名与给定名互为包含：恰好 1 个用它、多个报错并列候选、0 个维持「当前学期没有名为《X》的课程」）。别名只在这三条「定位已有课程」指令生效——add_course 的 `name` 是新课名，绝不走这里、不受影响。其余行为（快照/操作记录/结果文案）不变。
+- 测试：`command_executor_test.dart` 新增组「定位参数别名与按名模糊匹配（2.0.6）」7 例。
+
+### 第 3 节 上下文补全学期课程清单 + 指令示例
+
+- `ai_context.dart`：`buildTimetableContext` 加可选参数 `allCourses`，非空时输出【全部课程（定位用）】节（每行《课程名》（id 编号、周X 第A-B节），按课程名排序）；新增公开 `buildCourseListContext` 复用同一格式（纠错提示也用它）。系统提示 `buildSystemPrompt` 补 set_course_remark 两条完整 JSON 示例与「courseName 必须从清单原样复制、不要改字/简称/编 id」硬规矩。
+- `ai_chat_page.dart`：`_contextNow` 传 `allCourses: courses`（coursesProvider 即当前学期 getCoursesBySemester 结果）。
+- 测试：`ai_context_test.dart` 新增全部课程清单（含排序/格式）、示例与硬规矩断言。
+
+### 第 4 节 失败自动纠错重试一次
+
+- `ai_context.dart` 新增纯函数：`isParameterFailure`（认缺少参数/缺少定位参数/没有名为/没有 id 为/课程名能对上多门课/不支持的指令类型）、`shouldRetryForParameterError`（`alreadyRetried` 为 true 一律不重试，硬上限一次）、`buildCorrectionPrompt`（用户原话 + 失败指令 JSON + 报错原文 + 课程名单，要求只回改好的指令）。
+- `ai_chat_page.dart`：`_runCommands` 执行完若 `shouldRetryForParameterError` 为真且本轮未重试过，置 `_retriedThisRound = true` 后调 `_autoCorrectCommands`——追加提示行「刚才的指令参数不对，我让它照着课程名单改一次」→ 再调一次模型（纠错提示作为 user 消息）→ 解析回指令照常走原有确认卡片路径；纠错后仍失败如实展示、不再重试。新用户消息（`_send` 且 retryText==null）重置 `_retriedThisRound`。桥侧不加这层重试——对端外部 AI 自己会看 results 纠错。
+- 测试：`ai_context_test.dart` 新增纠错判定纯函数单测；页面级 widget 测试因假异步 / HTTP 替身成本过高未做（判定逻辑已抽成纯函数覆盖，见汇总说明）。
+
+### 第 5 节 版本与文档
+
+- `pubspec.yaml` 2.0.5+20 → 2.0.6+21；`CHANGELOG.md` 新增 2.0.6 两条（用户口吻）；本文件与 `ARCHITECTURE.md` 同步追加 2.0.6 变更。
 
 ## 2026-10-24（2.0.5+20：WB_SPEC_205 第 9 节，未跑命令）
 

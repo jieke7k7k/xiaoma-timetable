@@ -2,6 +2,24 @@
 
 > 每完成一个阶段更新本文件，防止上下文丢失。
 
+## 2.0.6 变更（2026-10-24，WB_SPEC_206：设置首页去重标题 + 定位容错 + 全部课程清单 + 失败纠错重试）
+
+| 文件 | 改动 |
+|---|---|
+| `lib/pages/settings_page.dart` | 去掉全部分组小标题（小标题与入口行同名，纯重复），首页只留入口行，组间用 `SizedBox(AppSpacing.l)`、智能助手组内 `SizedBox(AppSpacing.s)` 分隔 |
+| `lib/services/command_executor.dart` | 新增共用定位方法 `_locateTargetCourses`：courseId 别名 `courseId`/`id`、courseName 别名 `courseName`/`name`/`course`/`course_name`/`课程名`；courseId 优先，精确匹配同名全改，精确落空按名模糊匹配（互为包含：恰 1 用它 / 多报错列候选 / 0 维持「没有名为」）。add_course 的 `name` 是新课名、不走别名不受影响 |
+| `lib/utils/ai_context.dart` | `buildTimetableContext` 加可选 `allCourses` 输出【全部课程（定位用）】节；新增公开 `buildCourseListContext`；提示词补 set_course_remark 两条 JSON 示例与 courseName 原样复制硬规矩；新增 `isParameterFailure` / `shouldRetryForParameterError` / `buildCorrectionPrompt` |
+| `lib/pages/ai_chat_page.dart` | `_contextNow` 传 `allCourses`；`_runCommands` 参数类失败自动纠错重试一次（`_retriedThisRound` 硬上限一次，`_autoCorrectCommands` 追加提示行再问模型，纠错回指令照走确认卡片） |
+| `pubspec.yaml` | 版本 2.0.6+21 |
+| 测试 | `settings_page_test.dart`（同名文字各只出现一次）、`command_executor_test.dart`（别名+模糊匹配）、`ai_context_test.dart`（全部课程清单+示例+纠错判定纯函数） |
+
+### 关键设计决策
+
+- **定位容错收成一个方法**：set_course_color / set_course_remark / add_exam 三处原本各写一遍「courseId 优先、按 courseName 精确匹配、同名全改」，本轮收进 `_locateTargetCourses`。别名只在这三条「定位已有课程」指令里生效——add_course 的 `name` 是新课名、走原 `_addCourse` 不碰别名，避免「给新课取名」被误当「定位课程」。
+- **按名模糊匹配是「精确落空后的兜底」**：先精确、再模糊，只有模糊候选恰好 1 个才用，多个列候选、0 个维持原报错——不会因为模糊把「名字写错」静默改到别的课上。
+- **全部课程清单只对内置助手开**：`buildTimetableContext` 的 `allCourses` 可选、缺省 null，桥等其他调用方不传也能编译能跑（桥走 `buildSnapshotJson`，与本函数无关）。清单给弱模型一个「可原样复制」的名字来源，配合提示词硬规矩从源头压住「编名字/用简称」。
+- **纠错重试硬上限一次**：判定抽成纯函数 `shouldRetryForParameterError`（`alreadyRetried` 为真即不重试），页面只用一个 `_retriedThisRound` 布尔守门——防死循环、防刷接口。桥侧不加这层，因为对端是外部 AI、自己会看 results 纠错。
+
 ## 2.0.5 变更（2026-10-24，WB_SPEC_205 第 1/5/6/7 节：设置页 QQ 式分级 + 像素小马 + 预览高亮修复 + 桥 Custom Tab）
 
 本轮只落地第 1/5/6/7 四节，第 2/3/4 节（AI 指令补全 / 历史记录 / 撤回）未动。

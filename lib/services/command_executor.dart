@@ -214,23 +214,7 @@ class CommandExecutor {
     }
     final colorValue = _parseColor(rawColor);
 
-    final courseId = _optionalInt(cmd, 'courseId');
-    final name = _optionalString(cmd, 'courseName');
-    if (courseId == null && name == null) {
-      throw const _CommandError('缺少定位参数：需要 courseId 或 courseName');
-    }
-    final all = await _dao.getCoursesBySemester(semester.id!);
-    final targets = [
-      for (final c in all)
-        if (courseId != null && c.id == courseId) c else if (name != null && c.name == name) c,
-    ];
-    if (targets.isEmpty) {
-      throw _CommandError(
-        courseId != null
-            ? '当前学期没有 id 为 $courseId 的课程'
-            : '当前学期没有名为《$name》的课程',
-      );
-    }
+    final targets = await _locateTargetCourses(cmd, semester.id!);
     for (final c in targets) {
       await _dao.updateCourse(c.copyWith(colorValue: colorValue));
     }
@@ -280,23 +264,7 @@ class CommandExecutor {
     }
     final remark = rawRemark.toString().trim();
 
-    final courseId = _optionalInt(cmd, 'courseId');
-    final name = _optionalString(cmd, 'courseName');
-    if (courseId == null && name == null) {
-      throw const _CommandError('缺少定位参数：需要 courseId 或 courseName');
-    }
-    final all = await _dao.getCoursesBySemester(semester.id!);
-    final targets = [
-      for (final c in all)
-        if (courseId != null && c.id == courseId) c else if (name != null && c.name == name) c,
-    ];
-    if (targets.isEmpty) {
-      throw _CommandError(
-        courseId != null
-            ? '当前学期没有 id 为 $courseId 的课程'
-            : '当前学期没有名为《$name》的课程',
-      );
-    }
+    final targets = await _locateTargetCourses(cmd, semester.id!);
     // copyWith 用 ?? 合并、传 null 清不掉 note，所以用整对象重建（与 _addExam 同口径）
     for (final c in targets) {
       await _dao.updateCourse(
@@ -458,23 +426,7 @@ class CommandExecutor {
     if (semester == null || semester.id == null) {
       throw const _CommandError('还没有当前学期，无法设置考试日期');
     }
-    final courseId = _optionalInt(cmd, 'courseId');
-    final name = _optionalString(cmd, 'courseName');
-    if (courseId == null && name == null) {
-      throw const _CommandError('缺少定位参数：需要 courseId 或 courseName');
-    }
-    final all = await _dao.getCoursesBySemester(semester.id!);
-    final matches = [
-      for (final c in all)
-        if (courseId != null && c.id == courseId) c else if (name != null && c.name == name) c,
-    ];
-    if (matches.isEmpty) {
-      throw _CommandError(
-        courseId != null
-            ? '当前学期没有 id 为 $courseId 的课程'
-            : '当前学期没有名为《$name》的课程',
-      );
-    }
+    final matches = await _locateTargetCourses(cmd, semester.id!);
 
     final rawDate = _optionalString(cmd, 'date');
     final int? examDate;
@@ -573,6 +525,73 @@ class CommandExecutor {
   }
 
   // ---------- 参数解析辅助 ----------
+
+  /// 定位已有课程（2.0.6，WB_SPEC_206 第 2 节）：set_course_color /
+  /// set_course_remark / add_exam 三条「定位已有课程」指令共用。
+  ///
+  /// 行为：
+  /// - courseId 优先（别名 `courseId`、`id`），命中 id 即返回；
+  /// - 否则按 courseName 精确匹配（别名 `courseName`、`name`、`course`、
+  ///   `course_name`、`课程名`），同名课程全部命中（与 2.0.5 及之前口径一致）；
+  /// - 精确落空时做一次**按名模糊匹配**：课程名与给定名互为包含关系
+  ///   （name.contains(给定) 或 给定.contains(name)）的候选——恰好 1 个就用它，
+  ///   多个报错并列出候选课程名，0 个维持原报错「当前学期没有名为《X》的课程」。
+  ///
+  /// 别名只在这三条「定位已有课程」指令里生效——add_course 的 `name` 是新课名，
+  /// 绝不走这里，因此不受影响。
+  Future<List<Course>> _locateTargetCourses(
+    Map<String, dynamic> cmd,
+    int semesterId,
+  ) async {
+    final courseId = _optionalInt(cmd, 'courseId') ?? _optionalInt(cmd, 'id');
+    final name = _locateName(cmd);
+    if (courseId == null && name == null) {
+      throw const _CommandError('缺少定位参数：需要 courseId 或 courseName');
+    }
+    final all = await _dao.getCoursesBySemester(semesterId);
+
+    if (courseId != null) {
+      final targets = [for (final c in all) if (c.id == courseId) c];
+      if (targets.isEmpty) {
+        throw _CommandError('当前学期没有 id 为 $courseId 的课程');
+      }
+      return targets;
+    }
+
+    final targets = [for (final c in all) if (c.name == name) c];
+    if (targets.isNotEmpty) return targets;
+
+    final fuzzy = [
+      for (final c in all)
+        // 空课名（导入边角）不参与模糊匹配：name.contains('') 恒真，会成幽灵候选
+        if (c.name.trim().isNotEmpty &&
+            (c.name.contains(name!) || name.contains(c.name)))
+          c,
+    ];
+    if (fuzzy.length == 1) return fuzzy;
+    if (fuzzy.length > 1) {
+      final names = fuzzy.map((c) => '《${c.name}》').join('、');
+      throw _CommandError(
+        '课程名「$name」能对上多门课：$names，请用更完整的课程名或 courseId',
+      );
+    }
+    throw _CommandError('当前学期没有名为《$name》的课程');
+  }
+
+  /// courseName 的别名（只用于「定位已有课程」的三条指令，见 [_locateTargetCourses]）
+  static String? _locateName(Map<String, dynamic> cmd) {
+    for (final key in const [
+      'courseName',
+      'name',
+      'course',
+      'course_name',
+      '课程名',
+    ]) {
+      final v = _optionalString(cmd, key);
+      if (v != null) return v;
+    }
+    return null;
+  }
 
   static String _requireString(Map<String, dynamic> cmd, String key) {
     final v = cmd[key];
