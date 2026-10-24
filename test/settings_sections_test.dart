@@ -7,12 +7,13 @@ import 'package:xiaoma_timetable/models/ui_settings.dart';
 import 'package:xiaoma_timetable/pages/settings_sections.dart';
 import 'package:xiaoma_timetable/widgets/app_dialog.dart';
 
-/// 设置分类子页测试（2.0.5，WB_SPEC_205 第 1 / 6 / 9 节）
+/// 设置分类子页测试（2.0.5，WB_SPEC_205 第 1 / 6 / 9 节；2.0.7，WB_SPEC_208 第 3 节加分隔线断言）
 ///
 /// 1. 外观子页：断言实时预览与主要外观项（行高自适应 / 格子圆角 / 今天整列边框高亮）存在；
 /// 2. 实时预览今天列高亮（第 6 节）：`highlightTodayColumn` 开/关时，
 ///    预览里「今天整列边框」覆盖层随之出现/消失（结构断言）；
-/// 3. 说明按钮（第 9 节）：说明性副标题收进标题旁 ⓘ，抽查外观/提醒子页点开能看到对应弹窗。
+/// 3. 说明按钮（第 9 节）：说明性副标题收进标题旁 ⓘ，抽查外观/提醒子页点开能看到对应弹窗；
+/// 4. 2.0.7：子页某一节内连续行之间有分隔线（以学期与数据子页 6 行 → 5 条分隔线为例）。
 void main() {
   setUpAll(() {
     sqfliteFfiInit();
@@ -123,5 +124,19 @@ void main() {
     // 关：覆盖层消失（预览重建且不再画今天列边框）
     await pumpPreview(false);
     expect(find.byKey(kPreviewTodayHighlightKey), findsNothing);
+  });
+
+  testWidgets('学期与数据子页：同一节内连续行之间有分隔线', (tester) async {
+    // 6 行入口 → 5 条 1px 分隔线；本页 build 不 watch 任何 provider，无需读库
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: DataSettingsPage()),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('导入课表'), findsOneWidget);
+    expect(find.text('数据管理'), findsOneWidget);
+    expect(find.byType(Divider), findsNWidgets(5));
   });
 }

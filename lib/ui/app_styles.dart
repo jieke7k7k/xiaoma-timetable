@@ -37,4 +37,7 @@ class AppSpacing {
 
   /// 大间距（分组之间、页面左右留白）
   static const double l = 16;
+
+  /// 组间距（2.0.7 设置页 Taste 化：组与组、节与节之间统一 24）
+  static const double group = 24;
 }

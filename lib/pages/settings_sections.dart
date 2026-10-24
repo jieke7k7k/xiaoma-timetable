@@ -17,6 +17,7 @@ import '../services/notification_service.dart';
 import '../services/ongoing_notice_service.dart';
 import '../services/permission_service.dart';
 import '../services/widget_service.dart';
+import '../ui/app_styles.dart';
 import '../ui/grid_metrics.dart';
 import '../utils/backup_codec.dart';
 import '../utils/color_schemes.dart';
@@ -39,9 +40,28 @@ import '../widgets/empty_state.dart';
 /// - [DataSettingsPage]（/settings-data）：导入 / 学期管理 / 备份 / 恢复 / 导出 ICS / 数据管理
 /// - [PermissionsSettingsPage]（/settings-permissions）：原 `_PermissionSummaryTile` 内容
 /// - [WidgetSettingsPage]（/settings-widget）：桌面小组件说明文字
+///
+/// 2.0.7（WB_SPEC_208 第 2 节）Taste 化只动布局与层级：同一节内连续行之间用 1px
+/// 分隔线（现有主题 dividerColor）、节与节之间间距统一 24（`AppSpacing.group`）、
+/// 节标题主文字色 + semibold、行标题 medium。设置项、顺序、默认值、保存逻辑、
+/// 校验、跳转、控件类型与颜色一律不动。
 
 /// 实时预览「今天整列边框」覆盖层的 Key：测试据此断言开关开/关时该层的有无。
 const Key kPreviewTodayHighlightKey = ValueKey('preview_today_highlight');
+
+/// 把同一节内的一组连续设置行用 1px 分隔线隔开（2.0.7 Taste 化）。
+///
+/// 分隔线用现有主题 dividerColor（`Divider` 不指定 color 即取主题值），
+/// 不改黑、不放大；只作用于「行与行之间」，节标题、预览、下拉、色板等
+/// 非行控件不走这里。
+List<Widget> _divideRows(List<Widget> rows) {
+  return [
+    for (var i = 0; i < rows.length; i++) ...[
+      if (i > 0) const Divider(height: 1, thickness: 1),
+      rows[i],
+    ],
+  ];
+}
 
 /// 学期设置子页：学期名称（只读）、开学日期、总周数
 class SemesterSettingsPage extends ConsumerWidget {
@@ -54,27 +74,36 @@ class SemesterSettingsPage extends ConsumerWidget {
       appBar: AppBar(title: const Text('学期设置'), centerTitle: true),
       body: semesterAsync.when(
         data: (semester) => ListView(
-          children: [
+          children: _divideRows([
             ListTile(
               leading: const Icon(Icons.badge_outlined),
-              title: const Text('学期名称'),
+              title: const Text(
+                '学期名称',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
               subtitle: Text(semester.name),
             ),
             ListTile(
               leading: const Icon(Icons.event_outlined),
-              title: const Text('开学日期'),
+              title: const Text(
+                '开学日期',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
               subtitle: Text('${semester.startDate}（自动对齐到当周周一）'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _pickStartDate(context, ref, semester.startDate),
             ),
             ListTile(
               leading: const Icon(Icons.view_week_outlined),
-              title: const Text('总周数'),
+              title: const Text(
+                '总周数',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
               subtitle: Text('${semester.totalWeeks} 周'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _editTotalWeeks(context, ref, semester.totalWeeks),
             ),
-          ],
+          ]),
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
         // 数据库异常兜底：图标 + 中文说明 + 重试入口，不允许白屏/闪退
@@ -190,6 +219,8 @@ class AppearanceSettingsPage extends StatelessWidget {
       body: ListView(
         children: [
           const _AppearanceGroup(),
+          // 2.0.7 Taste 化：节次时间入口与外观组之间节间距统一 24
+          const SizedBox(height: AppSpacing.group),
           ListTile(
             leading: const Icon(Icons.schedule_outlined),
             title: const _InfoTitle(
@@ -241,6 +272,7 @@ class RemindersSettingsPage extends ConsumerWidget {
               );
             },
           ),
+          const Divider(height: 1, thickness: 1),
           // 上课播报（2.0.2 起从「外观」页归入提醒组）：主页顶部状态条开关
           Consumer(
             builder: (ctx, ref, _) {
@@ -259,6 +291,7 @@ class RemindersSettingsPage extends ConsumerWidget {
               );
             },
           ),
+          const Divider(height: 1, thickness: 1),
           Consumer(
             builder: (ctx, ref, _) {
               final enabled = ref.watch(ongoingNoticeSettingsProvider);
@@ -287,6 +320,7 @@ class RemindersSettingsPage extends ConsumerWidget {
               );
             },
           ),
+          const Divider(height: 1, thickness: 1),
           Consumer(
             builder: (ctx, ref, _) {
               final advance =
@@ -294,7 +328,10 @@ class RemindersSettingsPage extends ConsumerWidget {
                   15;
               return ListTile(
                 leading: const Icon(Icons.timer_outlined),
-                title: const Text('提前提醒'),
+                title: const Text(
+                  '提前提醒',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
                 subtitle: Text('提前 $advance 分钟'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _pickAdvanceMinutes(ctx, ref),
@@ -410,6 +447,7 @@ class DataSettingsPage extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.pushNamed(context, '/import'),
           ),
+          const Divider(height: 1, thickness: 1),
           ListTile(
             leading: const Icon(Icons.school_outlined),
             title: const _InfoTitle(
@@ -419,6 +457,7 @@ class DataSettingsPage extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.pushNamed(context, '/semester-manage'),
           ),
+          const Divider(height: 1, thickness: 1),
           ListTile(
             leading: const Icon(Icons.backup_outlined),
             title: const _InfoTitle(
@@ -428,6 +467,7 @@ class DataSettingsPage extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _exportBackup(context),
           ),
+          const Divider(height: 1, thickness: 1),
           ListTile(
             leading: const Icon(Icons.restore_outlined),
             title: const _InfoTitle(
@@ -437,6 +477,7 @@ class DataSettingsPage extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _restoreBackup(context, ref),
           ),
+          const Divider(height: 1, thickness: 1),
           ListTile(
             leading: const Icon(Icons.calendar_month_outlined),
             title: const _InfoTitle(
@@ -446,6 +487,7 @@ class DataSettingsPage extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _exportIcs(context, ref),
           ),
+          const Divider(height: 1, thickness: 1),
           ListTile(
             leading: const Icon(Icons.sd_storage_outlined),
             title: const _InfoTitle(
@@ -658,7 +700,10 @@ class WidgetSettingsPage extends StatelessWidget {
         children: [
           ListTile(
             leading: Icon(Icons.widgets_outlined),
-            title: Text('今日课程小组件'),
+            title: Text(
+              '今日课程小组件',
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
             subtitle: Text('在桌面长按空白处 →「小组件」→ 找到「小马课表」，即可添加今日课程小组件'),
           ),
         ],
@@ -703,7 +748,10 @@ class _PermissionSummaryTileState extends State<_PermissionSummaryTile> {
         final s = snap.data;
         return ListTile(
           leading: const Icon(Icons.shield_outlined),
-          title: const Text('权限'),
+          title: const Text(
+            '权限',
+            style: TextStyle(fontWeight: FontWeight.w500),
+          ),
           subtitle: Text(
             s == null
                 ? '正在读取…'
@@ -788,104 +836,117 @@ class _AppearanceGroup extends ConsumerWidget {
         const _Header('实时预览'),
         Preview(ui: ui, columnCount: previewDays.length, slots: slots),
         const _Header('格子外观'),
-        SwitchListTile(
-          title: const _InfoTitle(
-            title: '行高自适应一屏',
-            message: '按屏幕高度均分行高，整张课表不用上下滚',
+        ..._divideRows([
+          SwitchListTile(
+            title: const _InfoTitle(
+              title: '行高自适应一屏',
+              message: '按屏幕高度均分行高，整张课表不用上下滚',
+            ),
+            value: ui.autoFitHeight,
+            onChanged: (v) => apply(ui.copyWith(autoFitHeight: v)),
           ),
-          value: ui.autoFitHeight,
-          onChanged: (v) => apply(ui.copyWith(autoFitHeight: v)),
-        ),
-        _SliderRow(
-          label: '课程格子高度',
-          valueText: ui.autoFitHeight
-              ? '自适应中'
-              : '${ui.cellHeight.round()} px',
-          value: ui.cellHeight,
-          min: 44,
-          max: 96,
-          divisions: 26,
-          onChanged: ui.autoFitHeight
-              ? (_) {}
-              : (v) => apply(ui.copyWith(cellHeight: v)),
-        ),
-        _SliderRow(
-          label: '格子圆角半径',
-          valueText: '${ui.cornerRadius.round()} px',
-          value: ui.cornerRadius,
-          min: 0,
-          max: 20,
-          divisions: 20,
-          onChanged: (v) => apply(ui.copyWith(cornerRadius: v)),
-        ),
-        SwitchListTile(
-          title: const Text('显示网格线'),
-          value: ui.showGridLines,
-          onChanged: (v) => apply(ui.copyWith(showGridLines: v)),
-        ),
-        _SliderRow(
-          label: '格子边框粗细',
-          valueText: ui.borderWidth <= 0
-              ? '无边框'
-              : '${ui.borderWidth.toStringAsFixed(1)} px',
-          value: ui.borderWidth,
-          min: UiSettings.borderWidthMin,
-          max: UiSettings.borderWidthMax,
-          divisions: 30,
-          onChanged: (v) => apply(ui.copyWith(borderWidth: v)),
-        ),
-        SwitchListTile(
-          title: const _InfoTitle(
-            title: '节数栏显示时间',
-            message: '关掉后左侧只显示节次数字',
+          _SliderRow(
+            label: '课程格子高度',
+            valueText: ui.autoFitHeight
+                ? '自适应中'
+                : '${ui.cellHeight.round()} px',
+            value: ui.cellHeight,
+            min: 44,
+            max: 96,
+            divisions: 26,
+            onChanged: ui.autoFitHeight
+                ? (_) {}
+                : (v) => apply(ui.copyWith(cellHeight: v)),
           ),
-          value: ui.axisShowTime,
-          onChanged: (v) => apply(ui.copyWith(axisShowTime: v)),
-        ),
-        SwitchListTile(
-          title: const _InfoTitle(
-            title: '标题显示单双周',
-            message: '开时左上角显示「第 X 周 · 单周/双周」，关时只显示「第 X 周」，默认关',
+          _SliderRow(
+            label: '格子圆角半径',
+            valueText: '${ui.cornerRadius.round()} px',
+            value: ui.cornerRadius,
+            min: 0,
+            max: 20,
+            divisions: 20,
+            onChanged: (v) => apply(ui.copyWith(cornerRadius: v)),
           ),
-          value: ui.showWeekParity,
-          onChanged: (v) => apply(ui.copyWith(showWeekParity: v)),
-        ),
-        SwitchListTile(
-          title: const _InfoTitle(
-            title: '今天整列边框高亮',
-            message: '给今天这一整天加一圈主题色边框，默认关',
+          SwitchListTile(
+            title: const Text(
+              '显示网格线',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+            value: ui.showGridLines,
+            onChanged: (v) => apply(ui.copyWith(showGridLines: v)),
           ),
-          value: ui.highlightTodayColumn,
-          onChanged: (v) => apply(ui.copyWith(highlightTodayColumn: v)),
-        ),
+          _SliderRow(
+            label: '格子边框粗细',
+            valueText: ui.borderWidth <= 0
+                ? '无边框'
+                : '${ui.borderWidth.toStringAsFixed(1)} px',
+            value: ui.borderWidth,
+            min: UiSettings.borderWidthMin,
+            max: UiSettings.borderWidthMax,
+            divisions: 30,
+            onChanged: (v) => apply(ui.copyWith(borderWidth: v)),
+          ),
+          SwitchListTile(
+            title: const _InfoTitle(
+              title: '节数栏显示时间',
+              message: '关掉后左侧只显示节次数字',
+            ),
+            value: ui.axisShowTime,
+            onChanged: (v) => apply(ui.copyWith(axisShowTime: v)),
+          ),
+          SwitchListTile(
+            title: const _InfoTitle(
+              title: '标题显示单双周',
+              message: '开时左上角显示「第 X 周 · 单周/双周」，关时只显示「第 X 周」，默认关',
+            ),
+            value: ui.showWeekParity,
+            onChanged: (v) => apply(ui.copyWith(showWeekParity: v)),
+          ),
+          SwitchListTile(
+            title: const _InfoTitle(
+              title: '今天整列边框高亮',
+              message: '给今天这一整天加一圈主题色边框，默认关',
+            ),
+            value: ui.highlightTodayColumn,
+            onChanged: (v) => apply(ui.copyWith(highlightTodayColumn: v)),
+          ),
+        ]),
         const _Header('卡片显示'),
-        _SliderRow(
-          label: '卡片文字大小',
-          valueText: '${(ui.cardTextScale * 100).round()}%',
-          value: ui.cardTextScale,
-          min: UiSettings.textScaleMin,
-          max: UiSettings.textScaleMax,
-          divisions: 50,
-          onChanged: (v) => apply(ui.copyWith(cardTextScale: v)),
-        ),
-        SwitchListTile(
-          title: const Text('显示教室'),
-          value: ui.showClassroom,
-          onChanged: (v) => apply(ui.copyWith(showClassroom: v)),
-        ),
-        SwitchListTile(
-          title: const Text('显示老师'),
-          value: ui.showTeacher,
-          onChanged: (v) => apply(ui.copyWith(showTeacher: v)),
-        ),
-        SwitchListTile(
-          title: const _InfoTitle(
-            title: '显示备注',
-            message: '备注以小字显示在卡片上',
+        ..._divideRows([
+          _SliderRow(
+            label: '卡片文字大小',
+            valueText: '${(ui.cardTextScale * 100).round()}%',
+            value: ui.cardTextScale,
+            min: UiSettings.textScaleMin,
+            max: UiSettings.textScaleMax,
+            divisions: 50,
+            onChanged: (v) => apply(ui.copyWith(cardTextScale: v)),
           ),
-          value: ui.showNote,
-          onChanged: (v) => apply(ui.copyWith(showNote: v)),
-        ),
+          SwitchListTile(
+            title: const Text(
+              '显示教室',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+            value: ui.showClassroom,
+            onChanged: (v) => apply(ui.copyWith(showClassroom: v)),
+          ),
+          SwitchListTile(
+            title: const Text(
+              '显示老师',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+            value: ui.showTeacher,
+            onChanged: (v) => apply(ui.copyWith(showTeacher: v)),
+          ),
+          SwitchListTile(
+            title: const _InfoTitle(
+              title: '显示备注',
+              message: '备注以小字显示在卡片上',
+            ),
+            value: ui.showNote,
+            onChanged: (v) => apply(ui.copyWith(showNote: v)),
+          ),
+        ]),
         const _Header('课程配色'),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -987,66 +1048,74 @@ class _AppearanceGroup extends ConsumerWidget {
             ),
           ),
         _FontSection(ui: ui, apply: apply),
-        SwitchListTile(
-          secondary: const Icon(Icons.visibility_outlined),
-          title: const _InfoTitle(
-            title: '显示非本周课程',
-            message: '开启后其他周次的课程置灰显示，方便全局查看',
+        ..._divideRows([
+          SwitchListTile(
+            secondary: const Icon(Icons.visibility_outlined),
+            title: const _InfoTitle(
+              title: '显示非本周课程',
+              message: '开启后其他周次的课程置灰显示，方便全局查看',
+            ),
+            value: showOther,
+            onChanged: (v) =>
+                ref.read(showOtherWeeksProvider.notifier).toggle(v),
           ),
-          value: showOther,
-          onChanged: (v) =>
-              ref.read(showOtherWeeksProvider.notifier).toggle(v),
-        ),
-        SwitchListTile(
-          secondary: const Icon(Icons.weekend_outlined),
-          title: const _InfoTitle(
-            title: '周末无课时自动收起周六日',
-            message: '开启后周末没课时周视图只显示周一到周五，更宽敞',
+          SwitchListTile(
+            secondary: const Icon(Icons.weekend_outlined),
+            title: const _InfoTitle(
+              title: '周末无课时自动收起周六日',
+              message: '开启后周末没课时周视图只显示周一到周五，更宽敞',
+            ),
+            value: autoCollapse,
+            onChanged: (v) =>
+                ref.read(autoCollapseWeekendProvider.notifier).toggle(v),
           ),
-          value: autoCollapse,
-          onChanged: (v) =>
-              ref.read(autoCollapseWeekendProvider.notifier).toggle(v),
-        ),
-        ListTile(
-          leading: const Icon(Icons.widgets_outlined),
-          title: const _InfoTitle(
-            title: '立即刷新桌面小部件',
-            message: '把最新课程重新推送到桌面小部件',
-          ),
-          onTap: () async {
-            await WidgetService.instance.refreshWidgets();
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('已推送。若桌面仍不显示，长按小部件删除后重新添加一次即可')),
-            );
-          },
-        ),
-        // 部件自检状态（1.2.7）：Provider 回写的上次更新记录
-        FutureBuilder<({int ts, int ids, String? error})>(
-          future: WidgetService.instance.debugStatus(),
-          builder: (ctx, snap) {
-            final d = snap.data;
-            if (d == null || d.ts == 0) {
-              return const ListTile(
-                leading: Icon(Icons.info_outline),
-                title: Text('部件状态'),
-                subtitle: Text('还没有收到小部件的更新记录（先添加一个桌面小部件）'),
+          ListTile(
+            leading: const Icon(Icons.widgets_outlined),
+            title: const _InfoTitle(
+              title: '立即刷新桌面小部件',
+              message: '把最新课程重新推送到桌面小部件',
+            ),
+            onTap: () async {
+              await WidgetService.instance.refreshWidgets();
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('已推送。若桌面仍不显示，长按小部件删除后重新添加一次即可')),
               );
-            }
-            final t = DateTime.fromMillisecondsSinceEpoch(d.ts);
-            final hh = t.hour.toString().padLeft(2, '0');
-            final mm = t.minute.toString().padLeft(2, '0');
-            return ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('部件状态'),
-              subtitle: Text(
-                d.error == null
-                    ? '上次更新 $hh:$mm · 共 ${d.ids} 个小部件 · 无异常'
-                    : '上次更新 $hh:$mm · 共 ${d.ids} 个小部件 · 异常：${d.error}',
-              ),
-            );
-          },
-        ),
+            },
+          ),
+          // 部件自检状态（1.2.7）：Provider 回写的上次更新记录
+          FutureBuilder<({int ts, int ids, String? error})>(
+            future: WidgetService.instance.debugStatus(),
+            builder: (ctx, snap) {
+              final d = snap.data;
+              if (d == null || d.ts == 0) {
+                return const ListTile(
+                  leading: Icon(Icons.info_outline),
+                  title: Text(
+                    '部件状态',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  subtitle: Text('还没有收到小部件的更新记录（先添加一个桌面小部件）'),
+                );
+              }
+              final t = DateTime.fromMillisecondsSinceEpoch(d.ts);
+              final hh = t.hour.toString().padLeft(2, '0');
+              final mm = t.minute.toString().padLeft(2, '0');
+              return ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text(
+                  '部件状态',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+                subtitle: Text(
+                  d.error == null
+                      ? '上次更新 $hh:$mm · 共 ${d.ids} 个小部件 · 无异常'
+                      : '上次更新 $hh:$mm · 共 ${d.ids} 个小部件 · 异常：${d.error}',
+                ),
+              );
+            },
+          ),
+        ]),
       ],
     );
   }
@@ -1068,7 +1137,10 @@ class _InfoTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Flexible(child: Text(title)),
+        // 2.0.7 Taste 化：行标题字重 medium（颜色沿用 ListTile 标题主题色）
+        Flexible(
+          child: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+        ),
         AppInfoIconButton(
           tooltip: title,
           onPressed: () => showAppInfoDialog(
@@ -1082,7 +1154,8 @@ class _InfoTitle extends StatelessWidget {
   }
 }
 
-/// 外观分组里的子标题（与设置页 `_SectionHeader` 区分，字号更小更轻）
+/// 外观分组里的节标题（2.0.7 Taste 化：主文字颜色 onSurface、字重 semibold、
+/// 字号不放大；上边距 24 统一节与节之间的间距）
 class _Header extends StatelessWidget {
   const _Header(this.title);
 
@@ -1091,13 +1164,13 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 6),
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 6),
       child: Text(
         title,
         style: TextStyle(
           fontSize: 13,
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.w600,
+          color: Theme.of(context).colorScheme.onSurface,
         ),
       ),
     );
@@ -1129,7 +1202,11 @@ class _SliderRow extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
       child: Row(
         children: [
-          SizedBox(width: 108, child: Text(label)),
+          // 2.0.7 Taste 化：滑杆行标题字重 medium
+          SizedBox(
+            width: 108,
+            child: Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+          ),
           Expanded(
             child: Slider(
               value: value,

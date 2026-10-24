@@ -1,8 +1,29 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-10-24（2.0.6+21：WB_SPEC_206 第 1~5 节）
+> 更新时间：2026-10-25（2.0.7+22：WB_SPEC_208 设置界面 Taste 重排）
 
 ## 做到哪了
+
+## 2026-10-25（2.0.7+22：WB_SPEC_208，未跑命令）
+
+规格见仓库根 `WB_SPEC_208.md`（只改设置界面，按 Taste 改、颜色不改黑、其他界面一律不动）。沿用 Riverpod 手写 Notifier / 中文文案注释；`flutter analyze` / `flutter test` 由用户代跑（本环境无命令权限）。
+
+背景：2.0.7 双版本（WB_SPEC_207，经典/简约切换、首次选择页、重启生效）在待发版复查时被叫停，其改动已收进 git stash（stash 说明：`2.0.7 dual-version paused 2026-10-24, scope changed to settings-only`），本版不包含它、stash 不删，以后想恢复还能找回。
+
+### 第 1 节 设置首页（settings_page.dart）
+
+- `lib/pages/settings_page.dart`：组与组间距由 `AppSpacing.l` 统一为 `AppSpacing.group`（24）；智能助手组内两行（和智能助手聊聊 / 智能助手设置）之间改用 1px 分隔线（`Divider(height: 1, thickness: 1)`，现有主题 dividerColor），不再用 `SizedBox(AppSpacing.s)` 空隙硬隔；`_EntryTile` 与智能助手行标题字重 medium（`FontWeight.w500`）。入口行、顺序、副标题、图标、跳转一个不改；颜色（图标/标题/副标题/背景/分隔线）不动。
+- 测试：`test/settings_page_test.dart` 加断言——首页存在分隔线（`find.byType(Divider)` findsWidgets）；原 10 入口 + 无 Switch/Slider + 同名文字各只出现一次不变。
+
+### 第 2 节 设置子页（settings_sections.dart）
+
+- `lib/ui/app_styles.dart`：`AppSpacing` 新增 `group = 24` 常量（组/节间距共享口径），不改全局主题、不影响其他页。
+- `lib/pages/settings_sections.dart`：新增私有 `_divideRows`（连续行之间插 1px 分隔线，现有主题 dividerColor）。学期子页 3 行、提醒子页 4 项、学期与数据子页 6 行改用分隔线隔开；外观子页「格子外观」「卡片显示」两组及尾部四行（显示非本周课程/周末收起/立即刷新/部件状态）同款分隔线；节次时间入口与外观组之间、节与节之间间距统一 24（`_Header` 上边距 18→24）。节标题 `_Header` 改主文字色 `onSurface` + semibold（`w600`）、字号仍 13 不放大；行标题（`_InfoTitle`、各 ListTile/SwitchListTile 标题、滑杆行 label、部件状态）字重 medium。预览、下拉、色板、字体区等内容与逻辑一律不动，控件类型与颜色一律不动。
+- 测试：`test/settings_sections_test.dart` 新增「学期与数据子页 6 行 → 5 条分隔线」断言；原外观/提醒/预览断言不变。
+
+### 第 3 节 版本与文档
+
+- `pubspec.yaml` 2.0.6+21 → 2.0.7+22；`CHANGELOG.md` 新增 2.0.7 两条（用户口吻）；本文件与 `ARCHITECTURE.md` 同步追加 2.0.7 变更。
 
 ## 2026-10-24（2.0.6+21：WB_SPEC_206 第 1~5 节，未跑命令）
 

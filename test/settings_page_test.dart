@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xiaoma_timetable/pages/settings_page.dart';
 
-/// 设置首页 QQ 式分级测试（2.0.5，WB_SPEC_205 第 1 节；2.0.6 第 1 节去掉重复小标题）
+/// 设置首页 QQ 式分级测试（2.0.5，WB_SPEC_205 第 1 节；2.0.6 第 1 节去掉重复小标题；
+/// 2.0.7，WB_SPEC_208 第 3 节加分隔线断言）
 ///
 /// 首页只留入口行（图标 + 名称 + 一行副标题 + ›），断言：
 /// 1. 9+1 个入口行都在（9 个分类入口 + 智能助手组的两行）；
 /// 2. 首页**不存在** Switch / Slider（证明控件已下沉到子页）；
 /// 3. 「学期设置」「外观」「提醒」等同名文字在首页各只出现一次——
-///    2.0.6 去掉分组小标题后，不再有「小标题 + 入口行」的重复。
+///    2.0.6 去掉分组小标题后，不再有「小标题 + 入口行」的重复；
+/// 4. 首页存在分隔线（Divider 数量大于 0，即智能助手组内两行的 1px 分隔线）。
 void main() {
   testWidgets('设置首页：9+1 个入口行 + 无 Switch/Slider + 同名文字各只出现一次', (tester) async {
     // 拉高测试画布，让懒加载的 ListView 把全部入口都建出来再断言
@@ -62,5 +64,8 @@ void main() {
     expect(find.byType(Switch), findsNothing);
     expect(find.byType(SwitchListTile), findsNothing);
     expect(find.byType(Slider), findsNothing);
+
+    // 2.0.7（WB_SPEC_208 第 3 节）：首页存在分隔线（智能助手组内两行之间的 1px 分隔线）
+    expect(find.byType(Divider), findsWidgets);
   });
 }
