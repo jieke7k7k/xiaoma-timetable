@@ -8,7 +8,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../models/course.dart';
 import '../models/course_override.dart';
-import '../models/time_slot.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../services/channel_service.dart';
@@ -29,13 +28,16 @@ import '../widgets/empty_state.dart';
 /// 周视图主页
 ///
 /// 经典 7 列 × N 节次网格（周末无课时自动收起为 5 列）：
-/// - 顶部栏：第 X 周 · 单/双周、当前月份、回到本周；点击展开周次快速跳转条
+/// - 顶部栏：左上角只显示周数（第 X 周 · 单/双周），点标题展开周次快速跳转条；
+///   右侧编辑/新建/更多三按钮位置固定
 /// - 表头：月份列 + 周一~周日（几月几日，今天高亮）
 /// - 网格：左侧节次号与上下课时间，右侧日期列，跨节次课程合并为圆角卡片
-/// - 午休 / 晚间分隔带：位置由「作息分段设置」驱动（默认第 5 / 9 节后），各一条 20px 通栏分隔带（高度守恒）
+/// - 午休 / 晚间分隔带：位置由「作息分段设置」驱动（默认第 5 / 9 节后），
+///   显隐与起止时间由「休息时段设置」驱动（见 grid_metrics.computeActiveBands）
+/// - 非本周视图时右侧边缘中间显示「回到本周」竖条悬浮按钮，本周视图自动隐藏
 /// - 格子三态布局（见 slot_layout.dart）：本周课优先，非本周课置灰且不遮挡本周课；
 ///   同格多课收敛为一张卡片 + 「+N」角标，点击先选课程再进详情
-/// - PageView 左右滑动切换周次；严格按 weeksJson 与单双周过滤
+/// - PageView 左右滑动切换周次；编辑模式下锁定左右滑与纵向滚；严格按 weeksJson 与单双周过滤
 class WeekViewPage extends ConsumerStatefulWidget {
   const WeekViewPage({super.key});
 
@@ -92,6 +94,9 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
 
   /// 网格纵向滚动锁：长按空白格拖动扩展节次期间锁定纵向滚动，避免手势打架
   bool _gridScrollLocked = false;
+
+  /// 周日收尾小弹窗是否已在本会话弹过（每启动会话最多弹一次）
+  bool _sundayDialogShown = false;
 
   /// 状态条分钟级刷新计时器（下一节课倒计时/上下课切换靠它推进）
   Timer? _focusTimer;
@@ -330,6 +335,33 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
     return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
 
+  /// 周日收尾小弹窗（WB_SPEC_209 第 1 节）：文案「今天是周日，本周已结束」，
+  /// 「知道了」关闭；未到最后一周时多一个「看下周」跳到下周，最后一周不显示。
+  /// 点弹窗外区域关闭与「知道了」等效（AlertDialog 默认可点外关闭）。
+  void _showSundayDialog(int week, int totalWeeks) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AppDialog(
+        title: '今天是周日',
+        content: const AppDialogText('今天是周日，本周已结束'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('知道了'),
+          ),
+          if (week < totalWeeks)
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _jumpToWeek(week + 1);
+              },
+              child: const Text('看下周'),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final semester = ref.watch(currentSemesterProvider).value;
@@ -424,6 +456,19 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
       }
     });
 
+    // 周日收尾小弹窗（WB_SPEC_209 第 1 节）：今天周日且正看本周时进入主页弹一次
+    // 居中小弹窗，关闭后本会话不再重复；不影响「回到本周」悬浮按钮的显隐。
+    final isSunday = DateTime.now().weekday == DateTime.sunday;
+    if (isSunday && displayWeek == todayWeek && !_sundayDialogShown) {
+      _sundayDialogShown = true;
+      final week = displayWeek;
+      final total = semester.totalWeeks;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _showSundayDialog(week, total);
+      });
+    }
+
     return Scaffold(
       appBar: AppBar(
         // 恒色（1.2.2）：默认 AppBar 在内容滚动/回弹时会自动切换表面着色，
@@ -446,6 +491,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // WB_SPEC_209 第 4 节：左上角只显示周数，删掉日期范围行
                     Text(
                       ui.showWeekParity
                           ? WeekCalc.weekTitle(displayWeek)
@@ -454,11 +500,6 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
                       ),
-                    ),
-                    Text(
-                      '${dates.first.month}月${dates.first.day}日 - '
-                      '${dates.last.month}月${dates.last.day}日',
-                      style: const TextStyle(fontSize: 11),
                     ),
                   ],
                 ),
@@ -554,12 +595,6 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
               ),
             ],
           ),
-          if (displayWeek != todayWeek)
-            TextButton.icon(
-              onPressed: _goToday,
-              icon: const Icon(Icons.event_available, size: 18),
-              label: const Text('回到本周'),
-            ),
           const SizedBox(width: 4),
         ],
       ),
@@ -616,15 +651,6 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
                   )
                 : const SizedBox.shrink(),
           ),
-          // 周日收尾提醒：今天是周日且正看着本周时，提醒本周已结束，
-          // 避免把周日误看成下周的课；可一键跳到下周
-          if (displayWeek == todayWeek &&
-              DateTime.now().weekday == DateTime.sunday)
-            _SundayEndBanner(
-              onNextWeek: displayWeek < semester.totalWeeks
-                  ? () => _jumpToWeek(displayWeek + 1)
-                  : null,
-            ),
           // 表头（列数由 displayDays 驱动）
           _HeaderRow(
             dates: dates,
@@ -638,17 +664,28 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
           const Divider(height: 1),
           // 网格区
           Expanded(
-            child: _GridArea(
-              pageController: _pageController!,
-              displayWeek: displayWeek,
-              displayDays: displayDays,
-              timeAxisWidth: _timeAxisWidth,
-              editMode: _editMode,
-              scrollLocked: _gridScrollLocked,
-              onScrollLockChanged: (locked) =>
-                  setState(() => _gridScrollLocked = locked),
-              onWeekChanged: (page) =>
-                  ref.read(displayWeekProvider.notifier).setWeek(page + 1),
+            child: Stack(
+              children: [
+                _GridArea(
+                  pageController: _pageController!,
+                  displayWeek: displayWeek,
+                  displayDays: displayDays,
+                  timeAxisWidth: _timeAxisWidth,
+                  editMode: _editMode,
+                  scrollLocked: _gridScrollLocked,
+                  onScrollLockChanged: (locked) =>
+                      setState(() => _gridScrollLocked = locked),
+                  onWeekChanged: (page) =>
+                      ref.read(displayWeekProvider.notifier).setWeek(page + 1),
+                ),
+                // 「回到本周」竖条悬浮按钮（WB_SPEC_209 第 2 节）：非本周视图时
+                // 贴主页右缘中间，本周视图不渲染
+                if (displayWeek != todayWeek)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: _BackToWeekRail(onTap: _goToday),
+                  ),
+              ],
             ),
           ),
         ],
@@ -703,40 +740,53 @@ class _ChannelBanner extends StatelessWidget {
   }
 }
 
-/// 周日收尾提醒横幅：今天是周日时提示本周已结束，防止误看成下周课表
-class _SundayEndBanner extends StatelessWidget {
-  const _SundayEndBanner({this.onNextWeek});
+/// 「回到本周」竖条悬浮按钮（WB_SPEC_209 第 2 节）：
+/// 非本周视图时贴主页右侧边缘中间，竖排文字 + 日历图标，宽约 30、
+/// 圆角只在左侧；回到本周后（本周视图）不渲染，自动隐藏。
+class _BackToWeekRail extends StatelessWidget {
+  const _BackToWeekRail({required this.onTap});
 
-  /// 跳到下周的回调；已是最后一周时为 null，不显示按钮
-  final VoidCallback? onNextWeek;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
+    return Material(
       color: scheme.secondaryContainer,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Row(
-        children: [
-          Icon(
-            Icons.weekend_outlined,
-            size: 18,
-            color: scheme.onSecondaryContainer,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              '今天是周日，本周已结束',
-              style: TextStyle(
-                fontSize: 13,
-                color: scheme.onSecondaryContainer,
-              ),
+      // 圆角只在左侧（贴屏幕右缘，右侧不圆角）
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(14),
+        bottomLeft: Radius.circular(14),
+      ),
+      elevation: 2,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          width: 30,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final ch in '回到本周'.split(''))
+                  Text(
+                    ch,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.2,
+                      color: scheme.onSecondaryContainer,
+                    ),
+                  ),
+                const SizedBox(height: 6),
+                Icon(
+                  Icons.event_available,
+                  size: 18,
+                  color: scheme.onSecondaryContainer,
+                ),
+              ],
             ),
           ),
-          if (onNextWeek != null)
-            TextButton(onPressed: onNextWeek, child: const Text('看下周')),
-        ],
+        ),
       ),
     );
   }
@@ -1006,24 +1056,16 @@ class _GridArea extends ConsumerWidget {
         ? nowDate.weekday
         : null;
     final seg = ref.watch(segmentSettingsProvider).value;
-    final lunchAfter = seg?.lunchAfterSection ?? 5;
-    final dinnerAfter = seg?.dinnerAfterSection ?? 9;
-    // 分隔带的时间段文本：第 after 节下课 → 下一节上课（如 12:00–14:00）
-    String bandInterval(int after) {
-      TimeSlot? cur, nxt;
-      for (final t in slots) {
-        if (t.section == after) cur = t;
-        if (t.section == after + 1) nxt = t;
-      }
-      if (cur == null || nxt == null) return '';
-      return '${cur.endTime}–${nxt.startTime}';
-    }
-
-    // 生效的分隔带：只保留落在节次范围内的（after < sectionCount）
-    final activeBands = [
-      (after: lunchAfter, label: '午休', interval: bandInterval(lunchAfter)),
-      (after: dinnerAfter, label: '晚间', interval: bandInterval(dinnerAfter)),
-    ].where((b) => b.after < sectionCount).toList();
+    final bandSettings =
+        ref.watch(bandSettingsProvider).value ?? const BandSettings();
+    // 生效的分隔带（WB_SPEC_209 第 6 节）：位置来自分段设置，显隐与标注时间
+    // 来自休息时段设置，与导出图共用 computeActiveBands 同一份口径。
+    final activeBands = computeActiveBands(
+      lunchAfter: seg?.lunchAfterSection ?? 5,
+      dinnerAfter: seg?.dinnerAfterSection ?? 9,
+      sectionCount: sectionCount,
+      settings: bandSettings,
+    );
     return LayoutBuilder(
       builder: (context, constraints) {
         final columnCount = displayDays.length;
@@ -1054,7 +1096,9 @@ class _GridArea extends ConsumerWidget {
             gestureSettings: const DeviceGestureSettings(touchSlop: 30),
           ),
           child: SingleChildScrollView(
-            physics: scrollLocked
+            // WB_SPEC_209 第 5 节：编辑模式同样锁死纵向滚动，退出后恢复；
+            // 长按空白拖动扩展节次期间仍由 scrollLocked 锁定，二者取并集
+            physics: (scrollLocked || editMode)
                 ? const NeverScrollableScrollPhysics()
                 : const ClampingScrollPhysics(),
             child: SizedBox(
@@ -1113,7 +1157,10 @@ class _GridArea extends ConsumerWidget {
                           controller: pageController,
                           // 翻页判定（1.2.1）：默认物理在松手速度 >约7px/s 时就翻页，
                           // 改用明确滑动才翻周的自定义物理（见 deliberate_page_physics）
-                          physics: const DeliberatePagePhysics(),
+                          // WB_SPEC_209 第 5 节：编辑模式锁左右滑切周，退出后恢复
+                          physics: editMode
+                              ? const NeverScrollableScrollPhysics()
+                              : const DeliberatePagePhysics(),
                           onPageChanged: (page) {
                             // 切周成功的轻触感反馈
                             HapticFeedback.lightImpact();
@@ -1451,6 +1498,10 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
     final scheme = Theme.of(context).colorScheme;
 
     return GestureDetector(
+      // WB_SPEC_209 第 5 节：空白格区域必须可命中测试——默认 deferToChild 下，
+      // Stack 无背景子层时空白处不产生命中，点/长按空白进不了下面的处理函数；
+      // 改为 opaque 让整个网格区域（含空白格）都能命中，课程卡片本身仍优先命中。
+      behavior: HitTestBehavior.opaque,
       // 点击处理：高亮存在时优先处理高亮（单击确认/单击别处取消）；
       // 否则编辑模式下点空白格新建（自动带入星期与节次）；非编辑模式忽略，防误触
       onTapUp: (details) {

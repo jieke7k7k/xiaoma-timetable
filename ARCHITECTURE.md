@@ -2,6 +2,27 @@
 
 > 每完成一个阶段更新本文件，防止上下文丢失。
 
+## 2.0.8 变更（2026-10-25，WB_SPEC_209：六件合一——周日弹窗 / 回到本周悬浮按钮 / 设置删聊天 / 左上角只周数 / 编辑锁滑动与空白修复 / 休息时段自定义）
+
+| 文件 | 改动 |
+|---|---|
+| `lib/ui/grid_metrics.dart` | 新增 `BandSettings`（午休/晚间显隐 + 起止时间，默认开、12:00–14:00 / 17:10–18:00）与纯函数 `bandTimeToMinutes` / `bandRangeValid` / `computeActiveBands`（显隐过滤 + 自定义 interval + 越界过滤） |
+| `lib/providers/providers.dart` | 新增 `BandSettingsNotifier` + `bandSettingsProvider`（app_settings 六个键持久化；起止校验不合法不保存返回 false） |
+| `lib/pages/week_view_page.dart` | 删周日通栏横幅改 AppDialog 小弹窗（每会话一次）；删顶栏「回到本周」改右缘竖条悬浮按钮 `_BackToWeekRail`（网格区 Stack 内）；左上角删日期范围只留周数；编辑模式锁 PageView（NeverScrollableScrollPhysics）与纵向滚动（`scrollLocked \|\| editMode`）；`_WeekGrid` GestureDetector 改 `HitTestBehavior.opaque`；分隔带改 `computeActiveBands` |
+| `lib/pages/share_image_page.dart` | 分隔带改 `computeActiveBands` 与主页同源（隐藏/自定义时间一致） |
+| `lib/pages/settings_page.dart` | 删「和智能助手聊聊」行 + `_XiaomaIcon` + 与智能助手设置之间的 Divider，入口 10 → 9 行 |
+| `lib/pages/time_settings_page.dart` | 新增「休息时段」卡片：午休/晚间显示开关 + 起止时间选择器（开始早于结束校验，不合法 SnackBar） |
+| `pubspec.yaml` | 版本 2.0.8+23 |
+| 测试 | `settings_page_test.dart`（9 入口 / 无聊天 / 无 Divider）、`band_settings_test.dart`（默认值 / 纯函数 / Notifier 持久化与校验） |
+
+### 关键设计决策
+
+- **休息时段设置与分段点分离**：分段点（午休/晚间在第几节后，`segmentSettingsProvider`）决定带子位置，`BandSettings` 决定显隐与标注时间——两者正交互不干扰。`computeActiveBands` 作为唯一分隔带计算入口，主页与导出图共用，从源头保证「主页隐藏、导出图还显示」不再发生。
+- **自定义时间不再从节次推导**：旧 interval 由前后节次时间算出，用户改了作息就跟着变；现在 interval 直接取用户自定义的起止（默认值与旧版观感一致，老用户升级不突变）。
+- **空白格命中根因**：`GestureDetector` 默认 `deferToChild`，Stack 无背景子层时空白处不产生命中；改 `HitTestBehavior.opaque` 后整块可命中，课程卡片仍在 hit test 链上层、配合父级「非空 cell 直接返回」守卫不抢走卡片手势。
+- **编辑模式锁滑动的两层**：左右切周锁 PageView、纵向滚动锁 SingleChildScrollView，二者都只在 `editMode` 时切换为 `NeverScrollableScrollPhysics`，退出即恢复原物理；长按拖选仍走既有 `scrollLocked`。
+- **周日弹窗一次性状态位**：`_sundayDialogShown` 是页面 State 字段，进程内只置一次，跨周来回切换不再重复弹；与「回到本周」悬浮按钮显隐互不影响。
+
 ## 2.0.7 变更（2026-10-25，WB_SPEC_208：设置界面 Taste 重排，只改设置界面、颜色不改黑）
 
 | 文件 | 改动 |

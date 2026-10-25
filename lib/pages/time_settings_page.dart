@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/course.dart';
 import '../models/time_slot.dart';
 import '../providers/providers.dart';
+import '../ui/grid_metrics.dart';
 
 /// 作息时间设置页
 ///
@@ -112,6 +113,9 @@ class TimeSettingsPage extends ConsumerWidget {
           const SizedBox(height: 12),
           // 分段设置
           _buildSegmentSettingsCard(context, ref, lunch, dinner, maxSection),
+          const SizedBox(height: 12),
+          // 休息时段（WB_SPEC_209 第 6 节）：午休/晚间显隐 + 自定义起止时间
+          _buildBandSettingsCard(context, ref),
           const SizedBox(height: 12),
           Text('当前共 ${slots.length} 节课，点击时间即可修改：',
               style: Theme.of(context).textTheme.bodySmall),
@@ -233,6 +237,109 @@ class TimeSettingsPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// 「休息时段」卡片：午休/晚间各自显隐开关 + 起止时间选择器。
+  /// 时间用系统时间选择器，开始必须早于结束，否则不保存并 SnackBar 提示。
+  Widget _buildBandSettingsCard(BuildContext context, WidgetRef ref) {
+    final band = ref.watch(bandSettingsProvider).value ?? const BandSettings();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('休息时段', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 4),
+            Text('决定周视图午休/晚间分隔带的显示与标注时间，关闭后不显示、不占位',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.outline,
+                    )),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('午休',
+                  style: TextStyle(fontWeight: FontWeight.w500)),
+              value: band.lunchVisible,
+              onChanged: (v) =>
+                  ref.read(bandSettingsProvider.notifier).setLunchVisible(v),
+            ),
+            _bandTimeRow(context, ref, '午休开始', band.lunchStart,
+                lunch: true, isStart: true),
+            _bandTimeRow(context, ref, '午休结束', band.lunchEnd,
+                lunch: true, isStart: false),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('晚间',
+                  style: TextStyle(fontWeight: FontWeight.w500)),
+              value: band.dinnerVisible,
+              onChanged: (v) =>
+                  ref.read(bandSettingsProvider.notifier).setDinnerVisible(v),
+            ),
+            _bandTimeRow(context, ref, '晚间开始', band.dinnerStart,
+                lunch: false, isStart: true),
+            _bandTimeRow(context, ref, '晚间结束', band.dinnerEnd,
+                lunch: false, isStart: false),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 一条起止时间行：点开系统时间选择器
+  Widget _bandTimeRow(
+    BuildContext context,
+    WidgetRef ref,
+    String label,
+    String current, {
+    required bool lunch,
+    required bool isStart,
+  }) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+      trailing: Text(
+        current,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      onTap: () => _pickBandTime(context, ref, lunch: lunch, isStart: isStart),
+    );
+  }
+
+  /// 选择午休/晚间起止时间：改完校验开始早于结束，否则不保存并提示
+  Future<void> _pickBandTime(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool lunch,
+    required bool isStart,
+  }) async {
+    final band = ref.read(bandSettingsProvider).value ?? const BandSettings();
+    final current = isStart
+        ? (lunch ? band.lunchStart : band.dinnerStart)
+        : (lunch ? band.lunchEnd : band.dinnerEnd);
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _parseTimeOfDay(current),
+      helpText: lunch ? '午休时间' : '晚间时间',
+    );
+    if (picked == null) return;
+    final text =
+        '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+    final start = isStart ? text : (lunch ? band.lunchStart : band.dinnerStart);
+    final end = isStart ? (lunch ? band.lunchEnd : band.dinnerEnd) : text;
+    final ok = lunch
+        ? await ref.read(bandSettingsProvider.notifier).setLunchTime(start, end)
+        : await ref
+            .read(bandSettingsProvider.notifier)
+            .setDinnerTime(start, end);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('开始时间必须早于结束时间')),
+      );
+    }
   }
 
   /// 按「上午 / 下午 / 晚上」三段分组，段标题 + 各节卡片，段间插入间隔信息行

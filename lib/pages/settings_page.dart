@@ -17,6 +17,10 @@ import '../ui/app_styles.dart';
 /// dividerColor）隔开，不再用空隙硬隔；入口行标题字重 medium。入口行、顺序、
 /// 副标题、图标、跳转一个不改，颜色一律不动。
 ///
+/// 2.0.8（WB_SPEC_209 第 3 节）删掉「和智能助手聊聊」入口（聊天改从底部栏进），
+/// 随之去掉它与「智能助手设置」之间的 1px 分隔线；智能助手设置入口、顺序、
+/// 副标题、跳转不变。设置首页入口由 10 行变 9 行。
+///
 /// 取代 2.0.3 的「外观平铺首页」规范：原先直接摆在首页的学期设置三项、外观组
 /// （实时预览 + 主题 + 格子外观 + 卡片显示 + 课程配色 + 主题颜色 + 字体）、
 /// 提醒四项、学期与数据六行、权限摘要、桌面小组件说明，全部下沉到各自子页，
@@ -59,19 +63,8 @@ class SettingsPage extends StatelessWidget {
             route: '/course-tools',
           ),
           const SizedBox(height: AppSpacing.group),
-          // 和智能助手聊聊：入口图标换像素小马灰版（2.0.5，WB_SPEC_205 第 5 节）
-          ListTile(
-            leading: const _XiaomaIcon(selected: false),
-            title: const Text(
-              '和智能助手聊聊',
-              style: TextStyle(fontWeight: FontWeight.w500),
-            ),
-            subtitle: const Text('带着课表上下文回答问题，也能帮你改课表（改前会先确认）'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.pushNamed(context, '/ai-chat'),
-          ),
-          // 2.0.7 Taste 化：智能助手组内两行用 1px 分隔线隔开，不再用空隙硬隔
-          const Divider(height: 1, thickness: 1),
+          // 2.0.8（WB_SPEC_209 第 3 节）：删掉「和智能助手聊聊」入口（聊天从底部栏进），
+          // 智能助手设置入口保留，顺序/副标题/跳转不变；组内只剩一行，分隔线随行数消失
           const _EntryTile(
             icon: Icons.settings_outlined,
             title: '智能助手设置',
@@ -135,25 +128,6 @@ class _EntryTile extends StatelessWidget {
       subtitle: Text(subtitle),
       trailing: const Icon(Icons.chevron_right),
       onTap: () => Navigator.pushNamed(context, route),
-    );
-  }
-}
-
-/// 像素小马图标（assets/icons/ 下两版 PNG），按选中态切换玫红/灰。
-/// 用于「和智能助手聊聊」入口行，尺寸与原图标视觉大小一致（约 24dp）。
-class _XiaomaIcon extends StatelessWidget {
-  const _XiaomaIcon({required this.selected});
-
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Image.asset(
-      selected
-          ? 'assets/icons/xiaoma_assistant_selected.png'
-          : 'assets/icons/xiaoma_assistant_unselected.png',
-      width: 24,
-      height: 24,
     );
   }
 }

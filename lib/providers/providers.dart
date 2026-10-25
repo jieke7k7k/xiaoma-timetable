@@ -13,6 +13,7 @@ import '../models/ui_settings.dart';
 import '../services/notification_service.dart';
 import '../services/ongoing_notice_service.dart';
 import '../services/widget_service.dart';
+import '../ui/grid_metrics.dart';
 import '../utils/week_calc.dart';
 
 /// 当前激活学期
@@ -674,6 +675,62 @@ class SegmentSettingsNotifier extends AsyncNotifier<SegmentSettings> {
 final segmentSettingsProvider =
     AsyncNotifierProvider<SegmentSettingsNotifier, SegmentSettings>(
       SegmentSettingsNotifier.new,
+    );
+
+/// 休息时段设置状态（WB_SPEC_209 第 6 节）：午休/晚间各自显隐 + 自定义起止时间，
+/// 持久化到 app_settings 表。键名 band_lunch_visible / band_dinner_visible /
+/// band_lunch_start / band_lunch_end / band_dinner_start / band_dinner_end。
+/// 起止时间必须是合法 "HH:mm" 且开始早于结束，否则不保存（返回 false）。
+class BandSettingsNotifier extends AsyncNotifier<BandSettings> {
+  @override
+  Future<BandSettings> build() async {
+    return BandSettings(
+      lunchVisible:
+          await Dao.instance.getSettingBool('band_lunch_visible', true),
+      dinnerVisible:
+          await Dao.instance.getSettingBool('band_dinner_visible', true),
+      lunchStart: await Dao.instance.getSetting('band_lunch_start') ?? '12:00',
+      lunchEnd: await Dao.instance.getSetting('band_lunch_end') ?? '14:00',
+      dinnerStart:
+          await Dao.instance.getSetting('band_dinner_start') ?? '17:10',
+      dinnerEnd: await Dao.instance.getSetting('band_dinner_end') ?? '18:00',
+    );
+  }
+
+  BandSettings get _cur => state.value ?? const BandSettings();
+
+  Future<void> setLunchVisible(bool value) async {
+    await Dao.instance.setSetting('band_lunch_visible', value ? '1' : '0');
+    state = AsyncData(_cur.copyWith(lunchVisible: value));
+  }
+
+  Future<void> setDinnerVisible(bool value) async {
+    await Dao.instance.setSetting('band_dinner_visible', value ? '1' : '0');
+    state = AsyncData(_cur.copyWith(dinnerVisible: value));
+  }
+
+  /// 设置午休起止时间；开始早于结束才保存，返回是否保存成功。
+  Future<bool> setLunchTime(String start, String end) async {
+    if (!bandRangeValid(start, end)) return false;
+    await Dao.instance.setSetting('band_lunch_start', start);
+    await Dao.instance.setSetting('band_lunch_end', end);
+    state = AsyncData(_cur.copyWith(lunchStart: start, lunchEnd: end));
+    return true;
+  }
+
+  /// 设置晚间起止时间；开始早于结束才保存，返回是否保存成功。
+  Future<bool> setDinnerTime(String start, String end) async {
+    if (!bandRangeValid(start, end)) return false;
+    await Dao.instance.setSetting('band_dinner_start', start);
+    await Dao.instance.setSetting('band_dinner_end', end);
+    state = AsyncData(_cur.copyWith(dinnerStart: start, dinnerEnd: end));
+    return true;
+  }
+}
+
+final bandSettingsProvider =
+    AsyncNotifierProvider<BandSettingsNotifier, BandSettings>(
+      BandSettingsNotifier.new,
     );
 
 /// 界面设置状态（1.1.1）：整体 JSON 持久化到 app_settings 的 ui_settings 键。

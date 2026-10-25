@@ -76,6 +76,8 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
     final showOther = ref.watch(showOtherWeeksProvider);
     final autoCollapse = ref.watch(autoCollapseWeekendProvider);
     final seg = ref.watch(segmentSettingsProvider).value;
+    final bandSettings =
+        ref.watch(bandSettingsProvider).value ?? const BandSettings();
     if (semester == null || slots.isEmpty) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
@@ -87,23 +89,15 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
     final sortedSlots = [...slots]
       ..sort((a, b) => a.section.compareTo(b.section));
     final maxSection = sortedSlots.last.section;
-    // 分隔带与主页同源：位置来自分段设置，时间段按作息实时算
-    final lunchAfter = seg?.lunchAfterSection ?? 5;
-    final dinnerAfter = seg?.dinnerAfterSection ?? 9;
-    String bandInterval(int after) {
-      TimeSlot? cur, nxt;
-      for (final t in sortedSlots) {
-        if (t.section == after) cur = t;
-        if (t.section == after + 1) nxt = t;
-      }
-      if (cur == null || nxt == null) return '';
-      return '${cur.endTime}–${nxt.startTime}';
-    }
-
-    final bands = [
-      (after: lunchAfter, label: '午休', interval: bandInterval(lunchAfter)),
-      (after: dinnerAfter, label: '晚间', interval: bandInterval(dinnerAfter)),
-    ].where((b) => b.after < maxSection).toList();
+    // 分隔带与主页同源（WB_SPEC_209 第 6 节）：位置来自分段设置，显隐与
+    // 标注时间来自休息时段设置，与主页共用 computeActiveBands 同一份口径，
+    // 保证主页隐藏/自定义时间的带子在导出图里同样生效，不出现不一致。
+    final bands = computeActiveBands(
+      lunchAfter: seg?.lunchAfterSection ?? 5,
+      dinnerAfter: seg?.dinnerAfterSection ?? 9,
+      sectionCount: maxSection,
+      settings: bandSettings,
+    );
     // 导出宽度 = 设备逻辑宽度，与主页课表严丝合缝同宽
     final sheetWidth = MediaQuery.sizeOf(context).width;
 

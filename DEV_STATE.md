@@ -1,8 +1,52 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-10-25（2.0.7+22：WB_SPEC_208 设置界面 Taste 重排）
+> 更新时间：2026-10-25（2.0.8+23：WB_SPEC_209 六件合一）
 
 ## 做到哪了
+
+## 2026-10-25（2.0.8+23：WB_SPEC_209 六件合一，未跑命令）
+
+规格见仓库根 `WB_SPEC_209.md`（六件：周日弹窗 / 回到本周竖条悬浮按钮 / 设置删聊天入口 / 左上角只显示周数 / 编辑模式锁滑动与空白新建修复 / 午休晚休自定义）。沿用 Riverpod 手写 Notifier / 中文文案注释；`flutter analyze` / `flutter test` 由用户代跑（本环境无命令权限）。
+
+### 第 1 节 周日提醒改小弹窗
+
+- `lib/pages/week_view_page.dart`：删 `_SundayEndBanner` 横幅类与 Column 里的占位；新增 `_showSundayDialog`（AppDialog 小弹窗，文案「今天是周日，本周已结束」，按钮「知道了」/「看下周」——最后一周不显示看下周）；新增 `_sundayDialogShown` 布尔，每启动会话最多弹一次，点弹窗外关闭与「知道了」等效。网格恢复完整高度，其他横幅（新版/公告）不动。
+
+### 第 2 节 回到本周竖条悬浮按钮
+
+- `lib/pages/week_view_page.dart`：删顶栏 `if (displayWeek != todayWeek) TextButton.icon(...)`；新增 `_BackToWeekRail`（竖排文字 + 日历图标，宽 30、圆角只在左侧、secondaryContainer），挂在网格区 `Expanded` 的 Stack 右缘中间，非本周视图才渲染、本周自动隐藏；顶栏编辑/新建/更多三按钮顺序位置固定。
+
+### 第 3 节 设置页删聊天入口
+
+- `lib/pages/settings_page.dart`：删「和智能助手聊聊」ListTile、其与「智能助手设置」之间的 1px `Divider`、以及不再使用的 `_XiaomaIcon`；智能助手设置入口、顺序、副标题、跳转不变，首页入口 10 行 → 9 行。
+
+### 第 4 节 左上角只显示周数
+
+- `lib/pages/week_view_page.dart`：删标题 Column 里 fontSize 11 的日期范围 Text，只留周数（单双周开关开时仍显示单/双周标题）；下拉箭头与周次跳转条不动。
+
+### 第 5 节 编辑模式锁滑动 + 空白新建修复
+
+- `lib/pages/week_view_page.dart`：`_GridArea` 的 PageView physics 编辑模式改 `NeverScrollableScrollPhysics`（否则 `DeliberatePagePhysics`）；SingleChildScrollView physics 由 `scrollLocked` 改 `scrollLocked || editMode`，退出编辑模式恢复。
+- `_WeekGrid` 根 GestureDetector 加 `behavior: HitTestBehavior.opaque`，空白格可命中，点/长按空白进处理函数；父级 onTapUp/onLongPressStart 原有「非空 cell 直接返回」守卫原样保留（课程卡片点详情/长按菜单不被抢走，需真机复测）。
+
+### 第 6 节 午休/晚休自定义 + 显隐开关
+
+- `lib/ui/grid_metrics.dart`：新增 `BandSettings`（lunchVisible/dinnerVisible 默认开、起止 12:00–14:00 / 17:10–18:00）+ 纯函数 `bandTimeToMinutes` / `bandRangeValid` / `computeActiveBands`（关闭的带子不进入结果、interval 用自定义时间、after 越界过滤）。
+- `lib/providers/providers.dart`：新增 `BandSettingsNotifier` + `bandSettingsProvider`（app_settings 键 band_lunch_visible / band_dinner_visible / band_lunch_start / band_lunch_end / band_dinner_start / band_dinner_end；setLunchTime/setDinnerTime 校验开始早于结束，不合法返回 false 不保存）。
+- `lib/pages/time_settings_page.dart`：作息页「分段设置」下新增「休息时段」卡片——午休/晚间显示开关 + 起止时间选择器（showTimePicker），改完校验开始早于结束否则 SnackBar「开始时间必须早于结束时间」。
+- `lib/pages/week_view_page.dart` / `lib/pages/share_image_page.dart`：分隔带改由 `computeActiveBands` 统一计算，主页与导出图同源，隐藏/自定义时间一致；删掉两处各自按前后节次推导 interval 的局部函数。
+
+### 测试与文档
+
+- `test/settings_page_test.dart`：入口 10 → 9（删聊天入口）、新增聊天行 `findsNothing` 断言、Divider 断言由 findsWidgets 改 findsNothing。
+- `test/band_settings_test.dart`（新增）：BandSettings 默认值、computeActiveBands 显隐/越界/interval、bandRangeValid/bandTimeToMinutes 纯函数、Notifier 默认值/开关持久化/开始晚于结束不保存/合法保存（FFI 内存库）。
+- `pubspec.yaml` 2.0.7+22 → 2.0.8+23；`CHANGELOG.md` 新增 2.0.8 六条（用户口吻）；本文件与 `ARCHITECTURE.md` 同步。
+
+### 未覆盖处（真机复测项）
+
+- 周日小弹窗与「回到本周」竖条悬浮按钮的真机观感（尺寸/贴边/竖排排版）；
+- 编辑模式空白新建的真机复测（opaque 后点/长按空白、课程卡片详情与长按菜单是否仍正常）；
+- 分隔带隐藏后导出图与主页是否严格一致。
 
 ## 2026-10-25（2.0.7+22：WB_SPEC_208，未跑命令）
 
