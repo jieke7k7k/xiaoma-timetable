@@ -309,25 +309,39 @@ class _ExportSheet extends StatelessWidget {
             height: gridH,
             child: Stack(
               children: [
-                // 横向网格线（跳过分隔带处，与主页一致）
+                // 横向网格线：每节底边（节次分隔线，含带子顶边）+ 带子底边；
+                // 带子内部无线。与主页 _FullWidthLinesPainter 口径一致（不含最后一条底边）
                 for (var r = 1; r < maxSection; r++)
-                  if (!bands.any((b) => b.after == r))
-                    Positioned(
-                      top: topOf(r + 1),
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                          height: 0.5, color: scheme.outlineVariant),
-                    ),
-                // 纵向列线
-                for (var c = 0; c <= displayDays.length; c++)
                   Positioned(
-                    left: axisW + c * colW,
-                    top: 0,
-                    bottom: 0,
+                    top: topOf(r) + rowH,
+                    left: 0,
+                    right: 0,
                     child: Container(
-                        width: 0.5, color: scheme.outlineVariant),
+                        height: 0.5, color: scheme.outlineVariant),
                   ),
+                for (final b in bands)
+                  Positioned(
+                    top: topOf(b.after + 1),
+                    left: 0,
+                    right: 0,
+                    child: Container(
+                        height: 0.5, color: scheme.outlineVariant),
+                  ),
+                // 纵向列线：竖线按节次段分段，跳过休息带（WB_SPEC_210 第 2 节，
+                // 与主页共用 verticalLineSegments 同一份口径，带子内不画竖线）
+                for (var c = 0; c <= displayDays.length; c++)
+                  for (final seg in verticalLineSegments(
+                    rowHeight: rowH,
+                    sectionCount: maxSection,
+                    activeBands: bands,
+                  ))
+                    Positioned(
+                      left: axisW + c * colW,
+                      top: seg.start,
+                      height: seg.end - seg.start,
+                      child: Container(
+                          width: 0.5, color: scheme.outlineVariant),
+                    ),
                 // 时间轴：节次 + 起止时间（跟随界面设置 axisShowTime）
                 for (final s in slots)
                   Positioned(

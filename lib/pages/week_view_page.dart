@@ -1657,7 +1657,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
   }
 }
 
-/// 网格线背景（横线跳过分隔带位置）
+/// 网格线背景（竖线按节次段分段、跳过休息带；横线由 _FullWidthLinesPainter 统一绘制）
 class _GridLines extends StatelessWidget {
   const _GridLines({
     required this.cellWidth,
@@ -1759,11 +1759,19 @@ class _GridPainter extends CustomPainter {
     final paint = Paint()
       ..color = color
       ..strokeWidth = 0.5;
-    // 横线已改由 _FullWidthLinesPainter 全宽统一绘制（1.2.3），此处只画竖线
-    // 竖线（列分隔）
+    // 横线已改由 _FullWidthLinesPainter 全宽统一绘制（1.2.3），此处只画竖线。
+    // 竖线（列分隔）按节次段分段绘制，遇到休息带跳过带子高度（WB_SPEC_210 第 2 节）
+    // ——带子内部不再有竖线穿过，分段口径与导出图共用 verticalLineSegments。
+    final segments = verticalLineSegments(
+      rowHeight: rowHeight,
+      sectionCount: sectionCount,
+      activeBands: activeBands,
+    );
     for (var c = 1; c < columnCount; c++) {
       final x = c * cellWidth;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+      for (final seg in segments) {
+        canvas.drawLine(Offset(x, seg.start), Offset(x, seg.end), paint);
+      }
     }
   }
 
@@ -1773,6 +1781,7 @@ class _GridPainter extends CustomPainter {
       old.rowHeight != rowHeight ||
       old.sectionCount != sectionCount ||
       old.columnCount != columnCount ||
+      old.activeBands != activeBands ||
       old.color != color;
 }
 

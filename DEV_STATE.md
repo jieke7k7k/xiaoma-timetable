@@ -1,8 +1,39 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-10-25（2.0.8+23：WB_SPEC_209 六件合一）
+> 更新时间：2026-10-25（2.0.9+24：WB_SPEC_210 上下栏紧凑 + 网格线跳过休息带）
 
 ## 做到哪了
+
+## 2026-10-25（2.0.9+24：WB_SPEC_210 上下栏紧凑 + 网格线跳过休息带，已本地验过）
+
+规格见仓库根 `WB_SPEC_210.md`（两件：上下栏紧凑 / 网格线跳过休息带）。沿用 Riverpod 手写 Notifier / 中文文案注释；本地已跑 `flutter analyze`（零问题）与 `flutter test`（416 项全绿，含新增 6 项）。另注意：规格里写的带子高度 20px 是网页样品值，代码中 kBandHeight 自 1.2.1 起就是 24，未改动。
+
+### 第 1 节 上下栏紧凑
+
+- `lib/ui/grid_metrics.dart`：`kBottomBarHeight` 72 → 56（底栏高度唯一入口，改前改后见该常量注释）。
+- `lib/main.dart`：`_HomeBottomBar` / `_SideButton` 三键图标 26 → 22、文字 11 → 10、图标与文字间距 2 → 1，随底栏一起收紧；`theme` / `darkTheme` 增全局 `appBarTheme`——`toolbarHeight: 48`（默认 56 → 48）+ `systemOverlayStyle`（`statusBarColor: transparent` 贴顶，浅色 `statusBarIconBrightness.dark`、深色 `.light` 保证可辨）。
+- 顶部栏「贴到屏幕顶端」：AppBar 默认 `primary: true` 背景本已铺到状态栏后，`statusBarColor: transparent` 让状态栏露出 AppBar 同背景色，消除顶部空白带；周数标题、下拉箭头、铅笔/加号/更多三按钮的顺序/图标/功能不变（`week_view_page.dart` 顶栏本体零改动，高度由全局 appBarTheme 生效）。
+- 底栏底部手势区 `SafeArea` 保留（`HomeShell` 的 `bottomNavigationBar` 外层）；三键等大平铺、选中态主题色+加粗、像素小马图标、长按无气泡均不变。
+- 省出高度还给中间课表：网格区 `Expanded` 继续吃剩余高度，未改行高/格子高度/作息分段。
+
+### 第 2 节 网格线跳过休息带
+
+- `lib/ui/grid_metrics.dart`：新增纯函数 `verticalLineSegments`——按节次切纵向分段、休息带区间不产生分段即跳过（返回 `[start,end)` 区间列表，主页与导出图共用）。
+- `lib/pages/week_view_page.dart`：`_GridPainter.paint` 竖线由「整条」改为按 `verticalLineSegments` 分段绘制（带子内不再有竖线穿过）；`_GridPainter.shouldRepaint` 补 `old.activeBands != activeBands`（此前竖线不用带子、漏比较；本轮竖线依赖带子故必须补）；横线 `_FullWidthLinesPainter` 本已「每节底边 + 带子底边、带内无线」，原样保留。
+- `lib/pages/share_image_page.dart`：横线由「跳过分隔带处」改为「每节底边（含带子顶边）+ 带子底边」，与主页同口径（修掉导出图此前在带子位置把节次分隔线一并跳过的旧不一致）；竖线由整条 `Positioned` 改为按 `verticalLineSegments` 分段。
+- 设置页实时预览为 3 行示例网格、不画分隔带，不适用本节，未改。
+
+### 测试与文档
+
+- `test/grid_metrics_test.dart`（新增）：`kBottomBarHeight == 56` 常量断言；`verticalLineSegments` 纯函数单测（无带子连续、单带/双带跳带、带子 after 越界、分段纵向跨度守恒）。
+- `pubspec.yaml` 2.0.8+23 → 2.0.9+24；`CHANGELOG.md` 新增 2.0.9 两条（用户口吻）；本文件与 `ARCHITECTURE.md` 同步。
+
+### 未覆盖处（真机复测项）
+
+- 顶部栏贴顶后，浅色/深色下状态栏图标是否清晰可辨（systemOverlayStyle 已按亮度显式指定，真机观感待验）；
+- 底栏压矮后文字（10 号）是否拥挤、三键触控区是否仍好点（SafeArea 手势区保留）；
+- 网格线跳过带子后，带子上下边界那条节次分隔线是否仍清晰；
+- 导出图与主页的横线/竖线是否完全一致（含带子底边）。
 
 ## 2026-10-25（2.0.8+23：WB_SPEC_209 六件合一，未跑命令）
 

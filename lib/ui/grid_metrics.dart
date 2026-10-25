@@ -18,7 +18,8 @@ const double kBandHeight = 24;
 /// 主页底栏高度（px）：与 main.dart 的 `_HomeBottomBar` SizedBox 同高。
 /// 2.0.2（WB-202 第 1 项）起课表网格不再按它留底部内边距——底栏三键改等大
 /// 平铺后没有凸起按钮，课表区直接贴合底栏；本常量仅用于底栏自身高度。
-const double kBottomBarHeight = 72;
+/// 2.0.9（WB_SPEC_210 第 1 节）72 → 56：底栏压矮，省出的高度还给中间课表。
+const double kBottomBarHeight = 56;
 
 /// 一条分隔带：[after] 第几节之后、[label] 名称（午休/晚间）、
 /// [interval] 时间段文本（如 12:00–14:00，可为空）
@@ -111,4 +112,32 @@ List<GridBand> computeActiveBands({
     ));
   }
   return bands;
+}
+
+/// 竖线纵向分段（纯函数，WB_SPEC_210 第 2 节）：把网格的竖线按节次切成若干
+/// 纵向区间，遇到休息带（午休/晚间）时跳过带子高度——带子内部不画竖线。
+///
+/// 返回每个节次占用的纵向区间 `[start, end)`（相对网格顶部的偏移），供主页
+/// 周视图 `_GridPainter` 与导出图页共用，保证两处「竖线跳过休息带」口径一致：
+/// - 第 [after] 节的底边即休息带顶边，该节分段到顶边为止；
+/// - 第 [after]+1 节从带子底边开始，带子高度自然跳过；
+/// - 无带子时相邻节次分段首尾相接，竖线视觉上连续（与旧版整条竖线一致）。
+List<({double start, double end})> verticalLineSegments({
+  required double rowHeight,
+  required int sectionCount,
+  required List<GridBand> activeBands,
+}) {
+  // 休息带按「第几节之后」建索引，遍历节次时 O(1) 判断该节之后是否有带子
+  final bandAfter = <int>{for (final b in activeBands) b.after};
+  final segments = <({double start, double end})>[];
+  var y = 0.0;
+  for (var s = 1; s <= sectionCount; s++) {
+    segments.add((start: y, end: y + rowHeight));
+    y += rowHeight;
+    // 该节之后若有休息带，纵坐标直接跳过带子高度（带子区间不产生分段）
+    if (bandAfter.contains(s)) {
+      y += kBandHeight;
+    }
+  }
+  return segments;
 }

@@ -2,6 +2,24 @@
 
 > 每完成一个阶段更新本文件，防止上下文丢失。
 
+## 2.0.9 变更（2026-10-25，WB_SPEC_210：上下栏紧凑 + 网格线跳过休息带）
+
+| 文件 | 改动 |
+|---|---|
+| `lib/ui/grid_metrics.dart` | `kBottomBarHeight` 72 → 56；新增纯函数 `verticalLineSegments`（竖线按节次分段、跳过休息带，主页与导出图共用） |
+| `lib/main.dart` | `theme` / `darkTheme` 增 `appBarTheme`：toolbarHeight 48 + systemOverlayStyle（状态栏透明贴顶、图标按浅/深色可辨）；底栏 `_HomeBottomBar` / `_SideButton` 图标 26→22、文字 11→10、图标与文字间距 2→1 |
+| `lib/pages/week_view_page.dart` | `_GridPainter` 竖线改用 `verticalLineSegments` 分段绘制（跳过休息带）、`shouldRepaint` 补 activeBands 比较；`_GridLines` 注释同步 |
+| `lib/pages/share_image_page.dart` | 导出图横线改为「每节底边 + 带子底边」（保留节次分隔线，带内无线，与主页一致）；竖线改用 `verticalLineSegments` 分段跳过休息带 |
+| `pubspec.yaml` | 版本 2.0.9+24 |
+| 测试 | 新增 `grid_metrics_test.dart`（kBottomBarHeight 常量 + verticalLineSegments 纯函数） |
+
+### 关键设计决策
+
+- **栏高全局统一**：顶栏压矮放进全局 `appBarTheme.toolbarHeight`（56→48），所有页面的 AppBar 一起生效，不在某一页单独改高；底栏高度仍走 `kBottomBarHeight` 单点常量，三键图标/文字/间距随底栏一起收紧。
+- **贴顶与状态栏同色**：AppBar 默认 `primary: true` 已把背景铺到状态栏后，`appBarTheme.systemOverlayStyle.statusBarColor = transparent` 让状态栏露出 AppBar 同背景色；图标明暗按主题亮度显式指定（浅色深图标 / 深色浅图标），保证可辨。
+- **竖线跳带纯函数化**：`verticalLineSegments` 把「整条竖线」切成按节次的纵向分段，休息带（午休/晚间）区间不产生分段即自然跳过；主页 `_GridPainter` 与导出图共用同一函数，从源头避免「主页去线、导出图有线」。
+- **横线口径统一**：主页 `_FullWidthLinesPainter` 画「每节底边 + 带子底边」；导出图此前的横线在带子位置把节次分隔线也一并跳过了（与主页不一致），本轮改为同一口径——节次底边（含带子顶边）与带子底边都保留，带子内部无线。
+
 ## 2.0.8 变更（2026-10-25，WB_SPEC_209：六件合一——周日弹窗 / 回到本周悬浮按钮 / 设置删聊天 / 左上角只周数 / 编辑锁滑动与空白修复 / 休息时段自定义）
 
 | 文件 | 改动 |

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models/ui_settings.dart';
@@ -209,6 +210,16 @@ class SimpleTimetableApp extends ConsumerWidget {
         useMaterial3: true,
         colorScheme: colorScheme,
         fontFamily: fontFamily,
+        // 2.0.9（WB_SPEC_210 第 1 节）：顶栏全局压矮（toolbarHeight 56 → 48）并贴顶——
+        // 状态栏透明（露出 AppBar 同背景色，不再有顶部空白带），浅色下状态栏图标用深色保证可辨。
+        appBarTheme: const AppBarTheme(
+          toolbarHeight: 48,
+          systemOverlayStyle: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.dark,
+            statusBarBrightness: Brightness.light,
+          ),
+        ),
         cardTheme: const CardThemeData(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(AppRadii.card)),
@@ -226,6 +237,15 @@ class SimpleTimetableApp extends ConsumerWidget {
         useMaterial3: true,
         colorScheme: darkColorScheme,
         fontFamily: fontFamily,
+        // 2.0.9：深色下状态栏图标用浅色保证可辨，其余与浅色一致。
+        appBarTheme: const AppBarTheme(
+          toolbarHeight: 48,
+          systemOverlayStyle: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.light,
+            statusBarBrightness: Brightness.dark,
+          ),
+        ),
         cardTheme: const CardThemeData(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(AppRadii.card)),
@@ -470,8 +490,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 /// **刻意不用 NavigationBar**：NavigationDestination 长按会浮出 label 气泡
 /// （用户明确要求不要），自绘按钮天然没有这个行为，也不包 Tooltip。
 /// 2.0.2（WB-202 第 1 项）：中间按钮取消凸起圆形样式，与左右两键完全一致——
-/// 同图标大小（26）、同文字（11 号常显小字）、同高度，三键等大；选中态沿用
-/// 主题色 + 加粗即可辨（见 [_SideButton]）。
+/// 同图标大小、同文字、同高度，三键等大；选中态沿用主题色 + 加粗即可辨。
+/// 2.0.9（WB_SPEC_210 第 1 节）：图标 26 → 22、文字 11 → 10，随底栏一起压矮。
 class _HomeBottomBar extends StatelessWidget {
   const _HomeBottomBar({required this.index, required this.onChanged});
 
@@ -502,8 +522,8 @@ class _HomeBottomBar extends StatelessWidget {
                   index == 0
                       ? 'assets/icons/xiaoma_assistant_selected.png'
                       : 'assets/icons/xiaoma_assistant_unselected.png',
-                  width: 26,
-                  height: 26,
+                  width: 22,
+                  height: 22,
                 ),
                 label: '智能助手',
                 selected: index == 0,
@@ -516,7 +536,7 @@ class _HomeBottomBar extends StatelessWidget {
                   index == 1
                       ? Icons.calendar_view_week
                       : Icons.calendar_view_week_outlined,
-                  size: 26,
+                  size: 22,
                   color: color,
                 ),
                 label: '主页',
@@ -528,7 +548,7 @@ class _HomeBottomBar extends StatelessWidget {
               child: _SideButton(
                 iconBuilder: (color) => Icon(
                   index == 2 ? Icons.settings : Icons.settings_outlined,
-                  size: 26,
+                  size: 22,
                   color: color,
                 ),
                 label: '设置',
@@ -555,7 +575,7 @@ class _SideButton extends StatelessWidget {
     required this.onTap,
   });
 
-  /// 根据当前选中态颜色生成图标 Widget（尺寸约 26dp）
+  /// 根据当前选中态颜色生成图标 Widget（尺寸约 22dp）
   final Widget Function(Color color) iconBuilder;
   final String label;
   final bool selected;
@@ -571,12 +591,12 @@ class _SideButton extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          SizedBox(width: 26, height: 26, child: iconBuilder(color)),
-          const SizedBox(height: 2),
+          SizedBox(width: 22, height: 22, child: iconBuilder(color)),
+          const SizedBox(height: 1),
           Text(
             label,
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 10,
               color: color,
               fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
             ),
