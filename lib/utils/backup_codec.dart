@@ -72,6 +72,13 @@ class BackupCodec {
     'bridge_repo',
   };
 
+  /// 云同步水位键（须与 `SupabaseSyncService.lastSyncAtKey` 保持一致）。
+  ///
+  /// 它不属于机密键、正常进备份；但恢复时**强制归零**——见 [restore]，
+  /// 等价于恢复后下一次同步重新走「首次迁移」全量上传（upsert 幂等），
+  /// 避免沿用备份里的旧水位把恢复进来的课程/备注当成「已同步过」而漏传。
+  static const String syncWatermarkKey = 'supabase_last_sync_at';
+
   /// 剔除机密键后的设置副本（[encode] 用）。不修改入参。
   static Map<String, String> stripSecretSettings(Map<String, String> settings) =>
       {
@@ -303,6 +310,8 @@ class BackupCodec {
   /// 恢复入库：单个事务内清空五张表再按备份重灌，任一步失败整体回滚。
   /// 成功返回恢复统计，由 UI 层组装提示文案。
   static Future<RestoreSummary> restore(Database db, BackupData data) async {
+    // 恢复时刻：courses/notes 补 updatedAt 用（见下方两处），整次恢复同一时刻
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
       // 先删子表（调课/课程）再删父表（学期），与外键方向一致；
       // app_settings 一并覆盖——备份是全量语义，主题/提醒设置跟着备份走
@@ -330,6 +339,8 @@ class BackupCodec {
       for (final c in data.courses) {
         final map = c.toMap()..remove('id');
         map['semesterId'] = semesterIdMap[c.semesterId];
+        // P0-5：恢复的课程补 updatedAt=now，云同步能按新时间参与后续上传
+        map['updatedAt'] = nowMs;
         final newId = await txn.insert('courses', map);
         if (c.id != null) courseIdMap[c.id!] = newId;
       }
@@ -344,15 +355,21 @@ class BackupCodec {
       for (final e in data.appSettings.entries) {
         // 备份里的凭据键一律忽略（哪怕是老版本备份或被人手改塞进来的）
         if (secretSettingKeys.contains(e.key)) continue;
+        // 云同步水位不进备份生效：恢复后强制归零（见下面），这里跳过备份值
+        if (e.key == syncWatermarkKey) continue;
         await txn.insert('app_settings', {'key': e.key, 'value': e.value});
       }
       // 写回恢复前读到的本机凭据（本机本来没存这个键就不写，保持「没配」状态）
       for (final e in localSecrets.entries) {
         await txn.insert('app_settings', {'key': e.key, 'value': e.value});
       }
+      // P0-5：云同步水位归零——恢复后等价于重新首次迁移，下次同步全量上传，
+      // upsert 幂等、不会重复污染云端；机密键仍以本机为准，不受这里影响。
+      await txn.insert('app_settings', {'key': syncWatermarkKey, 'value': '0'});
       for (final n in data.notes) {
         // 与其它表一致：去掉 id 让自增重新分配，不照抄备份里的 id
-        await txn.insert('notes', n.toMap()..remove('id'));
+        // P0-5：恢复的备注同样补 updatedAt=now，参与后续云同步上传
+        await txn.insert('notes', n.toMap()..remove('id')..['updatedAt'] = nowMs);
       }
     });
     return RestoreSummary(

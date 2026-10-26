@@ -38,7 +38,9 @@ jobs:
           echo "签名钥匙完整性与密码校验通过"
       # 按架构分包：只取 arm64 瘦身包交付（小米等主流机型均为 arm64），
       # 包体从 112MB 降到 90MB 内，临时下载链接（约 100MB 上限）才能发
-      - run: flutter build apk --release --split-per-abi
+      # 注意：云同步必须带参编译——SUPABASE_URL / SUPABASE_ANON_KEY 由仓库
+      # Secrets 注入，缺这两个 dart-define 时 App 会以「未配置」状态关闭云同步。
+      - run: flutter build apk --release --split-per-abi --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
         env:
           KEYSTORE_PATH: ${{ runner.temp }}/xiaoma-release.jks
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}

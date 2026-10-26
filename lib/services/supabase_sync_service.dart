@@ -120,14 +120,17 @@ class SupabaseSyncService {
       final watermark = await lastSyncAt();
 
       // 1) 上传本地变动（首次迁移全量 + 去重），记录本轮上传的远程 id
-      final upload = await _upload(store, watermark);
+      final upload = await _upload(store, watermark, started);
 
       // 2) 下载云端变动（冲突取新，云端赢写本地；跳过本轮刚上传的行）
-      final downloaded = await _download(store, watermark, upload.ids);
+      final downloaded = await _download(store, watermark, upload.ids, started);
 
-      // 3) 水位推进到本次同步时间
-      final nowMs = DateTime.now().millisecondsSinceEpoch;
-      await Dao.instance.setSetting(lastSyncAtKey, '$nowMs');
+      // 3) 水位推进到本次同步开始时刻（与上传 updated_at 同一时刻，
+      //    避免同步窗口内的本地改动被推进后的水位淹没、永久不再上传）
+      await Dao.instance.setSetting(
+        lastSyncAtKey,
+        '${started.millisecondsSinceEpoch}',
+      );
 
       final summary = _buildSummary(upload.count, downloaded);
       await Dao.instance.setSetting(lastSyncSummaryKey, _withTime(started, summary));
@@ -154,9 +157,13 @@ class SupabaseSyncService {
   }
 
   /// 上传本地变动。返回实际上传的条数与远程 id 集合（供下载阶段跳过本轮已上行）。
+  ///
+  /// [started] 是本次同步的开始时刻：云端 updated_at 统一写它（UTC），
+  /// 与水位推进用同一时刻，保证「上传时间 = 水位」严格一致。
   Future<({int count, Set<String> ids})> _upload(
     CloudStore store,
     int watermark,
+    DateTime started,
   ) async {
     final courseRows = await Dao.instance.getAllCourseRows();
     final noteRows = await Dao.instance.getAllNoteRows();
@@ -194,8 +201,8 @@ class SupabaseSyncService {
     }
     final upsertNotes = [for (final n in notesToUpload) noteToRemoteRow(n)];
 
-    // 云端 updated_at 取本次同步时间（upsert 更新时 default now() 不会自动刷新）
-    final nowIso = DateTime.now().toUtc().toIso8601String();
+    // 云端 updated_at 取本次同步开始时刻（upsert 更新时 default now() 不会自动刷新）
+    final nowIso = started.toUtc().toIso8601String();
     for (final r in upsertCourses) {
       r['updated_at'] = nowIso;
     }
@@ -226,10 +233,14 @@ class SupabaseSyncService {
   /// [uploadedIds] 是本轮刚上传的远程 id：这些行云端 updated_at 已刷新成 now，
   /// 会落进「晚于水位」的下载集，若不跳过就会被误判成「云端更新」再覆盖回本地
   /// （内容虽同、语义却是自同步循环）。跳过它们，只处理真正的云端异动。
+  ///
+  /// [started] 是本次同步开始时刻：本地赢时的回传 updated_at 也统一写它，
+  /// 与上传、水位三者同源，避免窗口内时间不一致。
   Future<int> _download(
     CloudStore store,
     int watermark,
     Set<String> uploadedIds,
+    DateTime started,
   ) async {
     final cloudCourses = await store.fetchCoursesAfter(watermark);
     final cloudNotes = await store.fetchNotesAfter(watermark);
@@ -257,7 +268,7 @@ class SupabaseSyncService {
         // 本地赢：立即上传覆盖云端（下一轮也会再传，这里顺手闭环）
         await store.upsertCourses([
           courseToRemoteRow(Course.fromMap(local!))
-            ..['updated_at'] = DateTime.now().toUtc().toIso8601String(),
+            ..['updated_at'] = started.toUtc().toIso8601String(),
         ]);
         continue;
       }
@@ -284,7 +295,7 @@ class SupabaseSyncService {
       if (winner == SyncWinner.local) {
         await store.upsertNotes([
           noteToRemoteRow(Note.fromMap(local!))
-            ..['updated_at'] = DateTime.now().toUtc().toIso8601String(),
+            ..['updated_at'] = started.toUtc().toIso8601String(),
         ]);
         continue;
       }

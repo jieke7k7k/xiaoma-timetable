@@ -227,6 +227,53 @@ void main() {
     });
   });
 
+  group('P0-2 水位与上传时间统一用 started（mock 断言，不真连 Supabase）', () {
+    setUpAll(() {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    });
+
+    tearDown(() {
+      SupabaseSyncService.instance.resetForTest();
+    });
+
+    test('上传 updated_at 与水位推进取同一同步开始时刻', () async {
+      final db = await databaseFactoryFfi.openDatabase(
+        inMemoryDatabasePath,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: (d, v) => DbHelper.instance.createSchema(d),
+        ),
+      );
+      DbHelper.instance.useDatabaseForTest(db);
+
+      await Dao.instance.insertCourse(course(id: null, name: '药理学'));
+      await Dao.instance.insertNote(
+        Note(date: '2026-09-07', content: '带实验服', createdAt: 1),
+      );
+      await Dao.instance.setSetting(SupabaseSyncService.lastSyncAtKey, '0');
+
+      final store = _RecordingStore();
+      SupabaseSyncService.instance.overrideStoreForTest(store);
+
+      final outcome = await SupabaseSyncService.instance.syncNow();
+      expect(outcome.status, SupabaseSyncStatus.completed);
+
+      // 课程与备注上传的 updated_at 完全一致（同一个 started）
+      expect(store.courseUpdatedAt, isNotNull);
+      expect(store.noteUpdatedAt, store.courseUpdatedAt);
+      expect(store.courseUpdatedAt, endsWith('Z')); // UTC ISO
+
+      // 水位推进到 started 的毫秒值 == 上传 updated_at 解析出的毫秒值
+      final watermark = await Dao.instance
+          .getSettingInt(SupabaseSyncService.lastSyncAtKey, -1);
+      final uploadMs = parseCloudUpdatedAt(store.courseUpdatedAt)!;
+      expect((watermark - uploadMs).abs(), lessThan(2));
+
+      await db.close();
+    });
+  });
+
   group('离线失败不丢本地数据（mock 断言，不真连 Supabase）', () {
     setUpAll(() {
       sqfliteFfiInit();
@@ -298,4 +345,31 @@ class _OfflineStore implements CloudStore {
   @override
   Future<void> upsertExams(List<Map<String, dynamic>> rows) async =>
       throw Exception('网络不可用');
+}
+
+/// 记录实际上传的 updated_at，用于断言「上传时间 = 水位」同源（不真连 Supabase）。
+class _RecordingStore implements CloudStore {
+  String? courseUpdatedAt;
+  String? noteUpdatedAt;
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchCoursesAfter(int watermarkMs) async =>
+      [];
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchNotesAfter(int watermarkMs) async =>
+      [];
+
+  @override
+  Future<void> upsertCourses(List<Map<String, dynamic>> rows) async {
+    if (rows.isNotEmpty) courseUpdatedAt = rows.first['updated_at'] as String?;
+  }
+
+  @override
+  Future<void> upsertNotes(List<Map<String, dynamic>> rows) async {
+    if (rows.isNotEmpty) noteUpdatedAt = rows.first['updated_at'] as String?;
+  }
+
+  @override
+  Future<void> upsertExams(List<Map<String, dynamic>> rows) async {}
 }

@@ -1,12 +1,35 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-10-26（2.1.0+25：WB_SPEC_211 Supabase 云同步，待跑命令）
+> 更新时间：2026-10-26（2.1.0+25 P0 修复轮：supabase-sync 分支 @370ba07，analyze 零问题 / 437 测试全绿）
 
 ## 做到哪了
 
-## 2026-10-26（2.1.0+25：WB_SPEC_211 Supabase 云同步，待跑命令）
+## 2026-10-26（2.1.0+25 P0 修复轮：supabase-sync 分支 @370ba07）
 
-规格见仓库根 WB_SPEC_211（Supabase 直连云同步，Gmail 式免手动同步）。沿用 Riverpod 手写 Notifier / 中文文案注释；`flutter analyze` / `flutter test` 由本环境跑完后补记结果。
+只改 `supabase-sync` 分支，不动 main、不建 Release、不发版、不推 GitHub、不写任何真实考试数据。范围严格限定 5 条 P0 + 2 项文档。
+
+### 改动清单
+
+- **P0-1** `android/app/src/main/AndroidManifest.xml`：主 manifest 显式补一行 `<uses-permission android:name="android.permission.INTERNET"/>`（云同步直连 Supabase 联网用，不再依赖插件合并；插件合并情况留待发版验包时用 aapt 确认）。
+- **P0-2** `lib/services/supabase_sync_service.dart`：上传的云端 `updated_at`、水位推进、下载阶段本地赢回传的 `updated_at` 统一改用同步开始时刻 `started`（UTC）。修掉「同步窗口内的本地改动被推进后的水位淹没、永久不上传」的问题。
+- **P0-3** `lib/pages/course_edit_page.dart`：`_save()` 重建 Course 时补 `examEndTime` / `examPlace` 透传（编辑取原课程对象的值、新建为 null），`_load()` 同步读入这两个字段。其余整对象重建入口已核查：`command_executor.dart` 的 `set_course_remark` / `add_exam` 与 `operation_log_service.dart` 的撤回，都在 `withMutableFields` 里显式传了这两个字段，无需再改。
+- **P0-4** `.github/workflows/build-apk.yml`：`flutter build apk` 命令补 `--dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}`。**发版清单**：这两个 Secrets 尚未在仓库建立（本任务不建），发版前必须在仓库 Secrets 建好并**带参编译**，否则 App 以「未配置」状态关闭云同步。
+- **P0-5** `lib/utils/backup_codec.dart`：restore 恢复 courses/notes 时补 `updatedAt = now`，并把 `supabase_last_sync_at` 归零（等价于重新首次迁移全量上传，upsert 幂等）；`secretSettingKeys` 不变（四个机密键仍不进备份、不覆盖本机值）。
+
+### 直连写入口径（P1-7，给小马）
+
+- **加考试 = 写 `courses` 行的 `exam_date_ms`（可选 `exam_end_time` / `exam_place`）**；App 的考试数据就挂在 courses 行上，课程编辑页 / 考试倒计时页都读它。
+- **`exams` 表只作镜像，App 不读**：它由云同步按 courses 行自动 upsert 维护，App 显示以 courses 为准。
+
+### analyze / 测试实际结果（P1-9）
+
+- `flutter analyze`：**No issues found（零问题）**（Flutter 3.47.7 / Dart 3.13.5）。
+- `flutter test`：**437 项全绿**（本轮新增 2 项：P0-2 一条、P0-5 一条）。
+- 环境说明：沙箱自带 Flutter 3.0.0（Dart 2.17）不满足 pubspec 的 `sdk: ^3.13.5`，已另装 Flutter 3.47.7 跑通；测试运行前需按 `assets/fonts/README.md` 放置四个内置字体（本仓库 gitignore 不随仓库分发）。
+
+## 2026-10-26（2.1.0+25：WB_SPEC_211 Supabase 云同步）
+
+规格见仓库根 WB_SPEC_211（Supabase 直连云同步，Gmail 式免手动同步）。沿用 Riverpod 手写 Notifier / 中文文案注释；本环境已跑 `flutter analyze`（No issues found，零问题）与 `flutter test`（437 项全绿，含 P0 修复轮新增 2 项）。
 
 ### 表与 RLS（第 1 节）
 
@@ -24,7 +47,7 @@
 ### 同步协议（第 3 节）
 
 - 本地 app_settings 存 `supabase_last_sync_at`（毫秒）水位，首次同步前为 0。
-- 上传：本地行 updatedAt 大于水位 → upsert（首次迁移水位 0 全量）；成功后水位推进到本次同步时间。
+- 上传：本地行 updatedAt 大于水位 → upsert（首次迁移水位 0 全量）；成功后水位推进到本次同步开始时刻（started，与上传 updated_at 同源，见 P0-2）。
 - 下载：只拉云端 updated_at 大于水位的行；同 id 时冲突取新（updatedAt 大者赢），云端赢覆盖本地、本地赢立即回传覆盖云端、相等不动。
 - 删除不同步：本地删的行云端孤儿行保留，下载水位规则天然跳过（updated_at 早于水位），不复活本地已删内容。
 - 离线静默失败（记日志不弹窗不丢本地数据），下次联网重试；同步中杀进程以本地库为准。
