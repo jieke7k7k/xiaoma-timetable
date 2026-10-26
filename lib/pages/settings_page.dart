@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/menu_config.dart';
+import '../providers/providers.dart';
 import '../ui/app_styles.dart';
 
 /// 设置页（QQ 式分级）
@@ -9,27 +12,28 @@ import '../ui/app_styles.dart';
 /// 点进每个分类才看到该组的全部设置项（见 settings_sections.dart）。
 ///
 /// 2.0.6（WB_SPEC_206 第 1 节）去掉全部分组小标题：小标题与入口行同名，
-/// 纯重复。首页现在只留入口行，组与组之间用比行内更大的 AppSpacing 间距分隔；
-/// 入口行本身、顺序、副标题、跳转全不动。
+/// 纯重复。首页现在只留入口行，组与组之间用比行内更大的 AppSpacing 间距分隔。
 ///
-/// 2.0.7（WB_SPEC_208 第 1 节）Taste 化只动布局与层级：组与组之间间距统一为
-/// 24（`AppSpacing.group`）；智能助手组内两行用 1px 分隔线（现有主题
-/// dividerColor）隔开，不再用空隙硬隔；入口行标题字重 medium。入口行、顺序、
-/// 副标题、图标、跳转一个不改，颜色一律不动。
+/// 2.0.7（WB_SPEC_208 第 1 节）Taste 化只动布局与层级；2.0.8（WB_SPEC_209
+/// 第 3 节）删掉「和智能助手聊聊」入口。
 ///
-/// 2.0.8（WB_SPEC_209 第 3 节）删掉「和智能助手聊聊」入口（聊天改从底部栏进），
-/// 随之去掉它与「智能助手设置」之间的 1px 分隔线；智能助手设置入口、顺序、
-/// 副标题、跳转不变。设置首页入口由 10 行变 9 行。
-///
-/// 取代 2.0.3 的「外观平铺首页」规范：原先直接摆在首页的学期设置三项、外观组
-/// （实时预览 + 主题 + 格子外观 + 卡片显示 + 课程配色 + 主题颜色 + 字体）、
-/// 提醒四项、学期与数据六行、权限摘要、桌面小组件说明，全部下沉到各自子页，
-/// 控件与业务逻辑原样搬过去（不许丢项、不许改行为）。
-class SettingsPage extends StatelessWidget {
+/// 2.1.0（WB_SPEC_212 第 3/4 节）：
+/// - 删掉「智能助手设置」入口（AI 全部收进开发者选项，普通用户看不到 AI 字样）；
+/// - 新增「菜单管理」入口（进菜单管理子页）；
+/// - 新增「更多工具」分组：全量平铺可自定义的六个菜单项，右侧灰字标注
+///   菜单显隐状态（与菜单配置实时一致），是菜单全关时的兜底入口；
+/// - 解锁开发者选项后，在页面底部（桌面小组件之后）出现「开发者选项」入口。
+class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 菜单配置驱动「更多工具」分组右侧的显隐标注（实时一致，无需重启）
+    final menuConfig =
+        ref.watch(menuConfigProvider).value ?? MenuConfig.defaults();
+    // 解锁后才显示开发者选项入口；解锁前设置页不得出现任何 AI 字样与入口
+    final devUnlocked = ref.watch(developerOptionsProvider).value ?? false;
+
     return Scaffold(
       appBar: AppBar(title: const Text('设置'), centerTitle: true),
       body: ListView(
@@ -63,14 +67,26 @@ class SettingsPage extends StatelessWidget {
             route: '/course-tools',
           ),
           const SizedBox(height: AppSpacing.group),
-          // 2.0.8（WB_SPEC_209 第 3 节）：删掉「和智能助手聊聊」入口（聊天从底部栏进），
-          // 智能助手设置入口保留，顺序/副标题/跳转不变；组内只剩一行，分隔线随行数消失
+          // 2.1.0（WB_SPEC_212 第 4 节）：新增菜单管理入口
           const _EntryTile(
-            icon: Icons.settings_outlined,
-            title: '智能助手设置',
-            subtitle: '接口地址、模型名、API Key、测试对话与 AI 桥',
-            route: '/ai-settings',
+            icon: Icons.tune_outlined,
+            title: '菜单管理',
+            subtitle: '右上角菜单里显示哪些功能、按什么顺序排',
+            route: '/menu-manage',
           ),
+          const SizedBox(height: AppSpacing.group),
+          // 2.1.0（WB_SPEC_212 第 4 节）：「更多工具」兜底分组——菜单里关掉的
+          // 功能在设置页依然找得到；与「课表工具」「学期与数据」部分重复是故意的。
+          const _GroupHeader('更多工具'),
+          ..._divideRows([
+            for (final spec in kCustomMenuItems)
+              _ToolTile(
+                icon: spec.icon,
+                title: spec.title,
+                route: spec.route,
+                visible: menuConfig.byId(spec.id).visible,
+              ),
+          ]),
           const SizedBox(height: AppSpacing.group),
           const _EntryTile(
             icon: Icons.folder_outlined,
@@ -99,6 +115,17 @@ class SettingsPage extends StatelessWidget {
             subtitle: '今日课程小组件的添加说明',
             route: '/settings-widget',
           ),
+          // 2.1.0（WB_SPEC_212 第 3 节）：开发者选项入口，只在解锁后出现，
+          // 固定在设置页底部（桌面小组件入口之后）；解锁前不渲染任何 AI 相关入口
+          if (devUnlocked) ...[
+            const SizedBox(height: AppSpacing.group),
+            const _EntryTile(
+              icon: Icons.build_outlined,
+              title: '开发者选项',
+              subtitle: '智能助手聊天、智能助手设置、智能助手历史',
+              route: '/developer-options',
+            ),
+          ],
         ],
       ),
     );
@@ -127,6 +154,74 @@ class _EntryTile extends StatelessWidget {
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
       subtitle: Text(subtitle),
       trailing: const Icon(Icons.chevron_right),
+      onTap: () => Navigator.pushNamed(context, route),
+    );
+  }
+}
+
+/// 「更多工具」分组的小标题（2.1.0 新增）。
+///
+/// 与 settings_sections.dart 的节标题同款（13 号、semibold、正文主色），
+/// 只做层级、不放大；组名与组内行名不重复，故保留标题不违反 2.0.6 去重原则。
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader(this.title);
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
+      ),
+    );
+  }
+}
+
+/// 把同一组内连续行用 1px 分隔线隔开（与 settings_sections 的 Taste 口径一致）。
+List<Widget> _divideRows(List<Widget> rows) {
+  return [
+    for (var i = 0; i < rows.length; i++) ...[
+      if (i > 0) const Divider(height: 1, thickness: 1),
+      rows[i],
+    ],
+  ];
+}
+
+/// 「更多工具」分组里的一行：图标 + 名称 + 右侧灰字菜单显隐标注。
+///
+/// 点开直接进对应功能页；**不在本行放开关**（开关只在菜单管理页），
+/// 点开某功能也不改动其菜单显隐。
+class _ToolTile extends StatelessWidget {
+  const _ToolTile({
+    required this.icon,
+    required this.title,
+    required this.route,
+    required this.visible,
+  });
+
+  final IconData icon;
+  final String title;
+  final String route;
+  final bool visible;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+      // 灰色小字标注菜单显隐状态（与菜单配置实时一致）
+      trailing: Text(
+        visible ? '已在菜单显示' : '已在菜单隐藏',
+        style: TextStyle(fontSize: 12, color: scheme.outline),
+      ),
       onTap: () => Navigator.pushNamed(context, route),
     );
   }

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../database/dao.dart';
 import '../models/course.dart';
 import '../models/course_override.dart';
+import '../models/menu_config.dart';
 import '../models/note.dart';
 import '../models/semester.dart';
 import '../models/time_slot.dart';
@@ -764,3 +765,121 @@ final uiSettingsProvider =
 final onboardingDoneProvider = FutureProvider<bool>((ref) async {
   return await Dao.instance.getSetting('onboarding_done') == '1';
 });
+
+/// 开发者选项解锁状态（WB_SPEC_212 第 3 节）：关于页版本行连点 5 次解锁，
+/// 持久化到 app_settings 的 `developer_options_unlocked` 键（"1"/"0"，默认关）。
+///
+/// 重装 / 清数据后键随之消失，自动回到未解锁——符合预期，不做云端同步。
+class DeveloperOptionsNotifier extends AsyncNotifier<bool> {
+  @override
+  Future<bool> build() async {
+    // 读库异常（如表损坏）兜底未解锁，不让它拖垮设置页
+    try {
+      return await Dao.instance.getSettingBool('developer_options_unlocked', false);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 解锁开发者选项（关于页连点 5 次后调用）：先落库再更新内存 state。
+  ///
+  /// 返回写库是否成功：失败时不更新状态、不谎报成功，调用方据此决定提示
+  /// （2.1.0 返修：此前返回 void，调用方未 await 就弹成功，写库失败也报成功）。
+  Future<bool> unlock() async {
+    try {
+      await Dao.instance.setSetting('developer_options_unlocked', '1');
+    } catch (_) {
+      return false;
+    }
+    state = const AsyncData(true);
+    return true;
+  }
+}
+
+final developerOptionsProvider =
+    AsyncNotifierProvider<DeveloperOptionsNotifier, bool>(
+      DeveloperOptionsNotifier.new,
+    );
+
+/// 主页「更多」菜单配置（WB_SPEC_212 第 4 节）：六个功能项的显隐 + 顺序，
+/// 持久化到 app_settings 的 `home_menu_config` 键（JSON 数组，见 MenuConfig）。
+///
+/// 「设置」不在配置里：固定显示、不可关闭、不可排序移出（兜底入口）。
+class MenuConfigNotifier extends AsyncNotifier<MenuConfig> {
+  @override
+  Future<MenuConfig> build() async {
+    try {
+      return MenuConfig.fromEncoded(
+        await Dao.instance.getSetting('home_menu_config'),
+      );
+    } catch (_) {
+      return MenuConfig.defaults();
+    }
+  }
+
+  /// 写操作串行队列（2.1.0 返修）：快速连续开关/拖拽/恢复默认时，
+  /// 后一次写必须读到前一次写完的状态，否则后写会覆盖先写导致配置丢失。
+  ///
+  /// 队列实现刻意让空闲时的第一次写立即启动（与改动前的时序一致，
+  /// 不多一个 microtask  hop，避免 UI 回调 fire-and-forget 后单次 pump
+  /// 看不到更新）；忙碌时后来者排队，绝不并发写。
+  final List<Future<void> Function()> _pendingWrites = [];
+  bool _writing = false;
+
+  Future<void> _pumpWrites() {
+    if (_writing || _pendingWrites.isEmpty) return Future.value();
+    _writing = true;
+    final job = _pendingWrites.removeAt(0);
+    return job().whenComplete(() {
+      _writing = false;
+      _pumpWrites();
+    });
+  }
+
+  /// 在队列里跑一次「读当前配置 → 算出下一配置 → 落库 → 更新 state」。
+  ///
+  /// 当前配置优先取已加载的 state；加载未完成时先等 build 的 Future
+  /// 读出已存配置，绝不拿默认值覆盖已存配置（2.1.0 返修 P1）。
+  Future<void> _runLocked(
+    MenuConfig Function(MenuConfig current) compute,
+  ) {
+    final completer = Completer<void>();
+    _pendingWrites.add(() async {
+      try {
+        MenuConfig current;
+        if (state is AsyncData<MenuConfig>) {
+          current = state.value!;
+        } else {
+          try {
+            current = await future;
+          } catch (_) {
+            current = MenuConfig.defaults();
+          }
+        }
+        final next = compute(current);
+        await Dao.instance.setSetting('home_menu_config', next.encode());
+        state = AsyncData(next);
+        completer.complete();
+      } catch (e, s) {
+        completer.completeError(e, s);
+      }
+    });
+    unawaited(_pumpWrites());
+    return completer.future;
+  }
+
+  /// 切换某项显隐（只改这一项，不影响其余项的顺序/显隐）。
+  Future<void> setVisible(String id, bool visible) =>
+      _runLocked((cur) => cur.copyWithVisible(id, visible));
+
+  /// 按 ReorderableListView 的 (oldIndex, newIndex) 语义重排并持久化。
+  Future<void> reorder(int oldIndex, int newIndex) =>
+      _runLocked((cur) => cur.reorder(oldIndex, newIndex));
+
+  /// 恢复默认：六项全显示、顺序回到第 4 节定版顺序。
+  Future<void> reset() => _runLocked((_) => MenuConfig.defaults());
+}
+
+final menuConfigProvider = AsyncNotifierProvider<MenuConfigNotifier, MenuConfig>(
+  MenuConfigNotifier.new,
+);

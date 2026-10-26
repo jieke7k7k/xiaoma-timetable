@@ -16,6 +16,7 @@ import 'pages/changelog_page.dart';
 import 'pages/course_edit_page.dart';
 import 'pages/course_tools_page.dart';
 import 'pages/data_manage_page.dart';
+import 'pages/developer_options_page.dart';
 import 'pages/course_override_page.dart';
 import 'pages/course_search_page.dart';
 import 'pages/exam_countdown_page.dart';
@@ -26,12 +27,14 @@ import 'pages/onboarding_page.dart';
 import 'pages/permission_page.dart';
 import 'pages/share_image_page.dart';
 import 'pages/import_page.dart';
+import 'pages/menu_manage_page.dart';
 import 'pages/semester_manage_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/settings_sections.dart';
 import 'pages/time_settings_page.dart';
 import 'pages/week_view_page.dart';
 import 'providers/providers.dart';
+import 'widgets/ai_route_guard.dart';
 import 'widgets/permission_guide.dart';
 
 import 'package:quick_actions/quick_actions.dart';
@@ -43,7 +46,7 @@ import 'services/notification_service.dart';
 import 'services/ongoing_notice_service.dart';
 import 'services/widget_service.dart';
 import 'ui/app_styles.dart';
-import 'ui/grid_metrics.dart';
+import 'ui/page_transitions.dart';
 
 /// 全局异常日志的持久化键（app_settings 表）。
 /// 只保留最近一条，值为「时间 + 摘要」，供用户反馈/自查时查看。
@@ -220,6 +223,14 @@ class SimpleTimetableApp extends ConsumerWidget {
             statusBarBrightness: Brightness.light,
           ),
         ),
+        // 2.1.0（WB_SPEC_212 第 5 节）：全 App 统一标准右滑转场（时长 300ms、
+        // 曲线 fastOutSlowIn、不做预测性返回；系统移除动画时归零，见 AppSlidePageTransitionsBuilder）
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: AppSlidePageTransitionsBuilder(android: true),
+            TargetPlatform.iOS: AppSlidePageTransitionsBuilder(android: false),
+          },
+        ),
         cardTheme: const CardThemeData(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(AppRadii.card)),
@@ -245,6 +256,13 @@ class SimpleTimetableApp extends ConsumerWidget {
             statusBarIconBrightness: Brightness.light,
             statusBarBrightness: Brightness.dark,
           ),
+        ),
+        // 2.1.0（WB_SPEC_212 第 5 节）：深色与浅色同款右滑转场，全 App 统一
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: AppSlidePageTransitionsBuilder(android: true),
+            TargetPlatform.iOS: AppSlidePageTransitionsBuilder(android: false),
+          },
         ),
         cardTheme: const CardThemeData(
           shape: RoundedRectangleBorder(
@@ -296,11 +314,15 @@ class SimpleTimetableApp extends ConsumerWidget {
         // 备注（v3：按日期分组的备忘，同步到常驻通知与桌面小部件）
         '/notes': (context) => const NotesPage(),
         // 内置 AI 助手（2.0.0）：底栏左键是同一个页面，这里给设置页直达用
-        '/ai-chat': (context) => const AiChatPage(),
+        // 2.1.0 返修：AI 路由加守卫，未解锁直达时不放行（见 AiRouteGuard）
+        '/ai-chat': (context) =>
+            const AiRouteGuard(child: AiChatPage()),
         // AI 助手设置（接口地址 / 模型 / Key）
-        '/ai-settings': (context) => const AiSettingsPage(),
+        '/ai-settings': (context) =>
+            const AiRouteGuard(child: AiSettingsPage()),
         // 智能助手历史记录 / 操作记录（2.0.5：对话续聊与撤回入口）
-        '/ai-history': (context) => const AiHistoryPage(),
+        '/ai-history': (context) =>
+            const AiRouteGuard(child: AiHistoryPage()),
         // 课表工具（2.0.2：课程搜索 / 空闲时段 / 考试倒计时 / 导出课表图片 / 日期备注）
         '/course-tools': (context) => const CourseToolsPage(),
         // 权限（通知 / 精确闹钟 / 电池优化，首次启动会引导一次）
@@ -308,7 +330,8 @@ class SimpleTimetableApp extends ConsumerWidget {
         // 数据管理页（1.2.4：占用/备份快捷入口/恢复出厂）
         '/data-manage': (context) => const DataManagePage(),
         // AI 桥（1.3.6：把 GitHub 私有仓当命令信箱；2.0.2 起入口在智能助手设置页）
-        '/bridge': (context) => const BridgePage(),
+        // 2.1.0 返修：与其它 AI 路由同款守卫，直达亦不放行
+        '/bridge': (context) => const AiRouteGuard(child: BridgePage()),
         // 设置分类子页（2.0.5：设置首页 QQ 式分级，见 settings_sections.dart）
         '/settings-semester': (context) => const SemesterSettingsPage(),
         '/settings-appearance': (context) => const AppearanceSettingsPage(),
@@ -316,6 +339,14 @@ class SimpleTimetableApp extends ConsumerWidget {
         '/settings-data': (context) => const DataSettingsPage(),
         '/settings-permissions': (context) => const PermissionsSettingsPage(),
         '/settings-widget': (context) => const WidgetSettingsPage(),
+        // 设置主页（2.1.0 WB_SPEC_212 第 2 节）：原底栏右键改由右上角「更多」菜单进入
+        '/settings': (context) => const SettingsPage(),
+        // 开发者选项（2.1.0 WB_SPEC_212 第 3 节）：AI 功能全部收进这里，解锁后可见
+        // 2.1.0 返修：入口本身也加守卫，未解锁直达时不放行
+        '/developer-options': (context) =>
+            const AiRouteGuard(child: DeveloperOptionsPage()),
+        // 菜单管理（2.1.0 WB_SPEC_212 第 4 节）：右上角菜单显隐 + 排序
+        '/menu-manage': (context) => const MenuManagePage(),
       },
     );
   }
@@ -346,18 +377,15 @@ class _RootGate extends ConsumerWidget {
   }
 }
 
-/// 主框架：底栏三键「智能助手 / 主页 / 设置」（2.0.0 改版，2.0.1 AI 改名智能助手）
+/// 主框架（2.1.0 WB_SPEC_212 第 1 节：去底栏，主页变单页）
 ///
-/// IndexedStack 常驻三个页：AI 聊天、课表主页、设置；默认停在**主页**。
-/// 原来的「新建」页签不再占底栏，改成主页右上角的「+」按钮（见 WeekViewPage），
-/// 弹出的仍是原来那套「手动新建 / 导入课表」选择框。
+/// 2.0.0 起这里是底栏三键「智能助手 / 主页 / 设置」+ IndexedStack 三页签；
+/// 2.1.0 起删掉底栏与三页签结构，根页面只剩周课表主页 WeekViewPage。AI 功能
+/// 收进开发者选项（设置页解锁后可见），设置入口移到主页右上角「更多」菜单。
 ///
-/// 底栏是自绘的 [_HomeBottomBar]（不用 NavigationBar）：NavigationDestination
-/// 长按会浮出 label 气泡（用户发过截图），自绘按钮天然没有这个行为，也不包
-/// Tooltip。2.0.2 起三键等大平铺，中间不再是凸起大圆钮（见 [_HomeBottomBar]）。
-///
-/// 1.3.6 起是 [ConsumerStatefulWidget]：AI 桥的静默同步可能产生数据变更，
-/// 改完要失效 coursesProvider/notesProvider 并联动三个服务，这些都得有 ref。
+/// 保留 [ConsumerStatefulWidget]：AI 桥的静默同步可能产生数据变更，改完要失效
+/// coursesProvider/notesProvider 并联动三个服务，这些都得有 ref；启动联动
+/// （提醒重排 / 常驻通知 / 小组件 / 快捷入口 / 自动备份）也仍挂在这里。
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
@@ -366,9 +394,6 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 class _HomeShellState extends ConsumerState<HomeShell> {
-  /// 当前常驻页：0 = 智能助手，1 = 主页，2 = 设置
-  int _index = 1;
-
   @override
   void initState() {
     super.initState();
@@ -468,141 +493,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     ]);
   }
 
-  static const _pages = [AiChatPage(), WeekViewPage(), SettingsPage()];
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(index: _index, children: _pages),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: _HomeBottomBar(
-          index: _index,
-          onChanged: (i) => setState(() => _index = i),
-        ),
-      ),
-    );
-  }
-}
-
-/// 底栏：左「智能助手」、中「主页」、右「设置」，三键等大平铺
-///
-/// **刻意不用 NavigationBar**：NavigationDestination 长按会浮出 label 气泡
-/// （用户明确要求不要），自绘按钮天然没有这个行为，也不包 Tooltip。
-/// 2.0.2（WB-202 第 1 项）：中间按钮取消凸起圆形样式，与左右两键完全一致——
-/// 同图标大小、同文字、同高度，三键等大；选中态沿用主题色 + 加粗即可辨。
-/// 2.0.9（WB_SPEC_210 第 1 节）：图标 26 → 22、文字 11 → 10，随底栏一起压矮。
-class _HomeBottomBar extends StatelessWidget {
-  const _HomeBottomBar({required this.index, required this.onChanged});
-
-  final int index;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return SizedBox(
-      height: kBottomBarHeight,
-      child: Container(
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerHigh,
-          border: Border(
-            top: BorderSide(
-              color: scheme.outlineVariant.withValues(alpha: 0.4),
-            ),
-          ),
-        ),
-        // 三键等大：各占三分之一宽，图标/文字/高度完全一致
-        child: Row(
-          children: [
-            Expanded(
-              child: _SideButton(
-                // 2.0.5：智能助手 Tab 换成像素小马图标（选中玫红 / 未选灰两版 PNG）
-                iconBuilder: (color) => Image.asset(
-                  index == 0
-                      ? 'assets/icons/xiaoma_assistant_selected.png'
-                      : 'assets/icons/xiaoma_assistant_unselected.png',
-                  width: 22,
-                  height: 22,
-                ),
-                label: '智能助手',
-                selected: index == 0,
-                onTap: () => onChanged(0),
-              ),
-            ),
-            Expanded(
-              child: _SideButton(
-                iconBuilder: (color) => Icon(
-                  index == 1
-                      ? Icons.calendar_view_week
-                      : Icons.calendar_view_week_outlined,
-                  size: 22,
-                  color: color,
-                ),
-                label: '主页',
-                selected: index == 1,
-                onTap: () => onChanged(1),
-              ),
-            ),
-            Expanded(
-              child: _SideButton(
-                iconBuilder: (color) => Icon(
-                  index == 2 ? Icons.settings : Icons.settings_outlined,
-                  size: 22,
-                  color: color,
-                ),
-                label: '设置',
-                selected: index == 2,
-                onTap: () => onChanged(2),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 底栏三个按钮共用（2.0.2 起中间「主页」也是这一样式）：图标 + 常显小字
-///
-/// 图标由 [iconBuilder] 按选中态配色生成（主页/设置用 Icon，智能助手用像素小马
-/// PNG，2.0.5），颜色与文字标签同步。
-class _SideButton extends StatelessWidget {
-  const _SideButton({
-    required this.iconBuilder,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  /// 根据当前选中态颜色生成图标 Widget（尺寸约 22dp）
-  final Widget Function(Color color) iconBuilder;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = selected ? scheme.primary : scheme.onSurfaceVariant;
-    return InkWell(
-      onTap: onTap,
-      // 不包 Tooltip：长按不许弹名称气泡（用户明确要求）
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(width: 22, height: 22, child: iconBuilder(color)),
-          const SizedBox(height: 1),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              color: color,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-            ),
-          ),
-        ],
-      ),
-    );
+    // 2.1.0：根页面只剩周课表主页，不再有 IndexedStack 三页签与底栏。
+    // WeekViewPage 自带 Scaffold（顶栏/网格），这里无需再套一层 Scaffold。
+    return const WeekViewPage();
   }
 }

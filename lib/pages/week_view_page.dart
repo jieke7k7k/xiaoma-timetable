@@ -8,6 +8,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../models/course.dart';
 import '../models/course_override.dart';
+import '../models/menu_config.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../services/channel_service.dart';
@@ -381,6 +382,11 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
     final displayWeek = ref.watch(displayWeekProvider);
     final todayWeek = ref.watch(todayWeekProvider);
     final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
+    // 2.1.0（WB_SPEC_212 第 2/4 节）：右上角「更多」菜单由配置驱动，
+    // 设置页改完返回主页立即按新配置重建，无需重启 App
+    final menuConfig =
+        ref.watch(menuConfigProvider).value ?? MenuConfig.defaults();
+    final menuItems = visibleMenuItems(menuConfig);
     // WB-202 第 3 项补充：学期就绪后才创建 PageController，初始页即当前显示周
     // （标题与网格首帧一致，不再出现「标题第 6 周、网格第 1 周」）。
     // 创建后本页生命周期内只此一个实例；dispose 里统一回收。
@@ -538,63 +544,36 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
             icon: const Icon(Icons.add_outlined),
             onPressed: _showCreateSheet,
           ),
-          // 「更多」菜单（1.2.0）：顶栏只留铅笔（状态按钮）在外，
-          // 其余入口收进菜单——学期管理首次上主页，另含搜索/空闲/导出图等
-          PopupMenuButton<String>(
-            tooltip: '更多',
-            icon: const Icon(Icons.more_vert),
-            onSelected: (route) => Navigator.pushNamed(context, route),
-            itemBuilder: (ctx) => const [
-              PopupMenuItem(
-                value: '/course-search',
-                child: ListTile(
-                  leading: Icon(Icons.search),
-                  title: Text('课程搜索'),
-                  contentPadding: EdgeInsets.zero,
-                ),
+          // 「更多」菜单（2.1.0 WB_SPEC_212 第 2/4 节）：按菜单配置动态生成，
+          // 可见项在前、固定「设置」殿后。六项全关时右上角直接显示齿轮进设置，
+          // 不弹空菜单——任何情况下都保留进设置的兜底入口（不许出现无设置死局）
+          if (menuItems.length <= 1)
+            IconButton(
+              tooltip: '设置',
+              icon: const Icon(Icons.settings),
+              onPressed: () => Navigator.pushNamed(context, '/settings'),
+            )
+          else
+            PopupMenuButton<String>(
+              tooltip: '更多',
+              icon: const Icon(Icons.more_vert),
+              // 2.1.0 返修：菜单弹出动画显式卡在 150–200ms（取 180ms），即点即出
+              popUpAnimationStyle: const AnimationStyle(
+                duration: Duration(milliseconds: 180),
               ),
-              PopupMenuItem(
-                value: '/free-time',
-                child: ListTile(
-                  leading: Icon(Icons.free_breakfast_outlined),
-                  title: Text('空闲时段'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              PopupMenuItem(
-                value: '/share-image',
-                child: ListTile(
-                  leading: Icon(Icons.image_outlined),
-                  title: Text('导出课表图片'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              PopupMenuItem(
-                value: '/semester-manage',
-                child: ListTile(
-                  leading: Icon(Icons.school_outlined),
-                  title: Text('学期管理'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              PopupMenuItem(
-                value: '/exam-countdown',
-                child: ListTile(
-                  leading: Icon(Icons.event_note_outlined),
-                  title: Text('考试倒计时'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              PopupMenuItem(
-                value: '/import',
-                child: ListTile(
-                  leading: Icon(Icons.upload_file_outlined),
-                  title: Text('导入课表'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            ],
-          ),
+              onSelected: (route) => Navigator.pushNamed(context, route),
+              itemBuilder: (ctx) => [
+                for (final item in menuItems)
+                  PopupMenuItem(
+                    value: item.route,
+                    child: ListTile(
+                      leading: Icon(item.icon),
+                      title: Text(item.title),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+              ],
+            ),
           const SizedBox(width: 4),
         ],
       ),

@@ -15,10 +15,9 @@ const double kGridHeaderHeight = 46;
 /// 主页、预览、导出图共用，保证高度守恒计算一致
 const double kBandHeight = 24;
 
-/// 主页底栏高度（px）：与 main.dart 的 `_HomeBottomBar` SizedBox 同高。
-/// 2.0.2（WB-202 第 1 项）起课表网格不再按它留底部内边距——底栏三键改等大
-/// 平铺后没有凸起按钮，课表区直接贴合底栏；本常量仅用于底栏自身高度。
-/// 2.0.9（WB_SPEC_210 第 1 节）72 → 56：底栏压矮，省出的高度还给中间课表。
+/// 主页底栏高度（px）：2.1.0（WB_SPEC_212）起底栏整体删除，此常量不再参与布局
+/// （课表网格自 2.0.2 起本就不按它留底部内边距）。保留仅为历史记录与测试断言
+/// （test/grid_metrics_test.dart 断言其值 == 56），后续清理时可随注释一并删除。
 const double kBottomBarHeight = 56;
 
 /// 一条分隔带：[after] 第几节之后、[label] 名称（午休/晚间）、

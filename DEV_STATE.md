@@ -1,8 +1,55 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-10-25（2.0.9+24：WB_SPEC_210 上下栏紧凑 + 网格线跳过休息带）
+> 更新时间：2026-10-26（2.1.0+25：WB_SPEC_212 去底栏 + AI 藏进开发者选项 + 右上角菜单自定义）
 
 ## 做到哪了
+
+## 2026-10-26（2.1.0+25：WB_SPEC_212 去底栏 + AI 藏进开发者选项 + 右上角菜单自定义，待真机目视确认）
+
+规格见仓库根 `WB_SPEC_212.md`（三件：去底栏主页变单页 / AI 全藏进开发者选项、连点五次解锁 / 右上角菜单自定义显隐+排序）。沿用 Riverpod 手写 Notifier / 中文文案注释；未改主题色、未改网格行高/节次高度/带子高度（kBandHeight 24 不动）。
+
+### 第 1 节 去底栏，主页变单页
+
+- `lib/main.dart`：删除 `_HomeBottomBar` / `_SideButton` 两个类与 `HomeShell` 的 `_index`、`_pages`、`bottomNavigationBar`、`IndexedStack`；`_HomeShellState.build` 直接返回 `WeekViewPage()`（WeekViewPage 自带 Scaffold）。启动联动（提醒重排 / 常驻通知 / 小组件 / 快捷入口 / 自动备份 / AI 桥静默同步）与权限引导原样保留。
+- `lib/ui/grid_metrics.dart`：`kBottomBarHeight` 常量**保留不动**（仅注释指向已失效，后续如清理可删）；课表网格本就没按它留内边距（2.0.2 起），去底栏后网格自然撑满，纵向多出 56px，未改行高/节次高度/带子高度。
+- 顶栏（toolbarHeight 48 / 状态栏透明贴顶）沿用 2.0.9，未改；桌面小部件与长按快捷入口（新建/导入）走 HomeShell 启动联动与 QuickActions，未动。
+
+### 第 2 节 设置收进右上角三个点，齿轮常驻
+
+- `lib/main.dart`：注册路由 `/settings`（原 SettingsPage 底栏右键没有路由，这里补上，SettingsPage 本身零改动）。
+- `lib/pages/week_view_page.dart`：右上角「更多」菜单由 `visibleMenuItems(menuConfig)` 动态生成，末尾恒追加固定「设置」（齿轮图标）；六项全关时右上角直接渲染齿轮 `IconButton` 直接进设置、不弹空菜单（不许出现无设置死局）。
+
+### 第 3 节 AI 全藏进开发者选项，连点五次解锁
+
+- `lib/pages/settings_page.dart`：删除「智能助手设置」入口（解锁前设置页无任何 AI 字样与入口）。
+- `lib/pages/developer_options_page.dart`（新建，路由 `/developer-options`）：仅含智能助手聊天 `/ai-chat`、智能助手设置 `/ai-settings`、智能助手历史 `/ai-history` 三项，跳转与原页面行为不变。
+- `lib/pages/about_page.dart`：版本行包 `GestureDetector`，连点 5 次（2 秒窗口）解锁；未解锁前误触一次不解锁/不弹窗/不提示，界面不写「连点五次」文案。
+- `lib/utils/tap_unlock.dart`（新建）：纯 Dart 的 `TapUnlockCounter`（5 次 / 2 秒窗口，时间由调用方传入，可单测）。
+- `lib/providers/providers.dart`：`DeveloperOptionsNotifier` + `developerOptionsProvider`（app_settings 键 `developer_options_unlocked`，默认关；重装/清数据后自然回未解锁，不做云端同步）。
+- 解锁后设置页底部（桌面小组件入口之后）出现「开发者选项」入口行。
+
+### 第 4 节 右上角菜单自定义：显隐 + 排序，设置页兜底
+
+- `lib/models/menu_config.dart`（新建）：`MenuItemSpec` + `kCustomMenuItems`（六个可自定义项，顺序即第 4 节定版/现状）、`kSettingsMenuItem`（固定设置）、`MenuItemConfig`、`MenuConfig`（默认全显；encode/fromEncoded JSON 兜底；copyWithVisible / reorder 纯函数）、`visibleMenuItems`（可见项 + 恒设置殿后）。
+- `lib/providers/providers.dart`：`MenuConfigNotifier` + `menuConfigProvider`（app_settings 键 `home_menu_config` 存 JSON 数组；setVisible / reorder / reset）。
+- `lib/pages/menu_manage_page.dart`（新建，路由 `/menu-manage`）：`ReorderableListView` 每行 = 左拖拽手柄 + 中图标/名称 + 右显隐开关；底部「恢复默认」。
+- `lib/pages/settings_page.dart`：新增「菜单管理」入口；新增「更多工具」分组（全量平铺六项，右侧灰字「已在菜单显示/隐藏」，点开直接进对应页，不放开关）；主页菜单即时刷新（`menuConfigProvider` 状态流转，无需重启）。
+
+### 测试
+
+- `test/menu_config_test.dart`（新增）：默认全显且顺序一致、显隐切换、reorder 纯函数、fromEncoded 兜底、visibleMenuItems 恒含设置。
+- `test/developer_options_test.dart`（新增）：TapUnlockCounter 纯函数（5 次窗口内解锁 / 超窗不解锁 / 不足 5 次不解锁）、DeveloperOptionsNotifier 持久化、SettingsPage 未解锁无开发者选项/解锁后有。
+- `test/menu_manage_page_test.dart`（新增）：菜单管理页渲染六行 + 恢复默认存在、开关切换更新状态、拖拽排序后顺序持久化。
+- `test/settings_page_test.dart`（改）：9 入口 → 删除智能助手设置、新增菜单管理/更多工具/开发者选项（未解锁时无）断言；SettingsPage 改 ConsumerWidget 后包 ProviderScope + FFI 内存库。
+- `test/home_shell_test.dart`（新增）：去底栏后主页不再渲染底栏的等价断言（无 IndexedStack、渲染 WeekViewPage、无 bottomNavigationBar/NavigationBar）。
+
+### 未覆盖处（真机复测项，交付前须真机目视确认）
+
+- 去底栏后网格底部是否多出一截空白或被遮挡（autoFit 一屏时更明显）；
+- 菜单自定义改完回主页是否即时生效；
+- 连点解锁是否误触（单次点击不弹窗不提示）；
+- 只剩设置时右上角齿轮是否直接进设置；
+- 动效在低端机上是否掉帧（用户实测为准）。
 
 ## 2026-10-25（2.0.9+24：WB_SPEC_210 上下栏紧凑 + 网格线跳过休息带，已本地验过）
 

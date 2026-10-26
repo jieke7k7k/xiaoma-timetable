@@ -2,6 +2,29 @@
 
 > 每完成一个阶段更新本文件，防止上下文丢失。
 
+## 2.1.0 变更（2026-10-26，WB_SPEC_212：去底栏 + AI 藏进开发者选项 + 右上角菜单自定义）
+
+| 文件 | 改动 |
+|---|---|
+| `lib/main.dart` | **删除 `_HomeBottomBar` / `_SideButton` 与 IndexedStack 三页签结构**；`HomeShell` 保留启动联动（提醒/常驻通知/小组件/快捷入口/自动备份/AI 桥静默同步）与权限引导，`build` 直接返回 `WeekViewPage()`；注册 `/settings`、`/developer-options`、`/menu-manage` 三条路由 |
+| `lib/models/menu_config.dart`（新建） | `MenuItemSpec` + `kCustomMenuItems`（六项可自定义，顺序即定版）/ `kSettingsMenuItem`（固定设置）/ `MenuItemConfig` / `MenuConfig`（默认全显、JSON 编解码兜底、`reorder` 纯函数）/ `visibleMenuItems`（可见项 + 恒设置殿后） |
+| `lib/pages/week_view_page.dart` | 右上角「更多」菜单改由 `menuConfigProvider` 动态生成，末尾恒追加固定「设置」；六项全关时右上角直接渲染齿轮进设置（不弹空菜单） |
+| `lib/pages/settings_page.dart` | 删「智能助手设置」入口；新增「菜单管理」入口与「更多工具」兜底分组（六项平铺 + 灰字显隐标注）；解锁后在底部显示「开发者选项」入口；改 `ConsumerWidget` |
+| `lib/pages/developer_options_page.dart`（新建） | 路由 `/developer-options`，仅含智能助手聊天/设置/历史三个入口 |
+| `lib/pages/menu_manage_page.dart`（新建） | 路由 `/menu-manage`，`ReorderableListView` 拖拽排序 + 显隐开关 + 恢复默认 |
+| `lib/pages/about_page.dart` | 版本行连点 5 次（2 秒窗口）解锁开发者选项 |
+| `lib/utils/tap_unlock.dart`（新建） | `TapUnlockCounter` 纯 Dart 连点计数器（时间由调用方传入，可单测） |
+| `lib/providers/providers.dart` | 新增 `developerOptionsProvider`（`developer_options_unlocked`）、`menuConfigProvider`（`home_menu_config` JSON） |
+| `pubspec.yaml` | 版本 2.1.0+25 |
+| 测试 | 新增 `menu_config_test.dart`、`developer_options_test.dart`、`menu_manage_page_test.dart`、`home_shell_test.dart`；改 `settings_page_test.dart` |
+
+### 关键设计决策
+
+- **底栏结构已废**：不再有 `IndexedStack` 三页签与 `_HomeBottomBar`；根页面只剩 `WeekViewPage`。`kBottomBarHeight` 常量保留（仅历史注释，网格本就没按它留内边距），网格自然撑满、纵向多出 56px，行高/节次高度/带子高度（kBandHeight 24）一律不动。
+- **设置入口兜底**：`visibleMenuItems` 恒在末尾追加「设置」，且六项全关时主页右上角直接显示齿轮直进设置——从纯函数到 UI 双层保证「任何情况下都能进设置」，不采用「全关就藏三个点」。
+- **AI 全藏、解锁不显式提示**：设置首页删除 AI 入口；解锁计数只进内存、未达阈值无任何可见反馈，界面不写「连点五次」文案；解锁状态走 `app_settings`（重装/清数据自然回未解锁）。
+- **菜单配置走现有 app_settings**：JSON 数组存 `home_menu_config`，编码/解码都在 `MenuConfig` 里兜底（缺项补齐、损坏回默认）；主页与设置页共用 `menuConfigProvider`，改完返回主页即时刷新、无需重启。
+
 ## 2.0.9 变更（2026-10-25，WB_SPEC_210：上下栏紧凑 + 网格线跳过休息带）
 
 | 文件 | 改动 |
@@ -189,7 +212,7 @@
 - **time_slots**：`section` PK(1~12)、`startTime`、`endTime`（首启内置 12 节默认时间）
 - **courses**：`id` PK、`semesterId` FK、`name`、`teacher?`、`classroom?`、`colorValue`(ARGB int)、`dayOfWeek`(1~7)、`startSection`、`endSection`、`weeksJson`(周次数组 JSON)、`weekType`(0全部/1单/2双)、`note?`、`examDate?`(毫秒时间戳，阶段五预留)；索引 `idx_courses_semester(semesterId, dayOfWeek)`
 - **course_overrides**（阶段五预留）：`id` PK、`courseId` FK、`originalWeek`、`targetWeek`(-1=停课标记 `CourseOverride.cancelFlag`)、`targetDayOfWeek?`、`targetStartSection?`、`targetEndSection?`、`targetClassroom?`
-- **app_settings**（v2 新增，阶段四提醒设置持久化）：`key` PK、`value`；当前键 `reminder_enabled`("1"/"0")、`reminder_advance_minutes`("15")、`ongoing_enabled`("1"/"0")、`theme_mode`("system"/"light"/"dark"，阶段五)、`lunch_after_section`("5")、`dinner_after_section`("9")（阶段六·作息三段化）、`last_error_log`（1.3.1 全局异常日志，只留最近一条「时间 + 摘要」）。`_dbVersion=4`，`onUpgrade` 对 v1 库补建 app_settings、对 v1/v2 库补建 notes、对 v1~v3 库补建 chat_sessions 与 operation_log。1.3.6 新增 AI 桥五键：`bridge_owner` / `bridge_repo` / `bridge_token`（**只存本机，注意"备份到文件"会把它们带上，别外发备份**）/ `processed_command_ids`(JSON 数组，最多 200 条) / `bridge_pending`(JSON 数组，待确认队列) / `last_bridge_sync`（时间 + 摘要文案）。2.0.0 新增内置 AI 三键 `ai_base_url` / `ai_model` / `ai_api_key`（**同样只存本机、同样会被备份带走**）与首次权限引导标记 `permissions_asked_v1`（'1' = 已引导过）。
+- **app_settings**（v2 新增，阶段四提醒设置持久化）：`key` PK、`value`；当前键 `reminder_enabled`("1"/"0")、`reminder_advance_minutes`("15")、`ongoing_enabled`("1"/"0")、`theme_mode`("system"/"light"/"dark"，阶段五)、`lunch_after_section`("5")、`dinner_after_section`("9")（阶段六·作息三段化）、`last_error_log`（1.3.1 全局异常日志，只留最近一条「时间 + 摘要」）。`_dbVersion=4`，`onUpgrade` 对 v1 库补建 app_settings、对 v1/v2 库补建 notes、对 v1~v3 库补建 chat_sessions 与 operation_log。1.3.6 新增 AI 桥五键：`bridge_owner` / `bridge_repo` / `bridge_token`（**只存本机，注意"备份到文件"会把它们带上，别外发备份**）/ `processed_command_ids`(JSON 数组，最多 200 条) / `bridge_pending`(JSON 数组，待确认队列) / `last_bridge_sync`（时间 + 摘要文案）。2.0.0 新增内置 AI 三键 `ai_base_url` / `ai_model` / `ai_api_key`（**同样只存本机、同样会被备份带走**）与首次权限引导标记 `permissions_asked_v1`（'1' = 已引导过）。2.1.0 新增 `developer_options_unlocked`（"1"/"0"，开发者选项解锁，默认关）与 `home_menu_config`（JSON 数组，主页「更多」菜单六项的显隐 + 顺序）。
 - **notes**（v3 新增，AI 备注）：`id` PK、`date`(TEXT, yyyy-MM-dd)、`content`、`createdAt`(毫秒时间戳)；索引 `idx_notes_date(date)`。与学期/课程无外键，备注页维护，供常驻通知与桌面小部件按日取用；`onCreate`（新装）与 `onUpgrade(oldVersion<3)`（老用户无感升级）都会建这张表。
 - **chat_sessions**（v4 新增，智能助手对话历史）：`id` PK、`title`、`createdAt`(毫秒时间戳)、`updatedAt`(毫秒时间戳)、`messagesJson`(整段消息数组 JSON)。一段对话一行，消息整体存 messagesJson；历史记录页维护。
 - **operation_log**（v4 新增，AI / AI 桥操作撤回）：`id` PK、`createdAt`(毫秒时间戳)、`source`("ai"/"bridge")、`summary`、`snapshotJson`(执行前快照 JSON)、`undone`(0/1)。`onUpgrade(oldVersion<4)`（老用户无感升级）与 `onCreate`（新装）都会建这张表。
@@ -205,6 +228,8 @@
 - `reminderSettingsProvider` — `ReminderSettingsNotifier extends AsyncNotifier<ReminderSettings>`：上课提醒开关 + 提前分钟，读写 `app_settings` 表，改动即持久化并触发 `NotificationService.rescheduleAll()`（阶段四）
 - `segmentSettingsProvider` — `SegmentSettingsNotifier extends AsyncNotifier<SegmentSettings>`：作息三段化分段点（午休/晚餐在第几节课之后），读写 `app_settings` 表 `lunch_after_section`/`dinner_after_section`，供作息设置页与周视图共用（阶段六）
 - `notesProvider` — `NotesNotifier extends AsyncNotifier<List<Note>>`（1.3.5 AI 备注）：全量备注按日期升序；`addNote/updateNote/deleteNote` 末尾联动「备注常驻通知 refreshNoteNotice + 小部件 refreshWidgets」（不重排课程提醒，两者互不影响）
+- `developerOptionsProvider` — `DeveloperOptionsNotifier extends AsyncNotifier<bool>`（2.1.0 WB_SPEC_212 第 3 节）：开发者选项解锁状态，读写 `app_settings` 键 `developer_options_unlocked`（默认关）；`unlock()` 由关于页连点 5 次后调用
+- `menuConfigProvider` — `MenuConfigNotifier extends AsyncNotifier<MenuConfig>`（2.1.0 WB_SPEC_212 第 4 节）：主页「更多」菜单六项的显隐 + 顺序，读写 `app_settings` 键 `home_menu_config`（JSON 数组）；`setVisible/reorder/reset` 改动即落库并即时刷新主页菜单
 
 ## 阶段六·作息时间三段化新增/改动文件（2026-10-20）
 
