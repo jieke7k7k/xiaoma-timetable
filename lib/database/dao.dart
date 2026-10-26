@@ -15,6 +15,13 @@ class Dao {
   Dao._();
   static final Dao instance = Dao._();
 
+  /// 本地数据写操作后的通知钩子（2.1.0 云同步注册用）。
+  ///
+  /// 由 SupabaseSyncService 在启动时注册成「防抖同步」；DAO 保持纯数据层，
+  /// 不反向 import 服务，避免 dao ↔ service 循环依赖。删除操作不触发
+  /// （本版删除不同步，云端孤儿行保留，见 WB_SPEC_211 第 3 节）。
+  static void Function()? onLocalChange;
+
   Future<Database> get _db async => DbHelper.instance.database;
 
   /// 把一批写操作包进单个事务（1.3.1：批量导入落库用）。
@@ -114,17 +121,25 @@ class Dao {
     return rows.map(Course.fromMap).toList();
   }
 
-  /// 插入课程。[txn] 非空时在该事务内执行（批量导入整体原子化用）
+  /// 插入课程。[txn] 非空时在该事务内执行（批量导入整体原子化用）。
+  /// 顺手补 updatedAt（云同步水位与冲突判断用，2.1.0）。
   Future<int> insertCourse(Course c, {DatabaseExecutor? txn}) async {
     final db = txn ?? await _db;
-    return db.insert('courses', c.toMap());
+    final map = c.toMap()..['updatedAt'] = DateTime.now().millisecondsSinceEpoch;
+    final id = await db.insert('courses', map);
+    onLocalChange?.call();
+    return id;
   }
 
   /// 改课程（整行覆盖）。单条 UPDATE，本身就是原子的——C8 的复核结论是这里
   /// 不用包事务，只有 deleteCourse（删调课 + 删课程两条 SQL）才需要。
+  /// 顺手补 updatedAt（云同步水位与冲突判断用，2.1.0）。
   Future<int> updateCourse(Course c, {DatabaseExecutor? txn}) async {
     final db = txn ?? await _db;
-    return db.update('courses', c.toMap(), where: 'id = ?', whereArgs: [c.id]);
+    final map = c.toMap()..['updatedAt'] = DateTime.now().millisecondsSinceEpoch;
+    final n = await db.update('courses', map, where: 'id = ?', whereArgs: [c.id]);
+    onLocalChange?.call();
+    return n;
   }
 
   /// 删除课程（含其调课记录）。[txn] 非空时在该事务内执行
@@ -233,12 +248,18 @@ class Dao {
 
   Future<int> insertNote(Note n) async {
     final db = await _db;
-    return db.insert('notes', n.toMap());
+    final map = n.toMap()..['updatedAt'] = DateTime.now().millisecondsSinceEpoch;
+    final id = await db.insert('notes', map);
+    onLocalChange?.call();
+    return id;
   }
 
   Future<int> updateNote(Note n) async {
     final db = await _db;
-    return db.update('notes', n.toMap(), where: 'id = ?', whereArgs: [n.id]);
+    final map = n.toMap()..['updatedAt'] = DateTime.now().millisecondsSinceEpoch;
+    final count = await db.update('notes', map, where: 'id = ?', whereArgs: [n.id]);
+    onLocalChange?.call();
+    return count;
   }
 
   /// 删除一条备注，返回受影响行数（0 表示 id 不存在）
@@ -291,6 +312,71 @@ class Dao {
     final db = await _db;
     return db.update('operation_log', {'undone': 1},
         where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ---------- 云同步（2.1.0：Supabase 直连，读原始行含 updatedAt 水位） ----------
+
+  /// 全部课程原始行（含 id / semesterId / updatedAt），云同步上传与下载读本地用。
+  /// 与 [getAllCourses] 的区别：后者走 Course.fromMap 会丢掉 updatedAt 列，
+  /// 这里原样返回，同步服务自己按需取列。
+  Future<List<Map<String, dynamic>>> getAllCourseRows() async {
+    final db = await _db;
+    return db.query('courses');
+  }
+
+  /// 全部备注原始行（含 id / updatedAt），云同步上传与下载读本地用。
+  Future<List<Map<String, dynamic>>> getAllNoteRows() async {
+    final db = await _db;
+    return db.query('notes');
+  }
+
+  /// 云同步下载「云端赢」时把一门课程覆盖写回本地。
+  ///
+  /// 保持本地 id 与云端 localId 一致（幂等）；[cloudUpdatedAtMs] 用云端
+  /// updated_at 毫秒，让本地水位与云端对齐，避免下一轮重复上传。
+  /// **刻意不用 replace**：course_overrides 外键级联删除，replace 会连带清掉
+  /// 该课程的调课记录，这里必须先查后 update/insert。
+  Future<void> putCourseSynced(Course c, int cloudUpdatedAtMs) async {
+    final db = await _db;
+    final map = c.toMap();
+    if (c.id != null) map['id'] = c.id;
+    map['updatedAt'] = cloudUpdatedAtMs;
+    if (c.id != null) {
+      final hit = await db.query(
+        'courses',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [c.id],
+        limit: 1,
+      );
+      if (hit.isNotEmpty) {
+        await db.update('courses', map, where: 'id = ?', whereArgs: [c.id]);
+        return;
+      }
+    }
+    await db.insert('courses', map);
+  }
+
+  /// 云同步下载「云端赢」时把一条备注覆盖写回本地（语义同上，notes 无外键）。
+  Future<void> putNoteSynced(Note n, int cloudUpdatedAtMs) async {
+    final db = await _db;
+    final map = n.toMap();
+    if (n.id != null) map['id'] = n.id;
+    map['updatedAt'] = cloudUpdatedAtMs;
+    if (n.id != null) {
+      final hit = await db.query(
+        'notes',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [n.id],
+        limit: 1,
+      );
+      if (hit.isNotEmpty) {
+        await db.update('notes', map, where: 'id = ?', whereArgs: [n.id]);
+        return;
+      }
+    }
+    await db.insert('notes', map);
   }
 
   // ---------- 应用设置（键值对，阶段四：提醒开关/提前分钟等） ----------

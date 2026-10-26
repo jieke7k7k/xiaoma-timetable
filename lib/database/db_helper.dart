@@ -16,8 +16,10 @@ class DbHelper {
   static const _dbName = 'simple_timetable.db';
   /// v3（2026-10-22）：新增 notes 备注表。
   /// v4（2026-10-24）：新增 chat_sessions（智能助手历史）、operation_log（撤回操作）。
-  /// 升级路径见 [_open] 的 onUpgrade——老库只补建这两张表，数据零改动。
-  static const _dbVersion = 4;
+  /// v5（2.1.0）：courses 加 examEndTime/examPlace/updatedAt、notes 加 updatedAt
+  /// （云同步水位与冲突判断用）。升级路径见 [_open] 的 onUpgrade——老库只补列，
+  /// 数据零改动。
+  static const _dbVersion = 5;
 
   /// 应用设置键值表 SQL（阶段四：提醒开关/提前分钟等轻量偏好持久化）
   static const _createSettingsTableSql = '''
@@ -27,17 +29,31 @@ class DbHelper {
     )
   ''';
 
-  /// 备注表 SQL（v3）：按日期组织的短备注，供备注页/常驻通知/桌面小部件使用。
+  /// 备注表 SQL（v3 的历史建表语句）：按日期组织的短备注，供备注页/常驻通知/
+  /// 桌面小部件使用。仅供 onUpgrade 的老库补建（v2 → v3 路径）复用，
+  /// updatedAt 列由 v5 的 ALTER 统一补上（见 onUpgrade）。
   ///
-  /// 带 `IF NOT EXISTS`：这段 SQL 被 [createSchema]（新装）与 onUpgrade（老库
-  /// 补建）共用，老库升级时若表已存在（比如手工改过库），没有它会直接抛错、
-  /// 让整个打开流程失败——与 app_settings 那条补建 SQL 同一写法。
+  /// 带 `IF NOT EXISTS`：老库升级时若表已存在（比如手工改过库），没有它会直接
+  /// 抛错、让整个打开流程失败——与 app_settings 那条补建 SQL 同一写法。
   static const _createNotesTableSql = '''
     CREATE TABLE IF NOT EXISTS notes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       date TEXT NOT NULL,
       content TEXT NOT NULL,
       createdAt INTEGER NOT NULL
+    )
+  ''';
+
+  /// 备注表 SQL（新装，v5 起）：在 v3 结构上多一列 updatedAt（云同步水位用）。
+  /// 只被 [createSchema] 使用，onUpgrade 的老库补建仍走 [_createNotesTableSql]，
+  /// 再由 v5 分支 ALTER 补列，避免「建表已含列 + ALTER 再加」的重复列冲突。
+  static const _createNotesTableSyncSql = '''
+    CREATE TABLE IF NOT EXISTS notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      content TEXT NOT NULL,
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER
     )
   ''';
 
@@ -124,6 +140,16 @@ class DbHelper {
           await db.execute(_createChatSessionsTableSql);
           await db.execute(_createOperationLogTableSql);
         }
+        // v4 -> v5（2.1.0 云同步）：courses 补考试结束时间/地点与 updatedAt 水位列，
+        // notes 补 updatedAt 水位列。全部可空，旧数据保持 null、一行不丢。
+        if (oldVersion < 5) {
+          await db.execute(
+            'ALTER TABLE courses ADD COLUMN examEndTime TEXT',
+          );
+          await db.execute('ALTER TABLE courses ADD COLUMN examPlace TEXT');
+          await db.execute('ALTER TABLE courses ADD COLUMN updatedAt INTEGER');
+          await db.execute('ALTER TABLE notes ADD COLUMN updatedAt INTEGER');
+        }
       },
       // 降级（装回旧版本 App）时**不删库**（2.0.0 复审 C1）。
       // 默认的 onDatabaseDowngradeDelete 会直接把数据库文件删掉——一份课表是
@@ -177,6 +203,9 @@ class DbHelper {
         weekType INTEGER NOT NULL DEFAULT 0,
         note TEXT,
         examDate INTEGER,
+        examEndTime TEXT,
+        examPlace TEXT,
+        updatedAt INTEGER,
         FOREIGN KEY (semesterId) REFERENCES semesters(id) ON DELETE CASCADE
       )
     ''');
@@ -205,8 +234,8 @@ class DbHelper {
     // 应用设置键值表（阶段四：上课提醒开关、提前分钟等）
     await db.execute(_createSettingsTableSql);
 
-    // 备注表（v3：按日期的短备注，常驻通知与小组件按日取用）
-    await db.execute(_createNotesTableSql);
+    // 备注表（v3：按日期的短备注，常驻通知与小组件按日取用；v5 起含 updatedAt）
+    await db.execute(_createNotesTableSyncSql);
     await db.execute('CREATE INDEX idx_notes_date ON notes(date)');
 
     // 智能助手对话历史表（v4）+ 操作记录表（v4·撤回）

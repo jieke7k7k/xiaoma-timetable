@@ -1,10 +1,19 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-10-26（2.1.0+25：WB_SPEC_212 去底栏 + AI 藏进开发者选项 + 右上角菜单自定义）
+> 更新时间：2026-10-26（2.1.1+26：WB_SPEC_212 去底栏 + AI 藏进开发者选项 + 右上角菜单自定义，含 Supabase 合并与返修）
 
 ## 做到哪了
 
-## 2026-10-26（2.1.0+25：WB_SPEC_212 去底栏 + AI 藏进开发者选项 + 右上角菜单自定义，待真机目视确认）
+## 2026-10-26（2.1.1+26：WB_SPEC_212 去底栏 + AI 藏进开发者选项 + 右上角菜单自定义，含 Supabase 合并与返修，待真机目视确认）
+
+### 2.1.1 返修（复查 P0/P1，用户 2026-10-26 裁决后本地亲手改）
+- 转场：`AppSlidePageTransitionsBuilder` 正/反时长覆写为 300ms（此前委托系统转场实为 450ms），曲线 fastOutSlowIn；用户亲口定不做预测性返回，故不用 PredictiveBack builder，返回手势走系统默认。
+- 解锁：`unlock()` 返回 bool，关于页 await 后再提示，失败提示失败；已解锁重复连点不再重复写库/提示。
+- 菜单配置：写操作串行队列（空闲首次写立即启动，忙时排队），加载未完成先等已存配置，绝不拿默认值覆盖。
+- 连点：`TapUnlockCounter` 改 Stopwatch 单调时钟（可注入测试时钟），墙钟跳变不影响 2 秒窗口。
+- 守卫：`AiRouteGuard` 包 /developer-options、/ai-chat、/ai-settings、/ai-history、/bridge，未解锁直达不放行。
+- 合并：远端 main 87092cd（Supabase PR #1）已合入；版本号因 main 已占 2.1.0+25 重排为 2.1.1+26。
+
 
 规格见仓库根 `WB_SPEC_212.md`（三件：去底栏主页变单页 / AI 全藏进开发者选项、连点五次解锁 / 右上角菜单自定义显隐+排序）。沿用 Riverpod 手写 Notifier / 中文文案注释；未改主题色、未改网格行高/节次高度/带子高度（kBandHeight 24 不动）。
 
@@ -50,6 +59,70 @@
 - 连点解锁是否误触（单次点击不弹窗不提示）；
 - 只剩设置时右上角齿轮是否直接进设置；
 - 动效在低端机上是否掉帧（用户实测为准）。
+> 更新时间：2026-10-26（2.1.0+25 P0 修复轮：supabase-sync 分支 @370ba07，analyze 零问题 / 437 测试全绿）
+
+## 做到哪了
+
+## 2026-10-26（2.1.0+25 P0 修复轮：supabase-sync 分支 @370ba07）
+
+只改 `supabase-sync` 分支，不动 main、不建 Release、不发版、修复轮完成后已推送到 supabase-sync 分支、不写任何真实考试数据。范围严格限定 5 条 P0 + 2 项文档。
+
+### 改动清单
+
+- **P0-1** `android/app/src/main/AndroidManifest.xml`：主 manifest 显式补一行 `<uses-permission android:name="android.permission.INTERNET"/>`（云同步直连 Supabase 联网用，不再依赖插件合并；插件合并情况留待发版验包时用 aapt 确认）。
+- **P0-2** `lib/services/supabase_sync_service.dart`：上传的云端 `updated_at`、水位推进、下载阶段本地赢回传的 `updated_at` 统一改用同步开始时刻 `started`（UTC）。修掉「同步窗口内的本地改动被推进后的水位淹没、永久不上传」的问题。
+- **P0-3** `lib/pages/course_edit_page.dart`：`_save()` 重建 Course 时补 `examEndTime` / `examPlace` 透传（编辑取原课程对象的值、新建为 null），`_load()` 同步读入这两个字段。其余整对象重建入口已核查：`command_executor.dart` 的 `set_course_remark` / `add_exam` 与 `operation_log_service.dart` 的撤回，都在 `withMutableFields` 里显式传了这两个字段，无需再改。
+- **P0-4** `.github/workflows/build-apk.yml`：`flutter build apk` 命令补 `--dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}`。**发版清单**：这两个 Secrets 已于 2026-10-26 建好，发版带参编译即可，否则 App 以「未配置」状态关闭云同步。
+- **P0-5** `lib/utils/backup_codec.dart`：restore 恢复 courses/notes 时补 `updatedAt = now`，并把 `supabase_last_sync_at` 归零（等价于重新首次迁移全量上传，upsert 幂等）；`secretSettingKeys` 不变（四个机密键仍不进备份、不覆盖本机值）。
+
+### 直连写入口径（P1-7，给小马）
+
+- **加考试 = 写 `courses` 行的 `exam_date_ms`（可选 `exam_end_time` / `exam_place`）**；App 的考试数据就挂在 courses 行上，课程编辑页 / 考试倒计时页都读它。
+- **`exams` 表只作镜像，App 不读**：它由云同步按 courses 行自动 upsert 维护，App 显示以 courses 为准。
+
+### analyze / 测试实际结果（P1-9）
+
+- `flutter analyze`：**No issues found（零问题）**（Flutter 3.47.7 / Dart 3.13.5）。
+- `flutter test`：**437 项全绿**（本轮新增 2 项：P0-2 一条、P0-5 一条）。
+- 环境说明：沙箱自带 Flutter 3.0.0（Dart 2.17）不满足 pubspec 的 `sdk: ^3.13.5`，已另装 Flutter 3.47.7 跑通；测试运行前需按 `assets/fonts/README.md` 放置四个内置字体（本仓库 gitignore 不随仓库分发）。
+
+## 2026-10-26（2.1.0+25：WB_SPEC_211 Supabase 云同步）
+
+规格见仓库根 WB_SPEC_211（Supabase 直连云同步，Gmail 式免手动同步）。沿用 Riverpod 手写 Notifier / 中文文案注释；本环境已跑 `flutter analyze`（No issues found，零问题）与 `flutter test`（437 项全绿，含 P0 修复轮新增 2 项）。
+
+### 表与 RLS（第 1 节）
+
+三张表建在 Supabase 项目 `xiaoma-timetable`（Singapore），列名蛇形：courses / notes / exams，均开 RLS，只给 anon「select + insert + update」三权限、**故意不给 delete**（anon 删不掉云端行，删除只走 Dashboard）。远程 id 规则：`course:<semesterId>:<localId>` / `note:<localId>` / `exam:<semesterId>:<localId>`。真实 key 不进代码/测试/文档/git，只走 `--dart-define`（SUPABASE_URL / SUPABASE_ANON_KEY）。
+
+### App 改动（第 2 节）
+
+- `lib/services/supabase_sync_service.dart`（新增）：初始化（URL/anon key 来自 dart-define，占位符时同步关闭、设置页显示「未配置」不闪退）；上传（变动后防抖、失败静默记日志不弹窗）；下载（水位 + 冲突取新）；首次迁移全量上传 + 备注去重；exams 镜像维护。
+- `lib/utils/supabase_codec.dart`（新增）：纯函数——Course↔courses 行映射（含考试字段）、Note↔notes 行映射、exams 镜像映射、冲突取新、水位过滤、日期备注去重、远程 id 规则与解析。
+- `lib/models/course.dart`：Course 扩展 `examEndTime`（HH:mm，可空）、`examPlace`（可空），toMap/fromMap/copyWith/withMutableFields 同步；`withMutableFields` 调用点（operation_log_service 3 处、command_executor 2 处）补齐考试字段传递。
+- `lib/database/db_helper.dart`：库版本 4 → 5；courses 补列 examEndTime/examPlace/updatedAt、notes 补列 updatedAt（旧数据 null 不丢数据）；新装 schema 与 onUpgrade 老库路径都覆盖。
+- `lib/database/dao.dart`：insert/update 课程与备注自动补 updatedAt；新增 getAllCourseRows/getAllNoteRows（读原始行含水位）、putCourseSynced/putNoteSynced（云端赢时覆盖写本地，不用 replace 以免级联删调课记录）；新增静态 `onLocalChange` 钩子（云同步注册，避免 dao↔service 循环依赖），增改课程/备注时触发、删除不触发。
+- 同步触发：启动联网自动同步一次（`main.dart` 启动任务）；课程/备注/考试变动后经 DAO 钩子防抖同步（AI/桥写本地同一路径覆盖）；设置首页顶部新增「云同步」行（上次同步时间 + 立即同步按钮，未配置/失败文案，不闪退）。
+
+### 同步协议（第 3 节）
+
+- 本地 app_settings 存 `supabase_last_sync_at`（毫秒）水位，首次同步前为 0。
+- 上传：本地行 updatedAt 大于水位 → upsert（首次迁移水位 0 全量）；成功后水位推进到本次同步开始时刻（started，与上传 updated_at 同源，见 P0-2）。
+- 下载：只拉云端 updated_at 大于水位的行；同 id 时冲突取新（updatedAt 大者赢），云端赢覆盖本地、本地赢立即回传覆盖云端、相等不动。
+- 删除不同步：本地删的行云端孤儿行保留，下载水位规则天然跳过（updated_at 早于水位），不复活本地已删内容。
+- 离线静默失败（记日志不弹窗不丢本地数据），下次联网重试；同步中杀进程以本地库为准。
+- exams 镜像：课程考试信息变动时同步 upsert 镜像行；考试清除时镜像行保留为孤儿（App 不读它）。
+
+### 首次迁移与去重（第 4 节）
+
+- 本地现有课程、日期备注、课程考试信息首次一次性上传（按 id 规则与映射，upsert 幂等）。
+- 日期备注按 (date, content) 完全相同只留 createdAt 最早一条，去重清单运行时打日志；已知有内容相同的「药理学实验 二楼」备注，实际清单以首次同步运行时为准。
+
+### 差异说明
+
+1. App 无独立考试模型（考试挂在 Course.examDate），exams 表为镜像（供小马直接读写考试），App 显示以 courses 为准；考试备注先用课程备注承载。
+2. 日期备注不关联课程（Note 只有 date/content/createdAt），notes 表不设 course_id；课程长期备注走 Course.note。
+3. 删除本版不同步，云端孤儿行保留；云端删除只走 Dashboard，RLS 不给 anon 删除权限。
+4. 桥本版不动桥代码与设置页，仍可手动用；小马后续指令只走 Supabase。
 
 ## 2026-10-25（2.0.9+24：WB_SPEC_210 上下栏紧凑 + 网格线跳过休息带，已本地验过）
 

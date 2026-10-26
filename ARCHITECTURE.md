@@ -2,7 +2,7 @@
 
 > 每完成一个阶段更新本文件，防止上下文丢失。
 
-## 2.1.0 变更（2026-10-26，WB_SPEC_212：去底栏 + AI 藏进开发者选项 + 右上角菜单自定义）
+## 2.1.1 变更（2026-10-26，WB_SPEC_212 去底栏 + AI 藏进开发者选项 + 右上角菜单自定义，含 Supabase 合并与返修）
 
 | 文件 | 改动 |
 |---|---|
@@ -13,9 +13,12 @@
 | `lib/pages/developer_options_page.dart`（新建） | 路由 `/developer-options`，仅含智能助手聊天/设置/历史三个入口 |
 | `lib/pages/menu_manage_page.dart`（新建） | 路由 `/menu-manage`，`ReorderableListView` 拖拽排序 + 显隐开关 + 恢复默认 |
 | `lib/pages/about_page.dart` | 版本行连点 5 次（2 秒窗口）解锁开发者选项 |
-| `lib/utils/tap_unlock.dart`（新建） | `TapUnlockCounter` 纯 Dart 连点计数器（时间由调用方传入，可单测） |
+| `lib/utils/tap_unlock.dart`（新建） | `TapUnlockCounter` 纯 Dart 连点计数器（单调时钟 Stopwatch，可注入测试时钟；2.1.1 返修前为调用方传 DateTime 墙钟） |
 | `lib/providers/providers.dart` | 新增 `developerOptionsProvider`（`developer_options_unlocked`）、`menuConfigProvider`（`home_menu_config` JSON） |
-| `pubspec.yaml` | 版本 2.1.0+25 |
+| `pubspec.yaml` | 版本 2.1.1+26（远端 main 已占 2.1.0+25，故重排号） |
+| `lib/ui/page_transitions.dart`（新建，2.1.1 返修） | `AppSlidePageTransitionsBuilder`：转场时长正/反均为 300ms、曲线 fastOutSlowIn、标准右滑，明确不做预测性返回 |
+| `lib/widgets/ai_route_guard.dart`（新建，2.1.1 返修） | `AiRouteGuard`：AI 5 条路由未解锁直达时不放行，退回上一页或设置页 |
+| `lib/providers/providers.dart`（2.1.1 返修） | `unlock()` 改返回 bool（写库失败不谎报成功）；`MenuConfigNotifier` 写操作串行队列（空闲首次写立即启动，加载未完成先读已存配置） |
 | 测试 | 新增 `menu_config_test.dart`、`developer_options_test.dart`、`menu_manage_page_test.dart`、`home_shell_test.dart`；改 `settings_page_test.dart` |
 
 ### 关键设计决策
@@ -24,6 +27,26 @@
 - **设置入口兜底**：`visibleMenuItems` 恒在末尾追加「设置」，且六项全关时主页右上角直接显示齿轮直进设置——从纯函数到 UI 双层保证「任何情况下都能进设置」，不采用「全关就藏三个点」。
 - **AI 全藏、解锁不显式提示**：设置首页删除 AI 入口；解锁计数只进内存、未达阈值无任何可见反馈，界面不写「连点五次」文案；解锁状态走 `app_settings`（重装/清数据自然回未解锁）。
 - **菜单配置走现有 app_settings**：JSON 数组存 `home_menu_config`，编码/解码都在 `MenuConfig` 里兜底（缺项补齐、损坏回默认）；主页与设置页共用 `menuConfigProvider`，改完返回主页即时刷新、无需重启。
+## 2.1.0 变更（2026-10-26，WB_SPEC_211：Supabase 云同步）
+
+| 文件 | 改动 |
+|---|---|
+| `lib/services/supabase_sync_service.dart` | 新增 SupabaseSyncService：dart-define 配置初始化（占位符关闭不闪退）、上传（防抖）、下载（水位+冲突取新）、首次迁移去重、exams 镜像维护、离线静默失败；抽象 CloudStore 接口供测试注入 fake |
+| `lib/utils/supabase_codec.dart` | 新增纯函数：Course↔courses、Note↔notes、exams 镜像映射；远程 id 规则；冲突取新；水位过滤；日期备注去重 |
+| `lib/models/course.dart` | Course 扩展 examEndTime / examPlace，toMap/fromMap/copyWith/withMutableFields 同步 |
+| `lib/database/db_helper.dart` | 库版本 4→5；courses 补 examEndTime/examPlace/updatedAt、notes 补 updatedAt（旧数据 null 不丢） |
+| `lib/database/dao.dart` | 增改课程/备注自动补 updatedAt；新增 getAllCourseRows/getAllNoteRows/putCourseSynced/putNoteSynced；静态 onLocalChange 钩子（增改触发、删除不触发） |
+| `lib/pages/settings_page.dart` | 设置首页顶部新增「云同步」行（上次同步时间 + 立即同步按钮，未配置/失败文案） |
+| `lib/main.dart` | 启动挂 DAO 钩子 + 首帧后静默云同步一次；下载改动后失效 Provider 并联动通知/小组件 |
+| `pubspec.yaml` | 版本 2.1.0+25；新增 supabase_flutter 依赖 |
+
+### 关键设计决策
+
+- **本地 updatedAt 水位列**：同步协议要求「本地行 updated_at 大于水位」与「冲突取新」，本地库原本没有这列，故 v5 给 courses/notes 补 updatedAt（毫秒），DAO 增改时自动写当前时间；旧数据为 null，只在首次迁移（水位 0）全量上传，之后不参与增量。
+- **DAO 钩子解耦**：云同步服务要读 DAO，DAO 又要「变动后触发同步」，直接互相 import 会循环依赖。改由 DAO 暴露静态 `onLocalChange` 钩子，SupabaseSyncService 启动时注册成「防抖同步」，DAO 保持纯数据层；删除不触发（本版删除不同步）。
+- **下载覆盖不用 replace**：`putCourseSynced` 先查后 update/insert，刻意不用 `ConflictAlgorithm.replace`——courses 的 course_overrides 外键级联删除，replace 会连带清掉调课记录。
+- **纯函数与网络分离**：所有映射/冲突/水位/去重都是 `supabase_codec.dart` 里的纯函数，网络读写抽象成 `CloudStore` 接口，测试注入 fake 断言，不真连 Supabase。
+- **exams 镜像只写不读**：App 无独立考试模型（考试挂 Course.examDate），上传时同步 upsert exams 镜像行供小马读写；App 显示以 courses 为准，考试清除时镜像行保留为孤儿（App 不读它）。
 
 ## 2.0.9 变更（2026-10-25，WB_SPEC_210：上下栏紧凑 + 网格线跳过休息带）
 

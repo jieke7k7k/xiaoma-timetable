@@ -92,8 +92,6 @@ class BackupService {
     final uri = await FilePicker.saveFile(
       dialogTitle: '选择保存位置',
       fileName: fileName,
-      type: FileType.custom,
-      allowedExtensions: [extension],
       bytes: bytes,
     );
     return uri?.toFilePath();

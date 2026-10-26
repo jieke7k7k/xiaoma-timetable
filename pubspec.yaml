@@ -63,6 +63,8 @@ dependencies:
   url_launcher: ^6.3.3
   quick_actions: ^1.1.1
   webview_flutter: ^4.14.1
+  # 2.1.0（WB_SPEC_211）：Supabase 云同步（URL/anon key 走 --dart-define）
+  supabase_flutter: ^2.18.3
 
 dev_dependencies:
   flutter_launcher_icons: ^0.14.4
@@ -149,3 +151,13 @@ flutter_launcher_icons:
   ios: false
   image_path: "assets/icon/icon.png"
   min_sdk_android: 21
+
+# sqlite3（sqflite_common_ffi 的传递依赖）在 Linux 测试/CI 环境用系统 libsqlite3，
+# 避免构建期从 GitHub 下载预编译库（离线/慢网络会卡死测试）。
+# Android/iOS 仍走默认预编译库，不受影响。
+hooks:
+  user_defines:
+    sqlite3:
+      source:
+        linux: system
+        default: sqlite3

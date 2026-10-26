@@ -330,4 +330,63 @@ void main() {
       }
     });
   });
+
+  group('P0-5 恢复补 updatedAt + 云同步水位归零', () {
+    late Database db;
+
+    setUp(() async {
+      db = await databaseFactoryFfi.openDatabase(
+        inMemoryDatabasePath,
+        options: OpenDatabaseOptions(
+          version: 5,
+          onCreate: (d, v) => DbHelper.instance.createSchema(d),
+        ),
+      );
+    });
+
+    tearDown(() => db.close());
+
+    test('恢复后 courses/notes 补 updatedAt，supabase_last_sync_at 归零', () async {
+      // 备份里故意带一个旧水位，验证恢复时不被沿用、而是强制归零
+      final json = BackupCodec.encode(
+        semesters: const [
+          Semester(
+              id: 1,
+              name: '大三上',
+              startDate: '2026-09-07',
+              totalWeeks: 20,
+              isCurrent: true),
+        ],
+        timeSlots: const [],
+        courses: const [
+          Course(
+            id: 11,
+            semesterId: 1,
+            name: '高等数学',
+            colorValue: 0xFF6B8E7B,
+            dayOfWeek: 1,
+            startSection: 1,
+            endSection: 2,
+            weeks: [1, 2, 3],
+          ),
+        ],
+        overrides: const [],
+        settings: const {'supabase_last_sync_at': '999999999'},
+        notes: const [
+          Note(id: 9, date: '2026-10-23', content: '交作业', createdAt: 2),
+        ],
+      );
+      await BackupCodec.restore(db, BackupCodec.decode(jsonEncode(json)));
+
+      final course = (await db.query('courses')).single;
+      expect(course['updatedAt'], isA<int>());
+
+      final note = (await db.query('notes')).single;
+      expect(note['updatedAt'], isA<int>());
+
+      final watermark = await db.query('app_settings',
+          where: 'key = ?', whereArgs: [BackupCodec.syncWatermarkKey]);
+      expect(watermark.single['value'], '0');
+    });
+  });
 }

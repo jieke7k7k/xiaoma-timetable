@@ -272,6 +272,8 @@ class CommandExecutor {
           colorValue: c.colorValue,
           note: remark.isEmpty ? null : remark,
           examDate: c.examDate,
+          examEndTime: c.examEndTime,
+          examPlace: c.examPlace,
         ),
       );
     }
@@ -462,6 +464,8 @@ class CommandExecutor {
           colorValue: c.colorValue,
           note: c.note,
           examDate: examDate,
+          examEndTime: c.examEndTime,
+          examPlace: c.examPlace,
         ),
       );
       count++;
