@@ -6,14 +6,14 @@
 
 ## 2026-10-26（2.1.0+25 P0 修复轮：supabase-sync 分支 @370ba07）
 
-只改 `supabase-sync` 分支，不动 main、不建 Release、不发版、不推 GitHub、不写任何真实考试数据。范围严格限定 5 条 P0 + 2 项文档。
+只改 `supabase-sync` 分支，不动 main、不建 Release、不发版、修复轮完成后已推送到 supabase-sync 分支、不写任何真实考试数据。范围严格限定 5 条 P0 + 2 项文档。
 
 ### 改动清单
 
 - **P0-1** `android/app/src/main/AndroidManifest.xml`：主 manifest 显式补一行 `<uses-permission android:name="android.permission.INTERNET"/>`（云同步直连 Supabase 联网用，不再依赖插件合并；插件合并情况留待发版验包时用 aapt 确认）。
 - **P0-2** `lib/services/supabase_sync_service.dart`：上传的云端 `updated_at`、水位推进、下载阶段本地赢回传的 `updated_at` 统一改用同步开始时刻 `started`（UTC）。修掉「同步窗口内的本地改动被推进后的水位淹没、永久不上传」的问题。
 - **P0-3** `lib/pages/course_edit_page.dart`：`_save()` 重建 Course 时补 `examEndTime` / `examPlace` 透传（编辑取原课程对象的值、新建为 null），`_load()` 同步读入这两个字段。其余整对象重建入口已核查：`command_executor.dart` 的 `set_course_remark` / `add_exam` 与 `operation_log_service.dart` 的撤回，都在 `withMutableFields` 里显式传了这两个字段，无需再改。
-- **P0-4** `.github/workflows/build-apk.yml`：`flutter build apk` 命令补 `--dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}`。**发版清单**：这两个 Secrets 尚未在仓库建立（本任务不建），发版前必须在仓库 Secrets 建好并**带参编译**，否则 App 以「未配置」状态关闭云同步。
+- **P0-4** `.github/workflows/build-apk.yml`：`flutter build apk` 命令补 `--dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}`。**发版清单**：这两个 Secrets 已于 2026-10-26 建好，发版带参编译即可，否则 App 以「未配置」状态关闭云同步。
 - **P0-5** `lib/utils/backup_codec.dart`：restore 恢复 courses/notes 时补 `updatedAt = now`，并把 `supabase_last_sync_at` 归零（等价于重新首次迁移全量上传，upsert 幂等）；`secretSettingKeys` 不变（四个机密键仍不进备份、不覆盖本机值）。
 
 ### 直连写入口径（P1-7，给小马）
