@@ -41,6 +41,7 @@ import 'services/bridge_service.dart';
 import 'services/fonts_service.dart';
 import 'services/notification_service.dart';
 import 'services/ongoing_notice_service.dart';
+import 'services/supabase_sync_service.dart';
 import 'services/widget_service.dart';
 import 'ui/app_styles.dart';
 import 'ui/grid_metrics.dart';
@@ -65,6 +66,8 @@ void main() {
       // 兜底界面：任何 build 失败都显示中文提示，不再是红屏堆栈原文
       ErrorWidget.builder = (_) => const _FriendlyErrorWidget();
       await _initServices();
+      // 云同步：挂上 DAO 本地变更钩子（变动后防抖同步）；未配置时无副作用。
+      SupabaseSyncService.attachToDao();
       runApp(const ProviderScope(child: SimpleTimetableApp()));
       // 通知初始化挪到首帧之后：时区库加载 + 插件平台通道都不是首帧渲染所需，
       // 不再占启动串行时间。失败只打日志不阻断（rescheduleAll 内部也会兜底
@@ -411,6 +414,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         AutoBackupService.runIfDue(),
         // AI 桥静默同步（未配置会立即返回，失败也静默）
         _silentBridgeSync(),
+        // 云同步：启动联网自动同步一次（未配置/离线都静默）
+        _silentSupabaseSync(),
       ]);
       // 今日课程常驻通知必须排在 rescheduleAll 之后：rescheduleAll 的 cancelAll
       // 会连原生常驻通知一起清掉，并发执行时谁后到谁说了算，常驻通知会被误清
@@ -432,6 +437,27 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     } catch (e) {
       debugPrint('AI 桥静默同步失败：$e');
     }
+  }
+
+  /// 首帧后静默同步一次 Supabase 云。
+  ///
+  /// 失败一律静默：未配置、离线、网络差都属于可预期的日常状态，启动时不该
+  /// 用它打扰用户；同步服务内部已捕获异常、记日志、写失败摘要（设置页可见）。
+  Future<void> _silentSupabaseSync() async {
+    try {
+      final outcome = await SupabaseSyncService.instance.syncNow();
+      if (outcome.changed && mounted) _applyCloudChanges();
+    } catch (e) {
+      debugPrint('云同步静默失败：$e');
+    }
+  }
+
+  /// 云同步改动本地数据后的联动刷新（与桥改动同一份口径：失效 Provider + 联动服务）。
+  void _applyCloudChanges() {
+    ref.invalidate(coursesProvider);
+    ref.invalidate(notesProvider);
+    unawaited(NotificationService.instance.rescheduleAll());
+    unawaited(WidgetService.instance.refreshWidgets());
   }
 
   /// 桥改动数据后的联动刷新（与 BridgePage._applyBridgeChanges 同一份口径，

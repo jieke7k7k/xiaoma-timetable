@@ -15,6 +15,8 @@ class Course {
   final int weekType; // 0-全部，1-单周，2-双周
   final String? note; // 备注，可空
   final int? examDate; // 考试日期时间戳（毫秒），可空，阶段五预留
+  final String? examEndTime; // 考试结束时间 HH:mm，可空（云同步 2.1.0）
+  final String? examPlace; // 考试地点，可空（云同步 2.1.0）
 
   const Course({
     this.id,
@@ -30,6 +32,8 @@ class Course {
     this.weekType = 0,
     this.note,
     this.examDate,
+    this.examEndTime,
+    this.examPlace,
   });
 
   Map<String, dynamic> toMap() => {
@@ -46,6 +50,8 @@ class Course {
         'weekType': weekType,
         'note': note,
         'examDate': examDate,
+        'examEndTime': examEndTime,
+        'examPlace': examPlace,
       };
 
   factory Course.fromMap(Map<String, dynamic> map) => Course(
@@ -63,6 +69,8 @@ class Course {
         weekType: map['weekType'] as int? ?? 0,
         note: map['note'] as String?,
         examDate: map['examDate'] as int?,
+        examEndTime: map['examEndTime'] as String?,
+        examPlace: map['examPlace'] as String?,
       );
 
   static List<int> _parseWeeks(String? json) {
@@ -101,6 +109,8 @@ class Course {
     int? weekType,
     String? note,
     int? examDate,
+    String? examEndTime,
+    String? examPlace,
   }) =>
       Course(
         id: id ?? this.id,
@@ -116,17 +126,22 @@ class Course {
         weekType: weekType ?? this.weekType,
         note: note ?? this.note,
         examDate: examDate ?? this.examDate,
+        examEndTime: examEndTime ?? this.examEndTime,
+        examPlace: examPlace ?? this.examPlace,
       );
 
-  /// 重建一份课程，只覆盖 [colorValue] / [note] / [examDate] 三个可变字段。
+  /// 重建一份课程，只覆盖可变字段（[colorValue] / [note] / [examDate] /
+  /// [examEndTime] / [examPlace]）。
   ///
   /// 与 [copyWith] 的区别：copyWith 用 `??` 合并，传 null 清不掉可空字段
-  /// （note / examDate）；本方法按「给定值原样写」处理，null 就是清空。
+  /// （note / examDate 等）；本方法按「给定值原样写」处理，null 就是清空。
   /// 不想改的字段传原值即可（调用方手里通常有当前课程对象）。
   Course withMutableFields({
     required int colorValue,
     required String? note,
     required int? examDate,
+    String? examEndTime,
+    String? examPlace,
   }) =>
       Course(
         id: id,
@@ -142,5 +157,7 @@ class Course {
         weekType: weekType,
         note: note,
         examDate: examDate,
+        examEndTime: examEndTime,
+        examPlace: examPlace,
       );
 }
