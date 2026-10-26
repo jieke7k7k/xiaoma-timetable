@@ -40,6 +40,8 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
   List<int> _weeks = [];
   int _weekType = WeekParser.allWeeks;
   int? _examDate; // 考试日期毫秒时间戳，null 表示未设置（阶段五·倒计时）
+  String? _examEndTime; // 考试结束时间 HH:mm（云同步 2.1.0，小马直连写入，编辑页透传不丢）
+  String? _examPlace; // 考试地点（云同步 2.1.0，小马直连写入，编辑页透传不丢）
   int _semesterId = 0; // 编辑时记录原学期 id，避免更新时被清零
   int? _editId; // 编辑模式下的课程 id（来自路由参数或构造参数）
   bool _loading = true;
@@ -86,6 +88,8 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
       _weeks = course.weeks;
       _weekType = course.weekType;
       _examDate = course.examDate;
+      _examEndTime = course.examEndTime;
+      _examPlace = course.examPlace;
       _semesterId = course.semesterId;
     } else if (args is Map) {
       // 新建：带入点击格子的星期与节次；
@@ -152,6 +156,10 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
           _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
       // 考试日期：null 即未设置/已清除，updateCourse 直接整对象落库可正常清空
       examDate: _examDate,
+      // 考试结束时间/地点：编辑页不直接改这两个字段（小马直连写入），
+      // 重建课程时原样透传原值，避免「编辑课程」把云端已写入的考试信息清空
+      examEndTime: _examEndTime,
+      examPlace: _examPlace,
     );
 
     // 保存前先做时间冲突预检：与同学期已有课程比对，编辑时排除课程自身。

@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 2.1.0 云同步：联网直连 Supabase 所需，主 manifest 显式声明（不依赖插件合并） -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- 阶段三：拍照/相册选择课表截图所需权限 -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>

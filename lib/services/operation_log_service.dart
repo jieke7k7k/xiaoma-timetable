@@ -132,18 +132,24 @@ class OperationLogService {
           colorValue: raw['oldColorValue'] as int? ?? c.colorValue,
           note: c.note,
           examDate: c.examDate,
+          examEndTime: c.examEndTime,
+          examPlace: c.examPlace,
         );
       case 'oldNote':
         return c.withMutableFields(
           colorValue: c.colorValue,
           note: raw['oldNote'] as String?,
           examDate: c.examDate,
+          examEndTime: c.examEndTime,
+          examPlace: c.examPlace,
         );
       case 'oldExamDate':
         return c.withMutableFields(
           colorValue: c.colorValue,
           note: c.note,
           examDate: raw['oldExamDate'] as int?,
+          examEndTime: c.examEndTime,
+          examPlace: c.examPlace,
         );
       default:
         return c;

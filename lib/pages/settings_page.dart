@@ -1,5 +1,12 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../providers/providers.dart';
+import '../services/notification_service.dart';
+import '../services/supabase_sync_service.dart';
+import '../services/widget_service.dart';
 import '../ui/app_styles.dart';
 
 /// 设置页（QQ 式分级）
@@ -35,6 +42,11 @@ class SettingsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),
         children: [
+          // 2.1.0（WB_SPEC_211 第 2 节）：云同步行。显示上次同步时间 + 立即同步
+          // 按钮；未配置显示「未配置」；失败显示原因文案，不闪退。放在首页顶部，
+          // 其余入口行顺序/副标题/跳转一律不动。
+          const _CloudSyncTile(),
+          const SizedBox(height: AppSpacing.group),
           const _EntryTile(
             icon: Icons.badge_outlined,
             title: '学期设置',
@@ -128,6 +140,82 @@ class _EntryTile extends StatelessWidget {
       subtitle: Text(subtitle),
       trailing: const Icon(Icons.chevron_right),
       onTap: () => Navigator.pushNamed(context, route),
+    );
+  }
+}
+
+/// 云同步行（2.1.0）：显示上次同步时间/状态 + 「立即同步」按钮。
+///
+/// 未配置（缺 dart-define）时副标题显示「未配置」、不提供按钮；配置后副标题为
+/// 上次同步摘要；同步失败时副标题是失败原因文案。任何异常都不闪退。
+class _CloudSyncTile extends ConsumerStatefulWidget {
+  const _CloudSyncTile();
+
+  @override
+  ConsumerState<_CloudSyncTile> createState() => _CloudSyncTileState();
+}
+
+class _CloudSyncTileState extends ConsumerState<_CloudSyncTile> {
+  String? _summary;
+  bool _syncing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final s = await SupabaseSyncService.instance.lastSyncSummary();
+      if (mounted) setState(() => _summary = s);
+    } catch (_) {
+      // 读摘要失败（库异常）就保持现状，不让设置页崩
+    }
+  }
+
+  Future<void> _syncNow() async {
+    setState(() => _syncing = true);
+    try {
+      final outcome = await SupabaseSyncService.instance.syncNow();
+      if (!mounted) return;
+      if (outcome.changed) {
+        // 云同步下载改动了本地数据：失效相关 Provider 并联动通知/小组件
+        ref.invalidate(coursesProvider);
+        ref.invalidate(notesProvider);
+        unawaited(NotificationService.instance.rescheduleAll());
+        unawaited(WidgetService.instance.refreshWidgets());
+      }
+      await _load();
+    } catch (e) {
+      // 兜底：同步服务内部已捕获，这里再兜一层，绝不闪退
+      if (mounted) setState(() => _summary = '同步失败：$e');
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final configured = SupabaseSyncService.instance.configured;
+    final String subtitle;
+    if (!configured) {
+      subtitle = '未配置（需要构建时注入 Supabase 连接）';
+    } else if (_syncing) {
+      subtitle = '正在同步…';
+    } else {
+      subtitle = _summary ?? '上次同步：—';
+    }
+    return ListTile(
+      leading: const Icon(Icons.cloud_outlined),
+      title: const Text('云同步', style: TextStyle(fontWeight: FontWeight.w500)),
+      subtitle: Text(subtitle),
+      trailing: !configured || _syncing
+          ? null
+          : TextButton(
+              onPressed: _syncNow,
+              child: const Text('立即同步'),
+            ),
     );
   }
 }
