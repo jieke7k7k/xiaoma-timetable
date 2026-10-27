@@ -71,6 +71,40 @@ void main() {
     expect(find.text('按屏幕高度均分行高，整张课表不用上下滚'), findsOneWidget);
   });
 
+  testWidgets('外观子页：底部栏显示开关存在、默认开、点击即时切换（WB_SPEC_213 第 1 节）', (tester) async {
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: AppearanceSettingsPage()),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+    });
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final tile = find.widgetWithText(SwitchListTile, '底部栏显示');
+    expect(tile, findsOneWidget);
+    // 默认开
+    expect(tester.widget<SwitchListTile>(tile).value, isTrue);
+    // 说明文字作为常驻副标题显示（不再用 ⓘ）
+    expect(
+      find.text('开启后主页底部显示悬浮胶囊，可一键切换课表与设置；关闭后设置改从右上角菜单进入'),
+      findsOneWidget,
+    );
+
+    // 点击切换 → 即时生效（无需重启）；apply 走真实 FFI 异步落库，放 runAsync 里等它写完
+    await tester.tap(tile);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 400)),
+    );
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(tester.widget<SwitchListTile>(tile).value, isFalse);
+  });
+
   testWidgets('提醒子页：ⓘ 说明按钮存在且点开能看到对应弹窗', (tester) async {
     await tester.runAsync(() async {
       await tester.pumpWidget(

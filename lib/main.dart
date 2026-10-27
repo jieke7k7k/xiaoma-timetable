@@ -35,6 +35,7 @@ import 'pages/time_settings_page.dart';
 import 'pages/week_view_page.dart';
 import 'providers/providers.dart';
 import 'widgets/ai_route_guard.dart';
+import 'widgets/home_capsule.dart';
 import 'widgets/permission_guide.dart';
 
 import 'package:quick_actions/quick_actions.dart';
@@ -380,11 +381,17 @@ class _RootGate extends ConsumerWidget {
   }
 }
 
-/// 主框架（2.1.0 WB_SPEC_212 第 1 节：去底栏，主页变单页）
+/// 主框架（2.1.0 WB_SPEC_212 第 1 节：去底栏，主页变单页；
+/// 2.1.2 WB_SPEC_213 第 2 节：底部栏以「悬浮胶囊」形态回归，主页升级为单层壳）
 ///
 /// 2.0.0 起这里是底栏三键「智能助手 / 主页 / 设置」+ IndexedStack 三页签；
 /// 2.1.0 起删掉底栏与三页签结构，根页面只剩周课表主页 WeekViewPage。AI 功能
 /// 收进开发者选项（设置页解锁后可见），设置入口移到主页右上角「更多」菜单。
+///
+/// 2.1.2 起按 `UiSettings.showBottomBar`（默认开）二选一：
+/// - 开：单层壳结构，壳内承载［课表、设置根页］两个一级视图，原地淡入淡出切换，
+///   底部居中悬浮胶囊（未解锁两键、解锁三键）；设置根页作为一级视图、无返回箭头。
+/// - 关：恢复为 2.1.1 单页结构，设置从右上角菜单 Push 进入（300ms 右滑、有返回箭头）。
 ///
 /// 保留 [ConsumerStatefulWidget]：AI 桥的静默同步可能产生数据变更，改完要失效
 /// coursesProvider/notesProvider 并联动三个服务，这些都得有 ref；启动联动
@@ -397,6 +404,9 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 class _HomeShellState extends ConsumerState<HomeShell> {
+  /// 壳内当前一级视图（WB_SPEC_213 第 2 节），默认课表。
+  HomeShellTab _tab = HomeShellTab.schedule;
+
   @override
   void initState() {
     super.initState();
@@ -521,8 +531,82 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    // 2.1.0：根页面只剩周课表主页，不再有 IndexedStack 三页签与底栏。
-    // WeekViewPage 自带 Scaffold（顶栏/网格），这里无需再套一层 Scaffold。
-    return const WeekViewPage();
+    final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
+    // 解锁开发者选项后胶囊多出「助手」键（第 2 节）；未解锁恒两键。
+    final devUnlocked = ref.watch(developerOptionsProvider).value ?? false;
+
+    // 防困死（WB_SPEC_213 追加第 3 条）：在外观页关掉底部栏的瞬间，把壳内
+    // Tab 静默重置回课表（不 setState、不播淡入淡出动画）。此刻 build 已经
+    // 返回裸 WeekViewPage、壳整体卸载，趁外观页还在顶层遮挡时静默完成；
+    // 从外观页返回后落在课表视图。下一次再开底部栏时 `_tab` 已是课表。
+    ref.listen(uiSettingsProvider, (prev, next) {
+      final wasOn = prev?.value?.showBottomBar ?? true;
+      final isOn = next.value?.showBottomBar ?? true;
+      if (wasOn && !isOn) {
+        _tab = HomeShellTab.schedule;
+      }
+    });
+
+    if (!ui.showBottomBar) {
+      // 2.1.1 结构：关底栏时恢复为单页，设置从右上角菜单 Push 进入（300ms 右滑）
+      return const WeekViewPage();
+    }
+
+    // 2.1.2（WB_SPEC_213 第 2 节）：开底栏时升级为单层壳结构
+    return PopScope(
+      // 壳内非课表视图时，系统返回先切回课表，再按一次才退出 App
+      canPop: _tab == HomeShellTab.schedule,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_tab != HomeShellTab.schedule) {
+          setState(() => _tab = HomeShellTab.schedule);
+        }
+      },
+      child: Stack(
+        children: [
+          // 底层：当前一级视图，原地淡入淡出切换，不压导航栈
+          Positioned.fill(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: KeyedSubtree(
+                key: ValueKey(_tab),
+                child: _tab == HomeShellTab.schedule
+                    ? const WeekViewPage()
+                    : const SettingsPage(isEmbeddedInShell: true),
+              ),
+            ),
+          ),
+          // 顶层：底部居中悬浮胶囊。外层容器透明、不拦截手势，
+          // 胶囊左右两侧与下方空隙保持点击穿透（SafeArea/Align 无背景不拦截命中）。
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 12,
+            child: SafeArea(
+              top: false,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: HomeCapsule(
+                  activeTab: _tab,
+                  unlocked: devUnlocked,
+                  onSelectTab: (tab) => setState(() => _tab = tab),
+                  onTapSchedule: _onTapScheduleKey,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 课表键双职责（第 2 节）：非课表视图点击仅切回课表（保持原周次）；
+  /// 已在课表视图点击触发「回到本周」（displayWeekProvider 驱动周视图跳页）。
+  void _onTapScheduleKey() {
+    if (_tab != HomeShellTab.schedule) {
+      setState(() => _tab = HomeShellTab.schedule);
+    } else {
+      ref.read(displayWeekProvider.notifier).goToday();
+    }
   }
 }

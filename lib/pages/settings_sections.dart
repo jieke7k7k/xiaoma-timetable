@@ -218,6 +218,30 @@ class AppearanceSettingsPage extends StatelessWidget {
       appBar: AppBar(title: const Text('外观'), centerTitle: true),
       body: ListView(
         children: [
+          // 2.1.2（WB_SPEC_213 第 1 节）：底部栏显示开关。说明文字作为开关下方
+          // 常驻副标题显示（不再用 ⓘ 独立点击热区）；开关即时生效、无需重启。
+          Consumer(
+            builder: (ctx, ref, _) {
+              final ui =
+                  ref.watch(uiSettingsProvider).value ?? const UiSettings();
+              return SwitchListTile(
+                secondary: const Icon(Icons.smartphone_outlined),
+                title: const Text(
+                  '底部栏显示',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+                subtitle: const Text(
+                  '开启后主页底部显示悬浮胶囊，可一键切换课表与设置；关闭后设置改从右上角菜单进入',
+                ),
+                value: ui.showBottomBar,
+                onChanged: (v) => ref
+                    .read(uiSettingsProvider.notifier)
+                    .apply(ui.copyWith(showBottomBar: v)),
+              );
+            },
+          ),
+          const Divider(height: 1, thickness: 1),
+          const SizedBox(height: AppSpacing.group),
           const _AppearanceGroup(),
           // 2.0.7 Taste 化：节次时间入口与外观组之间节间距统一 24
           const SizedBox(height: AppSpacing.group),

@@ -271,6 +271,33 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
     );
   }
 
+  /// 右上角「更多」菜单（2.1.0 起抽为方法，2.1.2 菜单去重复用）。
+  ///
+  /// 弹出动画 180ms（2.1.0 返修定版）；[items] 为空时由调用方先兜底为
+  /// 全部六项工具，绝不渲染空菜单。
+  Widget _buildMoreMenu(BuildContext context, List<MenuItemSpec> items) {
+    return PopupMenuButton<String>(
+      tooltip: '更多',
+      icon: const Icon(Icons.more_vert),
+      // 2.1.0 返修：菜单弹出动画显式卡在 150–200ms（取 180ms），即点即出
+      popUpAnimationStyle: const AnimationStyle(
+        duration: Duration(milliseconds: 180),
+      ),
+      onSelected: (route) => Navigator.pushNamed(context, route),
+      itemBuilder: (ctx) => [
+        for (final item in items)
+          PopupMenuItem(
+            value: item.route,
+            child: ListTile(
+              leading: Icon(item.icon),
+              title: Text(item.title),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+      ],
+    );
+  }
+
   /// 表头某天有考试时点开看详情（考试红点配套）
   void _showDayExams(
     BuildContext context,
@@ -386,7 +413,10 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
     // 设置页改完返回主页立即按新配置重建，无需重启 App
     final menuConfig =
         ref.watch(menuConfigProvider).value ?? MenuConfig.defaults();
-    final menuItems = visibleMenuItems(menuConfig);
+    // 2.1.2（WB_SPEC_213 第 4 节）：底部栏开启时右上角菜单运行时过滤掉「设置」项，
+    // 关闭时恢复。去重前的完整菜单用于「六项全关」兜底判定（按去重前配置判断）。
+    final rawMenuItems = visibleMenuItems(menuConfig);
+    final menuItems = homeMenuItems(menuConfig, showBottomBar: ui.showBottomBar);
     // WB-202 第 3 项补充：学期就绪后才创建 PageController，初始页即当前显示周
     // （标题与网格首帧一致，不再出现「标题第 6 周、网格第 1 周」）。
     // 创建后本页生命周期内只此一个实例；dispose 里统一回收。
@@ -544,35 +574,21 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
             icon: const Icon(Icons.add_outlined),
             onPressed: _showCreateSheet,
           ),
-          // 「更多」菜单（2.1.0 WB_SPEC_212 第 2/4 节）：按菜单配置动态生成，
-          // 可见项在前、固定「设置」殿后。六项全关时右上角直接显示齿轮进设置，
-          // 不弹空菜单——任何情况下都保留进设置的兜底入口（不许出现无设置死局）
-          if (menuItems.length <= 1)
+          // 「更多」菜单（2.1.0 WB_SPEC_212 第 2/4 节；2.1.2 WB_SPEC_213 第 4 节）：
+          // 按菜单配置动态生成，可见项在前、固定「设置」殿后；底部栏开时运行时
+          // 过滤掉「设置」。六项全关且底栏关（去重前只有设置一项）时右上角直接
+          // 齿轮进设置；六项全关且底栏开（去重后为空）时触发「更多工具」兜底——
+          // 弹菜单列全部六项工具，不出现空菜单、不出现齿轮直进设置。
+          if (rawMenuItems.length <= 1 && !ui.showBottomBar)
             IconButton(
               tooltip: '设置',
               icon: const Icon(Icons.settings),
               onPressed: () => Navigator.pushNamed(context, '/settings'),
             )
           else
-            PopupMenuButton<String>(
-              tooltip: '更多',
-              icon: const Icon(Icons.more_vert),
-              // 2.1.0 返修：菜单弹出动画显式卡在 150–200ms（取 180ms），即点即出
-              popUpAnimationStyle: const AnimationStyle(
-                duration: Duration(milliseconds: 180),
-              ),
-              onSelected: (route) => Navigator.pushNamed(context, route),
-              itemBuilder: (ctx) => [
-                for (final item in menuItems)
-                  PopupMenuItem(
-                    value: item.route,
-                    child: ListTile(
-                      leading: Icon(item.icon),
-                      title: Text(item.title),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-              ],
+            _buildMoreMenu(
+              context,
+              menuItems.isEmpty ? kCustomMenuItems : menuItems,
             ),
           const SizedBox(width: 4),
         ],
@@ -1069,6 +1085,12 @@ class _GridArea extends ConsumerWidget {
             totalHeight < constraints.maxHeight
                 ? constraints.maxHeight
                 : totalHeight;
+        // 底部安全留白（WB_SPEC_213 网格处理）：只加在滚动视图底部，不改外框
+        // 高度、不改外层 Column/Expanded 约束、不因读取 showBottomBar 导致课表
+        // 组件 Key 变化或 ScrollController 重建。胶囊显示时 76（12 下边距 +
+        // 52 胶囊高 + 12 上方呼吸间距），隐藏时 16，另加底部安全区高度。
+        final bottomInset = MediaQuery.paddingOf(context).bottom +
+            (ui.showBottomBar ? 76.0 : 16.0);
         return MediaQuery(
           // 降灵敏：子树手势触发距离 18 → 30，静置手指不再拖动课表
           data: MediaQuery.of(context).copyWith(
@@ -1080,6 +1102,7 @@ class _GridArea extends ConsumerWidget {
             physics: (scrollLocked || editMode)
                 ? const NeverScrollableScrollPhysics()
                 : const ClampingScrollPhysics(),
+            padding: EdgeInsets.only(bottom: bottomInset),
             child: SizedBox(
               height: contentHeight,
               child: Stack(

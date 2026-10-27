@@ -29,7 +29,14 @@ import '../ui/app_styles.dart';
 ///   菜单显隐状态（与菜单配置实时一致），是菜单全关时的兜底入口；
 /// - 解锁开发者选项后，在页面底部（桌面小组件之后）出现「开发者选项」入口。
 class SettingsPage extends ConsumerWidget {
-  const SettingsPage({super.key});
+  const SettingsPage({super.key, this.isEmbeddedInShell = false});
+
+  /// 是否作为壳内一级视图（底部栏开启时）显示（WB_SPEC_213 第 2 节）。
+  ///
+  /// 由构造参数**静态**决定，不绑定响应式的 showBottomBar 状态：
+  /// 壳内（true）永远不显示左上角返回箭头、列表底部加胶囊安全留白；
+  /// Push 路由进入（false，默认）永远显示返回箭头、维持常规留白。
+  final bool isEmbeddedInShell;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -40,9 +47,21 @@ class SettingsPage extends ConsumerWidget {
     final devUnlocked = ref.watch(developerOptionsProvider).value ?? false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('设置'), centerTitle: true),
+      appBar: AppBar(
+        title: const Text('设置'),
+        centerTitle: true,
+        // 壳内（一级视图）不显示返回箭头；独立 Push 路由显示
+        automaticallyImplyLeading: !isEmbeddedInShell,
+      ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),
+        // 壳内一级视图底部留白：76（12 下边距 + 52 胶囊高 + 12 呼吸）+ 底部安全区，
+        // 防止胶囊遮挡列表末尾；独立 Push 路由维持常规留白。
+        padding: EdgeInsets.only(
+          top: AppSpacing.m,
+          bottom: isEmbeddedInShell
+              ? 76 + MediaQuery.paddingOf(context).bottom
+              : AppSpacing.m,
+        ),
         children: [
           // 2.1.0（WB_SPEC_211 第 2 节）：云同步行。显示上次同步时间 + 立即同步
           // 按钮；未配置显示「未配置」；失败显示原因文案，不闪退。放在首页顶部，

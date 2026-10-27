@@ -1,8 +1,57 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-10-26（2.1.1+26：WB_SPEC_212 去底栏 + AI 藏进开发者选项 + 右上角菜单自定义，含 Supabase 合并与返修）
+> 更新时间：2026-10-26（2.1.2+27：WB_SPEC_213 悬浮胶囊底部栏，待真机目视确认）
 
 ## 做到哪了
+
+## 2026-10-26（2.1.2+27：WB_SPEC_213 悬浮胶囊底部栏，待真机目视确认）
+
+规格见任务内 WB_SPEC_213 全文 + 追加附则 5 条。沿用 Riverpod 手写 Notifier / Dao 单例 / 中文文案注释；未改主题色、未改网格行高/节次高度/带子高度（kBandHeight 24 不动）；云同步只同步课程/备注，UiSettings 仍为本地设置、不同步云端。
+
+### 第 1 节 开关与持久化
+- `lib/models/ui_settings.dart`：新增 `showBottomBar` 字段（默认 true），构造 / copyWith / toJson / fromEncoded 全链路；反序列化按 `bl('showBottomBar', true)` 兜底（null/缺失/非 bool 均回 true），旧数据无此字段按默认开、不白屏。
+- `lib/pages/settings_sections.dart`：外观子页顶部新增「底部栏显示」开关（SwitchListTile），说明文字为常驻副标题（不用 ⓘ），即时生效无需重启。
+
+### 第 2 节 壳结构与胶囊行为
+- `lib/main.dart`：`HomeShell` 按 `showBottomBar` 二选一——开时升级为单层壳（Stack + AnimatedSwitcher 淡入淡出 + PopScope + HomeCapsule），关时恢复 2.1.1 单页 WeekViewPage；watch `developerOptionsProvider` 把解锁态传给胶囊。
+- `lib/widgets/home_capsule.dart`（新建）：`enum HomeShellTab { schedule, settings }`（不用整数索引，从源头防下标越界）+ 公开 `HomeCapsule` 底部居中悬浮胶囊（高 52、圆角 26、水平内边距 20、键间距 16、宽度自适应），SafeArea 上方 12px；未解锁两键［课表｜设置］、解锁三键［助手｜课表｜设置］（课表居中）；AnimatedSize 响应解锁状态变化、不依赖 Riverpod。
+- 课表键双职责：非课表视图点击切回课表（保持原周次），已在课表点击 `displayWeekProvider.goToday()` 回到本周。
+- 系统返回：壳内非课表视图先切回课表，再按一次退出（PopScope canPop 按 `_tab == schedule`）。
+- 防困死：外观页关底部栏瞬间 `ref.listen(uiSettingsProvider)` 静默把 `_tab` 重置回 schedule（不 setState、不播动画），build 同时返回裸 WeekViewPage，返回后落课表视图。
+- `lib/pages/settings_page.dart`：新增 `isEmbeddedInShell` 构造参数，静态控制返回箭头（壳内永远不显示、Push 永远显示）与底部留白（壳内 76 + MediaQuery.padding.bottom）。
+
+### 第 3 节 与 AI 全藏的关系
+- 胶囊不常驻助手键：助手键只在 `developerOptionsProvider` 解锁后出现；点击走 `/ai-chat` 路由（AiRouteGuard 包一层），聊天页为 Push 全屏页、不属壳内一级视图、不显示胶囊、带返回键；从聊天页返回后底层仍是之前所在课表/设置高亮。
+
+### 第 4 节 菜单去重与兜底
+- `lib/models/menu_config.dart`：新增纯函数 `homeMenuItems(config, {showBottomBar})`——底部栏开时运行时过滤「设置」，关时恢复；绝不修改持久化配置数组，菜单管理页仍用 `visibleMenuItems`。
+- `lib/pages/week_view_page.dart`：右上角菜单改用 `rawMenuItems`（去重前）判「六项全关」+ `homeMenuItems`（去重后）渲染；六项全关且底栏关 → 齿轮直进设置；六项全关且底栏开（去重后为空）→ `_buildMoreMenu` 列全部六项工具兜底（不空菜单、不变齿轮）。抽出 `_buildMoreMenu` 复用，弹出动画 180ms 不变。
+
+### 网格处理
+- `lib/pages/week_view_page.dart`：`_GridArea` 滚动视图底部新增留白——胶囊显示时 76、隐藏时 16，另加 MediaQuery 底部安全区高度；不改外框高度、不改外层 Column/Expanded 约束、不因读取 showBottomBar 导致课表组件 Key 变化或 ScrollController 重建。
+
+### 追加附则 5 条落实
+1. 壳用 `HomeShellTab` 枚举；胶囊三键 = 2 视图切换键（课表/设置，常驻选中高亮）+ 1 路由跳转键（助手，仅按压态、无常驻选中）。
+2. `SettingsPage.isEmbeddedInShell` 静态决定返回箭头显隐，不绑定响应式 showBottomBar。
+3. 关底部栏瞬间 `ref.listen` 静默重置 `_tab`（不 setState、无动画），build 直接返回 WeekViewPage。
+4. 设置根页壳内底部留白 76 + MediaQuery.padding.bottom；Push 路由维持常规留白。
+5. 胶囊容器用 AnimatedSize 响应解锁状态变化，关于页内解锁后后台即时完成布局更新，不刻意延迟。
+
+### 测试
+- `test/ui_settings_test.dart`（改）：补 showBottomBar 默认 true / 往返 / null 兜底。
+- `test/menu_config_test.dart`（改）：补 `homeMenuItems` 去重（开时无设置、关时恢复、不修改原配置）。
+- `test/home_shell_test.dart`（改）：由「去底栏」改为「悬浮胶囊」等价断言（无 IndexedStack / NavigationBar，胶囊两键存在）。
+- `test/home_capsule_test.dart`（新增）：胶囊两键/解锁三键（课表居中）、键回调、助手键 Push 全屏（无胶囊、有返回键）、字体放大 1.3 倍不纵向溢出（复审 P0-1 修复后补的用例）。
+- 未覆盖（本次未补测试，如实标注，不冒充已覆盖）：持久化杀进程重进、HomeShell 层课表键双职责、解锁展开真实链路、防困死、主页渲染层菜单去重与「更多工具」兜底。
+- 复审结论闭环：P0-1（胶囊写死 52 高、字体放大溢出）已修（改最小高 + 补 1.3 倍用例）；P0-2（路由字面量疑似带空格）本地 grep 未发现（`'/ai-chat'` 无空格），判定为粘贴污染、撤销；P1-5（更多工具兜底数据源）已核实为六项工具且不含设置；P1-6（开关落库）已核实 apply 先落库再发状态、无内存与磁盘不一致机制；设置页两次查询分属 uiSettings 与 menuConfig 两个不同键、非重复读。
+
+### 未覆盖处（真机复测项，交付前须真机目视确认）
+- 胶囊悬浮阴影 / 点击穿透 / 左右下方空隙是否真的点到课表；
+- 胶囊 2 键 ↔ 3 键展开动画在低端机是否掉帧；
+- 关底部栏后侧滑返回底层无胶囊、滚动位置与网格高度是否无闪烁跳动；
+- 2.1.1 旧数据覆盖安装 2.1.2 首次默认显示胶囊、原菜单排序与 AI 解锁状态不丢失；
+- 系统返回键「先回课表再退出」与「聊天页输入框不被挡」。
+- **本任务无真机环境，以上视觉项须真机目视确认，不得直接判通过。**
 
 ## 2026-10-26（2.1.1+26：WB_SPEC_212 去底栏 + AI 藏进开发者选项 + 右上角菜单自定义，含 Supabase 合并与返修，待真机目视确认）
 

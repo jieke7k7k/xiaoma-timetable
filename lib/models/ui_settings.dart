@@ -26,6 +26,7 @@ class UiSettings {
     this.showClassBroadcast = false,
     this.autoFitHeight = true,
     this.highlightTodayColumn = false,
+    this.showBottomBar = true,
   });
 
   /// 课程格子高度（逻辑像素 px），范围 44~96；默认 46 与旧版按屏均分的手感接近
@@ -108,6 +109,11 @@ class UiSettings {
   /// 今天整列边框高亮开关（1.2.6）：1.2.5 的整列边框改为可关，默认关
   final bool highlightTodayColumn;
 
+  /// 底部悬浮胶囊栏开关（WB_SPEC_213 第 1 节）：主页底部是否显示悬浮胶囊
+  /// （课表/设置切换键）。默认开；用户关闭后持久化记忆，下次启动仍保持关闭。
+  /// 旧数据无此字段时按默认开兜底，绝不为 null 导致启动白屏。
+  final bool showBottomBar;
+
   /// 实际生效的主题种子色（ARGB）
   int get themeSeedValue =>
       themeCustomColor ?? themePresetById(themePresetId).seed;
@@ -144,6 +150,7 @@ class UiSettings {
     bool? showClassBroadcast,
     bool? autoFitHeight,
     bool? highlightTodayColumn,
+    bool? showBottomBar,
   }) {
     return UiSettings(
       cellHeight: cellHeight ?? this.cellHeight,
@@ -166,6 +173,7 @@ class UiSettings {
       showClassBroadcast: showClassBroadcast ?? this.showClassBroadcast,
       autoFitHeight: autoFitHeight ?? this.autoFitHeight,
       highlightTodayColumn: highlightTodayColumn ?? this.highlightTodayColumn,
+      showBottomBar: showBottomBar ?? this.showBottomBar,
     );
   }
 
@@ -188,6 +196,7 @@ class UiSettings {
     'showClassBroadcast': showClassBroadcast,
     'autoFitHeight': autoFitHeight,
     'highlightTodayColumn': highlightTodayColumn,
+    'showBottomBar': showBottomBar,
   };
 
   String encode() => jsonEncode(toJson());
@@ -242,6 +251,8 @@ class UiSettings {
         showClassBroadcast: bl('showClassBroadcast', false),
         autoFitHeight: bl('autoFitHeight', true),
         highlightTodayColumn: bl('highlightTodayColumn', false),
+        // 反序列化容错：旧数据无此字段或字段为 null 时一律按默认开兜底（true）
+        showBottomBar: bl('showBottomBar', true),
       );
     } catch (_) {
       return const UiSettings();

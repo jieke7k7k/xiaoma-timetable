@@ -24,6 +24,7 @@ void main() {
       expect(ui.highlightTodayColumn, isFalse); // 1.2.6 边框高亮默认关
       expect(ui.showWeekParity, isFalse); // 2.0.1 标题单双周默认关
       expect(ui.showClassBroadcast, isFalse); // 2.0.1 上课播报默认关
+      expect(ui.showBottomBar, isTrue); // 2.1.2 底部栏默认开
       expect(UiSettings.fromEncoded('').cellHeight, 46);
       expect(UiSettings.fromEncoded('坏掉的 json').cellHeight, 46);
     });
@@ -48,6 +49,7 @@ void main() {
         showClassBroadcast: true,
         autoFitHeight: true,
         highlightTodayColumn: true,
+        showBottomBar: false,
       );
       final back = UiSettings.fromEncoded(ui.encode());
       expect(back.cellHeight, 64);
@@ -68,6 +70,16 @@ void main() {
       expect(back.showClassBroadcast, isTrue);
       expect(back.autoFitHeight, isTrue);
       expect(back.highlightTodayColumn, isTrue);
+      expect(back.showBottomBar, isFalse);
+    });
+
+    test('showBottomBar 反序列化容错：缺失/null/非 bool 一律回默认开', () {
+      // 2.1.2（WB_SPEC_213 第 1 节）：旧数据无此字段或为 null 时按默认开兜底
+      expect(UiSettings.fromEncoded('{}').showBottomBar, isTrue);
+      expect(UiSettings.fromEncoded('{"showBottomBar": null}').showBottomBar, isTrue);
+      expect(UiSettings.fromEncoded('{"showBottomBar": "yes"}').showBottomBar, isTrue);
+      expect(UiSettings.fromEncoded('{"showBottomBar": false}').showBottomBar, isFalse);
+      expect(UiSettings.fromEncoded('{"showBottomBar": true}').showBottomBar, isTrue);
     });
 
     test('越界值被钳制：格高、圆角、字号系数', () {

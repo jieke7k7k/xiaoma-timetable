@@ -2,6 +2,29 @@
 
 > 每完成一个阶段更新本文件，防止上下文丢失。
 
+## 2.1.2 变更（2026-10-26，WB_SPEC_213 悬浮胶囊底部栏）
+
+| 文件 | 改动 |
+|---|---|
+| `lib/models/ui_settings.dart` | 新增 `showBottomBar` 字段（默认 true），构造/copyWith/toJson/fromEncoded 全链路；反序列化 null/缺失兜底 true |
+| `lib/pages/settings_sections.dart` | 外观子页顶部新增「底部栏显示」开关，说明文字为常驻副标题（不用 ⓘ），即时生效 |
+| `lib/main.dart` | `HomeShell` 按 showBottomBar 二选一：开→单层壳（Stack + AnimatedSwitcher + PopScope + HomeCapsule），关→单页 WeekViewPage；watch developerOptionsProvider 并把解锁态传入胶囊；防困死静默重置 Tab |
+| `lib/widgets/home_capsule.dart`（新建） | `enum HomeShellTab { schedule, settings }` + 公开 `HomeCapsule` 悬浮胶囊（高 52/圆角 26/两键/解锁三键、AnimatedSize、点击穿透），不依赖 Riverpod 便于直测 |
+| `lib/pages/settings_page.dart` | 新增 `isEmbeddedInShell` 构造参数，静态控制返回箭头与底部留白（壳内 76 + 安全区） |
+| `lib/pages/week_view_page.dart` | 右上角菜单运行时去重「设置」+ 更多工具兜底；网格滚动视图底部留白 76/16 + 安全区；抽出 `_buildMoreMenu` |
+| `lib/models/menu_config.dart` | 新增纯函数 `homeMenuItems(config, {showBottomBar})` 运行时去重，不修改持久化配置 |
+| `pubspec.yaml` | 版本 2.1.2+27 |
+| 测试 | 改 `ui_settings_test.dart`、`menu_config_test.dart`、`home_shell_test.dart`；新增 `home_capsule_test.dart` |
+
+### 关键设计决策
+
+- **壳用枚举不用索引**：`HomeShellTab { schedule, settings }` 只有两个合法值，三键变两键（解锁状态变化）时不存在整数下标越界，从源头杜绝 RangeError 红屏。
+- **胶囊三键定性**：课表/设置是视图切换键（常驻选中高亮），助手是路由跳转键（仅按压态、无常驻选中）；助手页为 Push 全屏路由（`/ai-chat`，AiRouteGuard 包一层），不属于壳内一级视图，聊天页不显示胶囊。
+- **返回箭头静态化**：`SettingsPage.isEmbeddedInShell` 由构造参数决定，不绑定响应式 showBottomBar，避免路由过渡期间箭头闪烁。
+- **防困死静默切换**：外观页关底部栏瞬间 `ref.listen(uiSettingsProvider)` 直接改 `_tab = schedule`（不 setState、无动画），build 同步返回裸 WeekViewPage，趁外观页顶层遮挡时静默完成，返回后落课表。
+- **菜单去重只在渲染层**：`homeMenuItems` 纯函数运行时过滤「设置」，不改 `home_menu_config` 持久化数组；六项全关判定仍看去重前的 `visibleMenuItems`，底栏开且去重后为空时用「更多工具」兜底（列六项工具），不变齿轮、不空菜单。
+- **网格留白不动约束**：胶囊显示/隐藏只改滚动视图底部 padding（76/16 + 安全区），不改外层 Column/Expanded、不改课表组件 Key 或 ScrollController，避免切换闪烁。
+
 ## 2.1.1 变更（2026-10-26，WB_SPEC_212 去底栏 + AI 藏进开发者选项 + 右上角菜单自定义，含 Supabase 合并与返修）
 
 | 文件 | 改动 |
