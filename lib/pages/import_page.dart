@@ -380,7 +380,7 @@ class _ImportPageState extends ConsumerState<ImportPage> {
 
   /// 导入失败对话框：失败不是死胡同，提供「复制错误报告 / 重新选择 / 返回」
   ///
-  /// 错误报告可复制后发给 AI，请它重新生成导入内容（参考 fkwakeup 的失败闭环）。
+  /// 错误报告可复制后发给他人帮忙排查（参考 fkwakeup 的失败闭环）。
   void _showError(
     BuildContext context, {
     required String source,
@@ -403,7 +403,7 @@ class _ImportPageState extends ConsumerState<ImportPage> {
               if (ctx.mounted) Navigator.pop(ctx);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('错误报告已复制，可发给 AI 重新生成')),
+                  const SnackBar(content: Text('错误报告已复制，可发给他人帮忙排查')),
                 );
               }
             },

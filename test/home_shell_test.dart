@@ -11,13 +11,14 @@ import 'package:xiaoma_timetable/pages/settings_page.dart';
 import 'package:xiaoma_timetable/pages/week_view_page.dart';
 import 'package:xiaoma_timetable/widgets/home_capsule.dart';
 
-/// 悬浮胶囊底部栏测试（WB_SPEC_213 第 2 节）
+/// 悬浮胶囊底部栏测试（WB_SPEC_213 第 2 节；2.1.3 WB_SPEC_214 第 1 节改写）
 ///
 /// 2.1.2 起底部栏以「悬浮胶囊」形态回归：默认开、壳内默认停在课表一级视图，
-/// 底部居中胶囊两键［课表｜设置］。断言：
+/// 底部居中胶囊两键［课表｜设置］。2.1.3 起胶囊恒为两键，壳不再按任何开关展开
+/// 出第三个键。断言：
 /// 1. 根页面仍渲染 WeekViewPage（课表一级视图）+ 悬浮胶囊；
 /// 2. 不再用 IndexedStack 三页签 / NavigationBar / BottomNavigationBar；
-/// 3. 胶囊两键存在、无「主页」键（沿用 2.1.1 去底栏后的等价断言口径）；
+/// 3. 胶囊恰好两键、无「主页」键、无第三个键及其图标；
 /// 4. 点「设置」键切到壳内设置根页，且无左上角返回箭头。
 ///
 /// HomeShell 的启动联动 / WeekViewPage 的公告检查会走平台通道与网络，这里用
@@ -71,7 +72,9 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('主页渲染 WeekViewPage + 悬浮胶囊两键，无 IndexedStack/NavigationBar', (tester) async {
+  testWidgets('主页渲染 WeekViewPage + 悬浮胶囊恒两键，无 IndexedStack/NavigationBar', (
+    tester,
+  ) async {
     await pumpHome(tester);
 
     // 课表一级视图 + 悬浮胶囊都存在
@@ -81,10 +84,23 @@ void main() {
     expect(find.byType(IndexedStack), findsNothing);
     expect(find.byType(BottomNavigationBar), findsNothing);
     expect(find.byType(NavigationBar), findsNothing);
-    // 胶囊两键，无「主页」键
+    // 胶囊恰两键，无「主页」键，也没有第三个键及其图标
     expect(find.text('课表'), findsOneWidget);
     expect(find.text('设置'), findsOneWidget);
     expect(find.text('主页'), findsNothing);
+    expect(find.byIcon(Icons.smart_toy_outlined), findsNothing);
+    expect(
+      tester
+          .widgetList<InkWell>(
+            find.descendant(
+              of: find.byType(HomeCapsule),
+              matching: find.byType(InkWell),
+            ),
+          )
+          .length,
+      2,
+      reason: '胶囊恒为［课表｜设置］两键，不再有任何展开逻辑',
+    );
 
     // 卸载主页，取消 WeekViewPage 的分钟级刷新定时器
     await tester.pumpWidget(const SizedBox());

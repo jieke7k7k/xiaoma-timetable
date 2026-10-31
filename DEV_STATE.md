@@ -1,8 +1,55 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-10-26（2.1.2+27：WB_SPEC_213 悬浮胶囊底部栏，待真机目视确认）
+> 更新时间：2026-10-30（2.1.3+28：WB_SPEC_214 删除全部实验性 AI 功能，只做减法）
 
 ## 做到哪了
+
+## 2026-10-30（2.1.3+28：WB_SPEC_214 删除全部实验性 AI 功能）
+
+规格见任务内 WB_SPEC_214 全文。本版没有新增功能，是把 2.0.0~2.1.2 期间加的实验性 AI 模块（对话页 / 历史页 / 设置页 / 隐藏入口页 / 外部信箱页与其内嵌授权页 / 指令执行器 / 两个模型 / 三个专属工具 / 路由守卫 / 连点解锁工具）从代码里整体删除，**不是隐藏、不是开关关闭**。
+
+### 交付形态（重要）
+- 本版**未推送仓库**（当前环境无 GitHub 凭证）：交付物是 `files/` 下的统一 diff（`diff -ruN`，路径为仓库相对路径）+ `new_files/` 下全部新增文件全文，打包成 zip。
+- **本环境没能跑 `flutter analyze` / `flutter test`**：沙箱里预装的是 Flutter 3.0.0 / Dart 2.17.0，而本项目 `environment.sdk: ^3.13.5`、`flutter: >=3.47.0`（CI 用 3.47.7），旧 SDK 连语法都解析不了（records / patterns）；在线下载 3.47.9 的 SDK 只有约 80 KB/s，1.4 GB 不可行。因此交付里所有「测试已覆盖」的表述都指**用例已写入仓库**，执行结果须在有 Flutter 3.47.x 的机器上跑：`flutter pub get && flutter analyze && flutter test`。这一点在交付说明里也已如实写明，不冒充跑通过。
+
+### 第 1 节 删除范围（18 个 lib 文件 + 1 个资源目录 + 9 个测试）
+- 页面 6：`ai_chat_page` / `ai_history_page` / `ai_settings_page` / `bridge_page` / `bridge_web_login_page` / `developer_options_page`。
+- 服务 5：`ai_service` / `bridge_service` / `chat_session_service` / `operation_log_service` / `command_executor`。
+- 模型 2：`chat_session` / `operation_log`。
+- 工具 4：`bridge_codec` / `ai_context` / `command_describe`（仅被前两者引用，一并删）/ `tap_unlock`（仅关于页用）。
+- 组件 1：`ai_route_guard`。
+- 资源：`assets/icons/`（两张像素小马图只被聊天页引用），`pubspec.yaml` 的 `assets/icons/` 条目同步删除。
+- `main.dart`：5 条 AI 路由 + 相关 import + `_silentBridgeSync` / `_applyBridgeChanges`。
+- `providers.dart`：`DeveloperOptionsNotifier` / `developerOptionsProvider`。
+- 设置页：解锁后才出现的入口行与 `developerOptionsProvider` watch。
+- 关于页：版本行恢复纯展示（连点不解锁、不写库、不提示），页面退回 `StatefulWidget`。
+- 胶囊 / 壳：`HomeCapsule` 删 `unlocked` 参数、第三个键与 AnimatedSize；`HomeShell` 删解锁态 watch。
+- 依赖：**零增减**。逐项核对过——`webview_flutter` 保留（`web_import_page.dart` 在用），其余依赖均有非 AI 使用方；无 Markdown 依赖、无 proguard 文件，无需处理。
+- `AndroidManifest.xml`：`usesCleartextTraffic` 复核后**保留 true** 并在文件里写明理由（教务导入页允许用户填 http:// 校内地址，WebView 受该开关约束）。
+
+### 第 2 节 数据删除（v5 → v6）
+- `DbHelper._dbVersion = 6`；`createSchema` 不再建 `chat_sessions` / `operation_log`。
+- 新增 `@visibleForTesting upgradeSchema(DatabaseExecutor, oldVersion, newVersion)`，`_open` 的 `onUpgrade` 直接指向它（迁移测试跑的就是线上这份 SQL）。
+- `<6` 分支：`DROP TABLE IF EXISTS` 两张表（带 IF EXISTS，极早期 v1/v2 老库不会 `no such table`）+ 按 exact key `DELETE` 十个设置键（AI 三项 / 解锁开关一项 / 信箱同步六项）。sqflite 已把 onUpgrade 包在单个事务里，删表与清键同事务。
+- 原 `<4`「补建两张表」分支删除：升级链上没有先建后删的理由。
+- 清理只在 `oldVersion < 6` 时执行一次，不在启动路径上反复跑。
+- 名单集中在 `DbHelper.retiredTables` / `retiredSettingKeys`，迁移分支与测试共用同一事实来源。
+- 路由兜底：`MaterialApp.onUnknownRoute` → `MaterialPageRoute(_RootGate)`，未知路由静默回首页；路由名字符串常量随页面删除，编译期即可发现漏改。
+
+### 第 3 节 不改动（已逐项确认）
+课表周视图、课程/备注/考试、单次调课、云同步（Supabase 直连，设置仍为本机）、菜单自定义、胶囊两键、设置页其它入口，全部原样保留；GitHub 私有仓 `xiaoma-app-bridge` 只在文档里提到，代码不再有任何交互，仓库本身按规格不动。
+
+### 第 5 节 测试
+- 删除 9 个：`ai_context_test` / `ai_history_page_test` / `ai_service_test` / `bridge_codec_test` / `bridge_page_test` / `chat_session_test` / `command_executor_test` / `developer_options_test` / `operation_undo_test`。
+- 改写 6 个：`home_capsule_test`（断言恒两键、无第三个键与图标、两键不 Push 路由）、`home_shell_test`（胶囊恒两键、无 IndexedStack/NavigationBar、设置键仍能切视图）、`fix212_test`（只留转场时长，守卫用例随组件删除）、`settings_page_test`（入口集合固定为 16 行、无 `Icons.build_outlined`）、`backup_codec_test`（删「凭据键剔除」两例，改为「设置原样进备份」「恢复全量覆盖」「老备份带遗留键按普通设置落库」）、`settings_sections_test`（注释去掉对已删测试文件的引用）。
+- 新增 2 个：`db_migration_213_test`（文件库模拟 2.1.2 → 2.1.3：两表不存在、十键删空、业务数据与非 AI 键完好；另含新装 v6 不建表、v1 完整升级链不报错、清理只跑一次四例）、`about_page_tap_test`（版本行连点 5 次 / 10 次：无跳转、无 SnackBar/Dialog、不写设置）。
+- 静态扫描门禁：`grep -riE "ai_|bridge|chat_session|operation_log|developer_options|智能助手|AI 桥|开发者选项" lib/ test/` 的命中**只剩 `db_helper.dart` 的清理名单与 `db_migration_213_test.dart` 的迁移断言**两处（各 10/若干行字面量）。这两处是规格第 2 节「按 exact key 清理」与「断言两张表已不存在」的必要字面量，没有可达读写路径；其余 lib 页面/组件/服务/模型与全部测试文件均为零命中。
+
+### 未覆盖 / 待人工确认
+- 真机升级实测（v5 库 → v6）：迁移 SQL 已在 ffi 文件库上覆盖，但「真机 sqflite 走 onUpgrade + 首帧读库时序」仍需一次真机目视确认。
+- 老备份（带遗留键）恢复后的惰性数据：已确认无读取方，但未做真机回归。
+- CHANGELOG 历史条目里仍保留当年发布时的原始措辞（与「通道旧公告不动」同一口径，属发布历史而非功能入口）；新条目已避开这些字样。
+
 
 ## 2026-10-26（2.1.2+27：WB_SPEC_213 悬浮胶囊底部栏，待真机目视确认）
 

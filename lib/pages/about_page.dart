@@ -1,30 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../providers/providers.dart';
 import '../services/channel_service.dart';
-import '../utils/tap_unlock.dart';
 
 /// 关于页（1.2.4）：版本号、检查更新、公告入口、更新日志、开源许可、
 /// 使用帮助、问题反馈与开发者信息——完整应用该有的收尾都在这一页。
-class AboutPage extends ConsumerStatefulWidget {
+///
+/// 2.1.3（WB_SPEC_214 第 1 节）：版本行恢复为纯展示。此前的「连点解锁」入口
+/// 与其计数器一并删除——版本行不再有点击手势、不再写任何设置、不再弹提示。
+class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
 
   @override
-  ConsumerState<AboutPage> createState() => _AboutPageState();
+  State<AboutPage> createState() => _AboutPageState();
 }
 
-class _AboutPageState extends ConsumerState<AboutPage> {
+class _AboutPageState extends State<AboutPage> {
   PackageInfo? _pkg;
   ChannelInfo? _channel;
   Set<String> _seen = {};
   bool _checking = false;
   String? _updateHint;
-
-  /// 版本行连点解锁计数器（WB_SPEC_212 第 3 节）：5 次、2 秒窗口内判定。
-  final TapUnlockCounter _versionTapCounter = TapUnlockCounter();
 
   @override
   void initState() {
@@ -44,22 +41,6 @@ class _AboutPageState extends ConsumerState<AboutPage> {
   }
 
   int get _currentCode => int.tryParse(_pkg?.buildNumber ?? '') ?? 0;
-
-  /// 版本行点击：连续点满 5 次（2 秒内）解锁开发者选项（WB_SPEC_212 第 3 节）。
-  ///
-  /// 误触一次不解锁、不弹窗、不提示；界面上不写任何「连点五次解锁」之类文案，
-  /// 也不向普通用户透露解锁方法。解锁成功后给一句轻提示，方便开发者确认。
-  /// 2.1.0 返修：等写库完成再提示，写库失败提示失败不谎报；已解锁时重复连点
-  /// 不再重复写库、不再重复提示。
-  Future<void> _onVersionTap() async {
-    if (!_versionTapCounter.tap()) return;
-    if (ref.read(developerOptionsProvider).value == true) return;
-    final ok = await ref.read(developerOptionsProvider.notifier).unlock();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ok ? '开发者选项已开启' : '解锁失败，请稍后重试')),
-    );
-  }
 
   Future<void> _launch(String url) async {
     final uri = Uri.parse(url);
@@ -203,20 +184,15 @@ class _AboutPageState extends ConsumerState<AboutPage> {
             ),
           ),
           const SizedBox(height: 4),
-          // 版本行（WB_SPEC_212 第 3 节）：连点 5 次解锁开发者选项；
-          // 版本还没加载出来时不可点（也谈不上解锁）
+          // 版本行（2.1.3）：纯展示，不响应点击、不写设置、不弹提示
           Center(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _pkg == null ? null : _onVersionTap,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                child: Text(
-                  _pkg == null
-                      ? '版本加载中…'
-                      : '版本 ${_pkg!.version}（${_pkg!.buildNumber}）',
-                  style: TextStyle(fontSize: 13, color: scheme.outline),
-                ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Text(
+                _pkg == null
+                    ? '版本加载中…'
+                    : '版本 ${_pkg!.version}（${_pkg!.buildNumber}）',
+                style: TextStyle(fontSize: 13, color: scheme.outline),
               ),
             ),
           ),

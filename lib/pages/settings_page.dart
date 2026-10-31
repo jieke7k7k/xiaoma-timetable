@@ -20,14 +20,14 @@ import '../ui/app_styles.dart';
 /// 纯重复。首页现在只留入口行，组与组之间用比行内更大的 AppSpacing 间距分隔。
 ///
 /// 2.0.7（WB_SPEC_208 第 1 节）Taste 化只动布局与层级；2.0.8（WB_SPEC_209
-/// 第 3 节）删掉「和智能助手聊聊」入口。
+/// 第 3 节）删掉底部栏的聊天入口。
 ///
-/// 2.1.0（WB_SPEC_212 第 3/4 节）：
-/// - 删掉「智能助手设置」入口（AI 全部收进开发者选项，普通用户看不到 AI 字样）；
-/// - 新增「菜单管理」入口（进菜单管理子页）；
-/// - 新增「更多工具」分组：全量平铺可自定义的六个菜单项，右侧灰字标注
-///   菜单显隐状态（与菜单配置实时一致），是菜单全关时的兜底入口；
-/// - 解锁开发者选项后，在页面底部（桌面小组件之后）出现「开发者选项」入口。
+/// 2.1.0（WB_SPEC_212 第 3/4 节）：新增「菜单管理」入口（进菜单管理子页）；
+/// 新增「更多工具」分组：全量平铺可自定义的六个菜单项，右侧灰字标注
+/// 菜单显隐状态（与菜单配置实时一致），是菜单全关时的兜底入口。
+///
+/// 2.1.3（WB_SPEC_214 第 1 节）：此前那个「解锁后才出现」的隐藏入口整体删除，
+/// 页面底部不会再多出第 17 行；本页入口集合自此固定，不随任何开关变化。
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key, this.isEmbeddedInShell = false});
 
@@ -43,8 +43,6 @@ class SettingsPage extends ConsumerWidget {
     // 菜单配置驱动「更多工具」分组右侧的显隐标注（实时一致，无需重启）
     final menuConfig =
         ref.watch(menuConfigProvider).value ?? MenuConfig.defaults();
-    // 解锁后才显示开发者选项入口；解锁前设置页不得出现任何 AI 字样与入口
-    final devUnlocked = ref.watch(developerOptionsProvider).value ?? false;
 
     return Scaffold(
       appBar: AppBar(
@@ -144,17 +142,6 @@ class SettingsPage extends ConsumerWidget {
             subtitle: '今日课程小组件的添加说明',
             route: '/settings-widget',
           ),
-          // 2.1.0（WB_SPEC_212 第 3 节）：开发者选项入口，只在解锁后出现，
-          // 固定在设置页底部（桌面小组件入口之后）；解锁前不渲染任何 AI 相关入口
-          if (devUnlocked) ...[
-            const SizedBox(height: AppSpacing.group),
-            const _EntryTile(
-              icon: Icons.build_outlined,
-              title: '开发者选项',
-              subtitle: '智能助手聊天、智能助手设置、智能助手历史',
-              route: '/developer-options',
-            ),
-          ],
         ],
       ),
     );

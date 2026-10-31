@@ -23,7 +23,7 @@ void main() {
   late Database db;
 
   setUp(() async {
-    // 与 bridge_page_test 同款：内存库 + 共享 schema，外观页读库直接用
+    // 与其它 FFI widget 测试同款：内存库 + 共享 schema，外观页读库直接用
     db = await databaseFactoryFfi.openDatabase(
       inMemoryDatabasePath,
       options: OpenDatabaseOptions(

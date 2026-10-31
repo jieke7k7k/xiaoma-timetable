@@ -17,6 +17,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <!-- 1.2.1：关闭安卓 14+ 预见式返回动画（侧滑预窥上一页），回到经典即时返回 -->
+    <!-- 2.1.3（WB_SPEC_214 第 1 节）复核 usesCleartextTraffic：保留 true，理由如下——
+         云同步（Supabase）与版本/公告通道全部走 https，不再需要明文；但「教务官网导入」
+         页（web_import_page.dart）让用户自己填学校地址，仍显式允许 http:// 开头的老教务
+         系统，WebView 在 Android 9+ 会读这个开关，收紧为 false 会让这类学校的导入直接
+         白屏。故本版不收紧，等导入流程明确只支持 https 时再单独处理。 -->
     <application
         android:label="小马课表"
         android:name="${applicationName}"

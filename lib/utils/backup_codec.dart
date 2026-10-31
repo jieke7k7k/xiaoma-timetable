@@ -42,9 +42,13 @@ import '../models/time_slot.dart';
 ///
 /// v3（2.0.0）新增可选段 notes：备注此前是唯一没进备份的业务数据（丢备份＝丢
 /// 全部备忘）。v1/v2 备份没有这一段，[decode] 按空列表处理，与 fonts 段同一套
-/// 兼容做法。同一版起 [secretSettingKeys] 列出的四个键（AI Key 与桥的
-/// 令牌/仓库）永不写进备份，恢复时也以本机值为准——备份文件是要能随手分享的，
-/// 带上凭据就是泄露。
+/// 兼容做法。
+///
+/// 2.1.3：备份格式不变（仍是 v3），但此前「四个本机凭据键不进备份」的剔除逻辑
+/// 随对应功能整体删除——App 里已经不存在任何凭据类设置，剔除名单自然为空，
+/// 也就没有「恢复时保留本机值」这一步可做。旧备份文件里可能仍带着那几个遗留键，
+/// 恢复后会作为普通设置项落库；它们没有任何读取方，属于无害的惰性数据，
+/// 下一次升到 6 的迁移已经不会再触发（迁移只在升级那一瞬间跑一次）。
 class BackupCodec {
   BackupCodec._();
 
@@ -57,34 +61,12 @@ class BackupCodec {
   /// 备份文件归属标记（信息性字段，version 才是格式判断依据）
   static const String appTag = 'simple_timetable';
 
-  /// **永不进备份**的设置键（2.0.0 复审 B2）。
-  ///
-  /// 这四个键都是「本机凭据」：AI 的 Key 与 AI 桥的令牌（以及它指向哪个仓库）。
-  /// 备份文件的用途是换机/重装，甚至是随手发给别人帮忙看一眼，带上凭据等于
-  /// 把密钥交出去。集中成一份常量集合，是为了 [encode]（剔除）与 [restore]
-  /// （保留本机值）共用同一份名单，将来新增凭据键只改这一处。
-  ///
-  /// 用户侧文案已同步：页面里「别外发备份文件」的提示改为「备份里不含密钥」。
-  static const Set<String> secretSettingKeys = {
-    'ai_api_key',
-    'bridge_token',
-    'bridge_owner',
-    'bridge_repo',
-  };
-
   /// 云同步水位键（须与 `SupabaseSyncService.lastSyncAtKey` 保持一致）。
   ///
   /// 它不属于机密键、正常进备份；但恢复时**强制归零**——见 [restore]，
   /// 等价于恢复后下一次同步重新走「首次迁移」全量上传（upsert 幂等），
   /// 避免沿用备份里的旧水位把恢复进来的课程/备注当成「已同步过」而漏传。
   static const String syncWatermarkKey = 'supabase_last_sync_at';
-
-  /// 剔除机密键后的设置副本（[encode] 用）。不修改入参。
-  static Map<String, String> stripSecretSettings(Map<String, String> settings) =>
-      {
-        for (final e in settings.entries)
-          if (!secretSettingKeys.contains(e.key)) e.key: e.value,
-      };
 
   /// 单个字体文件进备份的体积上限（8MB）。
   ///
@@ -99,9 +81,8 @@ class BackupCodec {
   /// [fonts] 为已按体积过滤好的字体（见 [collectFonts]），不传就没有 fonts 段
   /// 之外的额外开销；这里不做任何体积判断，保持 encode 是纯组装。
   ///
-  /// [settings] 里的 [secretSettingKeys] 一律剔除（见那里的说明）：手动导出与
-  /// 启动自动备份都走这一个函数，两条路径天然一致，不存在「手动备份带密钥、
-  /// 自动备份不带」这种靠人记的区别。
+  /// [settings] 原样进备份（2.1.3 起 App 里已无凭据类设置，不需要再剔除，
+  /// 见类注释）。
   static Map<String, dynamic> encode({
     required List<Semester> semesters,
     required List<TimeSlot> timeSlots,
@@ -120,7 +101,7 @@ class BackupCodec {
         'timeSlots': [for (final t in timeSlots) t.toMap()],
         'courses': [for (final c in courses) c.toMap()],
         'courseOverrides': [for (final o in overrides) o.toMap()],
-        'appSettings': stripSecretSettings(settings),
+        'appSettings': settings,
         'notes': [for (final n in notes) n.toMap()],
         'fonts': [for (final f in fonts) f.toJson()],
       };
@@ -321,10 +302,6 @@ class BackupCodec {
       await txn.delete('notes');
       await txn.delete('time_slots');
 
-      // 清空 app_settings 之前先留住本机凭据：它们不进备份，恢复也不该清掉
-      // （备份里若被人手改塞了这四个键，同样以本机为准，见下面的重灌循环）
-      final localSecrets = await _readLocalSecrets(txn);
-
       await txn.delete('app_settings');
       await txn.delete('semesters');
 
@@ -353,18 +330,12 @@ class BackupCodec {
         await txn.insert('time_slots', t.toMap());
       }
       for (final e in data.appSettings.entries) {
-        // 备份里的凭据键一律忽略（哪怕是老版本备份或被人手改塞进来的）
-        if (secretSettingKeys.contains(e.key)) continue;
         // 云同步水位不进备份生效：恢复后强制归零（见下面），这里跳过备份值
         if (e.key == syncWatermarkKey) continue;
         await txn.insert('app_settings', {'key': e.key, 'value': e.value});
       }
-      // 写回恢复前读到的本机凭据（本机本来没存这个键就不写，保持「没配」状态）
-      for (final e in localSecrets.entries) {
-        await txn.insert('app_settings', {'key': e.key, 'value': e.value});
-      }
       // P0-5：云同步水位归零——恢复后等价于重新首次迁移，下次同步全量上传，
-      // upsert 幂等、不会重复污染云端；机密键仍以本机为准，不受这里影响。
+      // upsert 幂等、不会重复污染云端。
       await txn.insert('app_settings', {'key': syncWatermarkKey, 'value': '0'});
       for (final n in data.notes) {
         // 与其它表一致：去掉 id 让自增重新分配，不照抄备份里的 id
@@ -379,21 +350,6 @@ class BackupCodec {
       courseOverrides: data.courseOverrides.length,
       notes: data.notes.length,
     );
-  }
-
-  /// 事务内读出本机 [secretSettingKeys] 的当前值（键不存在就不出现在结果里）
-  static Future<Map<String, String>> _readLocalSecrets(
-    DatabaseExecutor txn,
-  ) async {
-    final placeholders = List.filled(secretSettingKeys.length, '?').join(', ');
-    final rows = await txn.query(
-      'app_settings',
-      where: 'key IN ($placeholders)',
-      whereArgs: secretSettingKeys.toList(),
-    );
-    return {
-      for (final r in rows) r['key'] as String: r['value'] as String,
-    };
   }
 }
 
@@ -414,7 +370,7 @@ class BackupData {
   final List<Course> courses;
   final List<CourseOverride> courseOverrides;
 
-  /// 备份里的设置；[secretSettingKeys] 那四个键不在此列（不进备份、也不生效）
+  /// 备份里的设置（原样来自 app_settings，恢复时按全量语义覆盖本机）
   final Map<String, String> appSettings;
 
   /// 备份里的备注（v3 起有；旧备份为空列表）

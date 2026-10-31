@@ -226,7 +226,7 @@ void main() {
     });
   });
 
-  group('2.0.0 复审 B1/B2：备注进备份 + 机密键不进备份', () {
+  group('2.0.0 复审 B1/B2 与 2.1.3 调整：备注进备份 + 设置原样进备份', () {
     test('encode 带 notes 段，decode 往返一致', () {
       final json = BackupCodec.encode(
         semesters: const [
@@ -260,30 +260,26 @@ void main() {
       expect(data.notes, isEmpty);
     });
 
-    test('encode 剔除机密键，普通设置保留', () {
+    test('encode 原样带入设置键（2.1.3：App 内已无凭据类设置需剔除）', () {
       final json = BackupCodec.encode(
         semesters: const [],
         timeSlots: const [],
         courses: const [],
         overrides: const [],
         settings: const {
-          'ai_api_key': 'sk-SECRET-VALUE',
-          'bridge_token': 'ghp_SECRET_TOKEN',
-          'bridge_owner': 'someone',
-          'bridge_repo': 'mailbox',
           'theme_mode': 'dark',
+          'reminder_enabled': '1',
+          'ui_settings': '{"fontSize":2}',
         },
       );
-      final raw = jsonEncode(json);
-      expect(raw.contains('sk-SECRET-VALUE'), isFalse);
-      expect(raw.contains('ghp_SECRET_TOKEN'), isFalse);
-      expect(raw.contains('ai_api_key'), isFalse);
-      expect(raw.contains('bridge_token'), isFalse);
       final settings = json['appSettings'] as Map<String, dynamic>;
+      expect(settings.length, 3);
       expect(settings['theme_mode'], 'dark');
+      expect(settings['reminder_enabled'], '1');
+      expect(settings['ui_settings'], '{"fontSize":2}');
     });
 
-    test('restore 换掉旧备注、保留本机机密键', () async {
+    test('restore 全量覆盖设置与备注', () async {
       final db = await databaseFactoryFfi.openDatabase(
         inMemoryDatabasePath,
         options: OpenDatabaseOptions(
@@ -292,15 +288,14 @@ void main() {
         ),
       );
       try {
-        // 本机既有状态：一把 AI Key + 一条旧备注
-        await db.insert('app_settings',
-            {'key': 'ai_api_key', 'value': 'sk-LOCAL-KEY'});
+        // 本机既有状态：一个设置键 + 一条旧备注
+        await db.insert('app_settings', {'key': 'theme_mode', 'value': 'light'});
         await db.insert('notes', {
           'date': '2026-01-01',
           'content': '本机旧备注',
           'createdAt': 1,
         });
-        // 备份里带一条新备注、不带任何机密键
+        // 备份里带一条新备注与一份完整设置
         final json = BackupCodec.encode(
           semesters: const [
             Semester(
@@ -322,9 +317,45 @@ void main() {
         final notes = await db.query('notes');
         expect(notes.length, 1);
         expect(notes.single['content'], '备份里的备注');
-        final keyRows = await db.query('app_settings',
-            where: 'key = ?', whereArgs: ['ai_api_key']);
-        expect(keyRows.single['value'], 'sk-LOCAL-KEY');
+        final settingRows = await db.query('app_settings',
+            where: 'key = ?', whereArgs: ['theme_mode']);
+        expect(settingRows.single['value'], 'dark');
+      } finally {
+        await db.close();
+      }
+    });
+
+    test('旧备份里带遗留设置键：按普通设置落库，不影响其它数据', () async {
+      // 2.1.3 起不再有「凭据键不进备份」的剔除名单，老备份里的遗留键会照常恢复。
+      // 这里锁住这个行为：它们只是惰性数据（App 里没有任何读取方），
+      // 但不能因此让整份备份恢复失败，也不能吞掉同批次里的正常设置。
+      final db = await databaseFactoryFfi.openDatabase(
+        inMemoryDatabasePath,
+        options: OpenDatabaseOptions(
+          version: 3,
+          onCreate: (d, v) => DbHelper.instance.createSchema(d),
+        ),
+      );
+      try {
+        final json = backupJson();
+        // encode 出来的 appSettings 可能来自 const 字面量（不可修改），先拷一份
+        final settings = Map<String, dynamic>.from(
+          json['appSettings'] as Map,
+        );
+        settings['legacy_retired_key'] = 'stale-value';
+        settings['theme_mode'] = 'dark';
+        json['appSettings'] = settings;
+        final summary = await BackupCodec.restore(
+          db,
+          BackupCodec.decode(jsonEncode(json)),
+        );
+        expect(summary.semesters, 2);
+        final rows = await db.query('app_settings',
+            where: 'key = ?', whereArgs: ['legacy_retired_key']);
+        expect(rows.single['value'], 'stale-value');
+        final themeRows = await db.query('app_settings',
+            where: 'key = ?', whereArgs: ['theme_mode']);
+        expect(themeRows.single['value'], 'dark');
       } finally {
         await db.close();
       }

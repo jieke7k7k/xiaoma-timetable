@@ -46,8 +46,8 @@ class BackupService {
   /// 字体先按体积过滤（[BackupCodec.collectFonts]），超限的不入备份，
   /// 理由以中文提示放进 [BackupBundle.warnings] 交 UI 展示。
   ///
-  /// 备注（v3 起）与课表数据一起进备份；[BackupCodec.secretSettingKeys] 那四个
-  /// 凭据键由 encode 统一剔除，本函数不需要（也不该）自己记得过滤。
+  /// 备注（v3 起）与课表数据一起进备份；设置键由 encode 原样带入，本函数不需要
+  /// （也不该）自己记得过滤什么。
   Future<BackupBundle> buildBackup({DateTime? now}) async {
     final pack = BackupCodec.collectFonts(await FontsService.readForBackup());
     final json = BackupCodec.encode(

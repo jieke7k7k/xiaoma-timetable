@@ -8,12 +8,13 @@ import 'package:xiaoma_timetable/pages/settings_page.dart';
 
 /// 设置首页测试（2.0.5，WB_SPEC_205 第 1 节；2.0.6 第 1 节去重复小标题；
 /// 2.0.7 第 3 节分隔线；2.0.8 第 3 节删聊天入口；
-/// 2.1.0 WB_SPEC_212 第 3/4 节删智能助手设置入口、加菜单管理/更多工具/开发者选项）
+/// 2.1.0 WB_SPEC_212 第 3/4 节调整入口集合；2.1.3 WB_SPEC_214 第 1 节删除
+/// 页面底部那个「解锁后才出现」的入口行）
 ///
 /// 首页只留入口行（图标 + 名称 + 一行副标题 + ›），断言：
-/// 1. 入口行齐全（删掉「智能助手设置」后新增「菜单管理」+「更多工具」分组）；
+/// 1. 入口行齐全（含「菜单管理」+「更多工具」分组）；
 /// 2. 首页**不存在** Switch / Slider（开关只在菜单管理子页，首页不放开关）；
-/// 3. 未解锁时首页无任何 AI 字样、无开发者选项入口；
+/// 3. 入口集合固定：行数、图标都与 2.1.3 定版一致，底部不会因任何开关多出一行；
 /// 4. 「更多工具」分组全量平铺六项，右侧灰字标注菜单显隐（与配置实时一致）。
 void main() {
   setUpAll(() {
@@ -54,10 +55,10 @@ void main() {
     }
   }
 
-  testWidgets('设置首页：入口行齐全 + 无 AI 入口 + 无 Switch/Slider', (tester) async {
+  testWidgets('设置首页：入口行齐全 + 入口集合固定 + 无 Switch/Slider', (tester) async {
     await pumpPage(tester);
 
-    // 入口行标题（2.1.0 删掉「智能助手设置」，新增「菜单管理」+「更多工具」）
+    // 入口行标题（2.1.3 定版：9 个分类行 + 「更多工具」分组标题 + 6 个工具行）
     const entries = [
       '学期设置',
       '外观',
@@ -74,10 +75,11 @@ void main() {
       expect(find.text(e), findsOneWidget, reason: '入口「$e」应出现在设置首页');
     }
 
-    // 2.1.0 第 3 节：AI 入口全部移除，解锁前不得出现任何 AI 字样与入口
-    expect(find.text('智能助手设置'), findsNothing);
-    expect(find.textContaining('智能助手'), findsNothing);
-    expect(find.text('开发者选项'), findsNothing);
+    // 2.1.3：入口集合固定——9 个分类行 + 云同步行 + 6 个工具行 = 16 行，
+    // 底部不会再多出第 17 行（此前那一行是解锁后才渲染的）
+    expect(find.byType(ListTile), findsNWidgets(16));
+    // 那一行专属的图标也不该出现（比找文案更抗改文案）
+    expect(find.byIcon(Icons.build_outlined), findsNothing);
 
     // 各分类入口行的一行副标题（证明入口行存在）
     expect(find.text('学期名称、开学日期、总周数'), findsOneWidget);

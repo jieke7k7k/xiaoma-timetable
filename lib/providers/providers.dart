@@ -766,41 +766,6 @@ final onboardingDoneProvider = FutureProvider<bool>((ref) async {
   return await Dao.instance.getSetting('onboarding_done') == '1';
 });
 
-/// 开发者选项解锁状态（WB_SPEC_212 第 3 节）：关于页版本行连点 5 次解锁，
-/// 持久化到 app_settings 的 `developer_options_unlocked` 键（"1"/"0"，默认关）。
-///
-/// 重装 / 清数据后键随之消失，自动回到未解锁——符合预期，不做云端同步。
-class DeveloperOptionsNotifier extends AsyncNotifier<bool> {
-  @override
-  Future<bool> build() async {
-    // 读库异常（如表损坏）兜底未解锁，不让它拖垮设置页
-    try {
-      return await Dao.instance.getSettingBool('developer_options_unlocked', false);
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// 解锁开发者选项（关于页连点 5 次后调用）：先落库再更新内存 state。
-  ///
-  /// 返回写库是否成功：失败时不更新状态、不谎报成功，调用方据此决定提示
-  /// （2.1.0 返修：此前返回 void，调用方未 await 就弹成功，写库失败也报成功）。
-  Future<bool> unlock() async {
-    try {
-      await Dao.instance.setSetting('developer_options_unlocked', '1');
-    } catch (_) {
-      return false;
-    }
-    state = const AsyncData(true);
-    return true;
-  }
-}
-
-final developerOptionsProvider =
-    AsyncNotifierProvider<DeveloperOptionsNotifier, bool>(
-      DeveloperOptionsNotifier.new,
-    );
-
 /// 主页「更多」菜单配置（WB_SPEC_212 第 4 节）：六个功能项的显隐 + 顺序，
 /// 持久化到 app_settings 的 `home_menu_config` 键（JSON 数组，见 MenuConfig）。
 ///

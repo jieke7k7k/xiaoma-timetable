@@ -7,16 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models/ui_settings.dart';
 import 'database/dao.dart';
 import 'pages/about_page.dart';
-import 'pages/ai_chat_page.dart';
-import 'pages/ai_history_page.dart';
-import 'pages/ai_settings_page.dart';
 import 'pages/announcements_page.dart';
-import 'pages/bridge_page.dart';
 import 'pages/changelog_page.dart';
 import 'pages/course_edit_page.dart';
 import 'pages/course_tools_page.dart';
 import 'pages/data_manage_page.dart';
-import 'pages/developer_options_page.dart';
 import 'pages/course_override_page.dart';
 import 'pages/course_search_page.dart';
 import 'pages/exam_countdown_page.dart';
@@ -34,14 +29,12 @@ import 'pages/settings_sections.dart';
 import 'pages/time_settings_page.dart';
 import 'pages/week_view_page.dart';
 import 'providers/providers.dart';
-import 'widgets/ai_route_guard.dart';
 import 'widgets/home_capsule.dart';
 import 'widgets/permission_guide.dart';
 
 import 'package:quick_actions/quick_actions.dart';
 
 import 'services/auto_backup_service.dart';
-import 'services/bridge_service.dart';
 import 'services/fonts_service.dart';
 import 'services/notification_service.dart';
 import 'services/ongoing_notice_service.dart';
@@ -317,25 +310,12 @@ class SimpleTimetableApp extends ConsumerWidget {
         '/help': (context) => const HelpPage(),
         // 备注（v3：按日期分组的备忘，同步到常驻通知与桌面小部件）
         '/notes': (context) => const NotesPage(),
-        // 内置 AI 助手（2.0.0）：底栏左键是同一个页面，这里给设置页直达用
-        // 2.1.0 返修：AI 路由加守卫，未解锁直达时不放行（见 AiRouteGuard）
-        '/ai-chat': (context) =>
-            const AiRouteGuard(child: AiChatPage()),
-        // AI 助手设置（接口地址 / 模型 / Key）
-        '/ai-settings': (context) =>
-            const AiRouteGuard(child: AiSettingsPage()),
-        // 智能助手历史记录 / 操作记录（2.0.5：对话续聊与撤回入口）
-        '/ai-history': (context) =>
-            const AiRouteGuard(child: AiHistoryPage()),
         // 课表工具（2.0.2：课程搜索 / 空闲时段 / 考试倒计时 / 导出课表图片 / 日期备注）
         '/course-tools': (context) => const CourseToolsPage(),
         // 权限（通知 / 精确闹钟 / 电池优化，首次启动会引导一次）
         '/permissions': (context) => const PermissionPage(),
         // 数据管理页（1.2.4：占用/备份快捷入口/恢复出厂）
         '/data-manage': (context) => const DataManagePage(),
-        // AI 桥（1.3.6：把 GitHub 私有仓当命令信箱；2.0.2 起入口在智能助手设置页）
-        // 2.1.0 返修：与其它 AI 路由同款守卫，直达亦不放行
-        '/bridge': (context) => const AiRouteGuard(child: BridgePage()),
         // 设置分类子页（2.0.5：设置首页 QQ 式分级，见 settings_sections.dart）
         '/settings-semester': (context) => const SemesterSettingsPage(),
         '/settings-appearance': (context) => const AppearanceSettingsPage(),
@@ -345,13 +325,16 @@ class SimpleTimetableApp extends ConsumerWidget {
         '/settings-widget': (context) => const WidgetSettingsPage(),
         // 设置主页（2.1.0 WB_SPEC_212 第 2 节）：原底栏右键改由右上角「更多」菜单进入
         '/settings': (context) => const SettingsPage(),
-        // 开发者选项（2.1.0 WB_SPEC_212 第 3 节）：AI 功能全部收进这里，解锁后可见
-        // 2.1.0 返修：入口本身也加守卫，未解锁直达时不放行
-        '/developer-options': (context) =>
-            const AiRouteGuard(child: DeveloperOptionsPage()),
         // 菜单管理（2.1.0 WB_SPEC_212 第 4 节）：右上角菜单显隐 + 排序
         '/menu-manage': (context) => const MenuManagePage(),
       },
+      // 未知路由兜底（2.1.3 WB_SPEC_214 第 2 节）：路由表里已没有任何 AI 页，
+      // 旧深链、旧书签、系统恢复出来的历史栈里的老路由名都会走到这里。
+      // 静默回首页：不抛 FlutterError（那会红屏）、不弹提示、不留空页。
+      onUnknownRoute: (settings) => MaterialPageRoute<void>(
+        settings: settings,
+        builder: (context) => const _RootGate(),
+      ),
     );
   }
 }
@@ -384,17 +367,17 @@ class _RootGate extends ConsumerWidget {
 /// 主框架（2.1.0 WB_SPEC_212 第 1 节：去底栏，主页变单页；
 /// 2.1.2 WB_SPEC_213 第 2 节：底部栏以「悬浮胶囊」形态回归，主页升级为单层壳）
 ///
-/// 2.0.0 起这里是底栏三键「智能助手 / 主页 / 设置」+ IndexedStack 三页签；
-/// 2.1.0 起删掉底栏与三页签结构，根页面只剩周课表主页 WeekViewPage。AI 功能
-/// 收进开发者选项（设置页解锁后可见），设置入口移到主页右上角「更多」菜单。
+/// 2.0.0 起这里是底栏三键 + IndexedStack 三页签；2.1.0 起删掉底栏与三页签结构，
+/// 根页面只剩周课表主页 WeekViewPage；2.1.3 起底部胶囊恒为两键［课表｜设置］
+/// （WB_SPEC_214：解锁展开与第三个键随对应功能一并删除）。
 ///
 /// 2.1.2 起按 `UiSettings.showBottomBar`（默认开）二选一：
 /// - 开：单层壳结构，壳内承载［课表、设置根页］两个一级视图，原地淡入淡出切换，
-///   底部居中悬浮胶囊（未解锁两键、解锁三键）；设置根页作为一级视图、无返回箭头。
+///   底部居中悬浮胶囊恒两键；设置根页作为一级视图、无返回箭头。
 /// - 关：恢复为 2.1.1 单页结构，设置从右上角菜单 Push 进入（300ms 右滑、有返回箭头）。
 ///
-/// 保留 [ConsumerStatefulWidget]：AI 桥的静默同步可能产生数据变更，改完要失效
-/// coursesProvider/notesProvider 并联动三个服务，这些都得有 ref；启动联动
+/// 保留 [ConsumerStatefulWidget]：云同步的静默同步可能产生数据变更，改完要失效
+/// coursesProvider/notesProvider 并联动两个服务，这些都得有 ref；启动联动
 /// （提醒重排 / 常驻通知 / 小组件 / 快捷入口 / 自动备份）也仍挂在这里。
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
@@ -432,7 +415,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     }
   }
 
-  /// 首帧后的启动联动：五项互不依赖并发跑完，常驻通知顺序殿后（见下方 C5 注）。
+  /// 首帧后的启动联动：四项互不依赖并发跑完，常驻通知顺序殿后（见下方 C5 注）。
   ///
   /// 三个服务内部都已捕获异常，这里再兜一层 try/catch——任一环节出错只打日志，
   /// 不弹错、不影响课表（与上一轮「失败不阻断」的容错风格一致）。
@@ -447,8 +430,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         _setupQuickActions(),
         // 自动备份（7 天一次，内部全静默，不到期立即返回）
         AutoBackupService.runIfDue(),
-        // AI 桥静默同步（未配置会立即返回，失败也静默）
-        _silentBridgeSync(),
         // 云同步：启动联网自动同步一次（未配置/离线都静默）
         _silentSupabaseSync(),
       ]);
@@ -458,19 +439,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       await OngoingNoticeService.instance.refresh();
     } catch (e) {
       debugPrint('启动联动刷新失败：$e');
-    }
-  }
-
-  /// 首帧后静默同步一次 AI 桥。
-  ///
-  /// 失败一律静默：网不好、令牌过期、仓库还没建 commands/ 目录都属于可预期的
-  /// 日常状态，启动时不该用它打扰用户；真有异常也只是打日志（不带令牌）。
-  Future<void> _silentBridgeSync() async {
-    try {
-      final outcome = await BridgeService.instance.syncNow();
-      if (outcome.changed && mounted) _applyBridgeChanges();
-    } catch (e) {
-      debugPrint('AI 桥静默同步失败：$e');
     }
   }
 
@@ -487,17 +455,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     }
   }
 
-  /// 云同步改动本地数据后的联动刷新（与桥改动同一份口径：失效 Provider + 联动服务）。
+  /// 云同步改动本地数据后的联动刷新（失效 Provider + 联动服务）。
   void _applyCloudChanges() {
-    ref.invalidate(coursesProvider);
-    ref.invalidate(notesProvider);
-    unawaited(NotificationService.instance.rescheduleAll());
-    unawaited(WidgetService.instance.refreshWidgets());
-  }
-
-  /// 桥改动数据后的联动刷新（与 BridgePage._applyBridgeChanges 同一份口径，
-  /// 改这里记得同步另一处）
-  void _applyBridgeChanges() {
     ref.invalidate(coursesProvider);
     ref.invalidate(notesProvider);
     unawaited(NotificationService.instance.rescheduleAll());
@@ -532,8 +491,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
-    // 解锁开发者选项后胶囊多出「助手」键（第 2 节）；未解锁恒两键。
-    final devUnlocked = ref.watch(developerOptionsProvider).value ?? false;
 
     // 防困死（WB_SPEC_213 追加第 3 条）：在外观页关掉底部栏的瞬间，把壳内
     // Tab 静默重置回课表（不 setState、不播淡入淡出动画）。此刻 build 已经
@@ -576,8 +533,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
               ),
             ),
           ),
-          // 顶层：底部居中悬浮胶囊。外层容器透明、不拦截手势，
-          // 胶囊左右两侧与下方空隙保持点击穿透（SafeArea/Align 无背景不拦截命中）。
+          // 顶层：底部居中悬浮胶囊（恒两键［课表｜设置］）。外层容器透明、
+          // 不拦截手势，胶囊左右两侧与下方空隙保持点击穿透（SafeArea/Align 无背景
+          // 不拦截命中）。
           Positioned(
             left: 0,
             right: 0,
@@ -588,7 +546,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                 alignment: Alignment.bottomCenter,
                 child: HomeCapsule(
                   activeTab: _tab,
-                  unlocked: devUnlocked,
                   onSelectTab: (tab) => setState(() => _tab = tab),
                   onTapSchedule: _onTapScheduleKey,
                 ),

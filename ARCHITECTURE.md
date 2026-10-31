@@ -2,6 +2,35 @@
 
 > 每完成一个阶段更新本文件，防止上下文丢失。
 
+## 2.1.3 变更（2026-10-30，WB_SPEC_214 删除全部实验性 AI 功能）
+
+本版不新增功能，只做减法：把 2.0.0 起陆续加进来的实验性 AI 模块（内置对话、历史记录、隐藏调试入口、外部信箱同步、指令执行器）从代码里整体删掉，不是隐藏、不是开关关掉。
+
+| 文件 | 改动 |
+|---|---|
+| `lib/main.dart` | 删 5 条路由（`/ai-chat`、`/ai-settings`、`/ai-history`、`/bridge`、`/developer-options`）与相关 import；新增 `onUnknownRoute` 兜底（未知路由静默回 `_RootGate`，不红屏）；`HomeShell` 删 `_silentBridgeSync`/`_applyBridgeChanges` 与解锁态 watch，胶囊恒两键 |
+| `lib/widgets/home_capsule.dart` | 删 `unlocked` 参数与第三个键、删 AnimatedSize（键数不再变化），恒为［课表｜设置］ |
+| `lib/pages/settings_page.dart` | 删解锁后出现的入口行与 `developerOptionsProvider` watch，入口集合自此固定 |
+| `lib/pages/about_page.dart` | 版本行改回纯展示（删 GestureDetector/计数器/提示），页面从 `ConsumerStatefulWidget` 退回 `StatefulWidget` |
+| `lib/providers/providers.dart` | 删 `DeveloperOptionsNotifier` / `developerOptionsProvider` |
+| `lib/database/db_helper.dart` | `_dbVersion` 5 → 6；`createSchema` 不再建两张表；新增公开 `upgradeSchema`（`<6` 分支 DROP 两张表 + 按 exact key 清 10 个遗留设置键）；新增 `retiredTables` / `retiredSettingKeys` 两份名单 |
+| `lib/database/dao.dart` | 删对话历史与操作记录两组方法及两个模型 import |
+| `lib/utils/backup_codec.dart` | 删「凭据键不进备份」剔除名单（App 内已无凭据类设置），备份格式版本仍为 3 |
+| 删除文件 18 个 | 6 页（ai_chat/ai_history/ai_settings/bridge/bridge_web_login/developer_options）+ 5 服务（ai/bridge/chat_session/operation_log/command_executor）+ 2 模型（chat_session/operation_log）+ 3 工具（bridge_codec/ai_context/command_describe）+ tap_unlock + ai_route_guard |
+| `assets/icons/` | 两张像素小马图仅被聊天页引用，随页面删除；`pubspec.yaml` 同步去掉该 asset 目录 |
+| `pubspec.yaml` | 版本 2.1.3+28；依赖零增减（`webview_flutter` 保留，教务官网导入页仍在用） |
+| `android/app/src/main/AndroidManifest.xml` | 复核 `usesCleartextTraffic`：保留 true 并注明理由（教务导入页允许用户填 http:// 校内地址） |
+| 测试 | 删 9 个文件；改 `home_capsule_test`/`home_shell_test`/`fix212_test`/`settings_page_test`/`backup_codec_test`/`settings_sections_test`；新增 `db_migration_213_test`、`about_page_tap_test` |
+
+### 关键设计决策
+
+- **一次性迁移，不在启动路径上清键**：遗留键的 DELETE 只写在 `oldVersion < 6` 分支里。sqflite 把 `onUpgrade` 整体包在一个事务里，删表与清键天然同事务，不会出现「表删了键还在」的中间态；也不再需要额外 `db.transaction` 嵌套。
+- **配置名单集中一处**：`retiredTables` / `retiredSettingKeys` 是升级分支与迁移测试共用的唯一事实来源，避免「SQL 里一套、测试里抄一套」的漂移。
+- **DROP 带 IF EXISTS**：v1/v2 老库从未有过这两张表，1 → 6 的完整升级链必须不报 `no such table`。同时删掉原 `oldVersion < 4` 的「补建两张表」分支——升级链上没有理由先建后删。
+- **未知路由兜底**：路由表里已没有老名字，深链/旧书签/系统恢复的历史栈会走 `onUnknownRoute`。用 `MaterialPageRoute` 包 `_RootGate` 而不是抛异常：既能落地到首页，也保留系统返回手势的常规行为。
+- **不加「兼容垫片」**：路由名不保留常量、不保留空页占位，让编译器在 import 删除后立刻报错——这是「删干净」的静态保障。
+- **备份格式不动**：`backupVersion` 仍为 3。去掉剔除名单后，老备份里若带遗留键会作为普通设置落库；它们没有读取方，属惰性数据，且不会再被启动流程清掉（迁移只在升级那一瞬跑一次）。
+
 ## 2.1.2 变更（2026-10-26，WB_SPEC_213 悬浮胶囊底部栏）
 
 | 文件 | 改动 |
@@ -252,16 +281,15 @@
 - **compileSdk 版本**：Flutter 3.47 默认 compileSdk=36，但 `file_picker 8.x` 硬编码 34 导致 AAR metadata 报错，已升到 `file_picker 13.x`（其 API 从 `FilePicker.platform.pickFiles` 改为 `FilePicker.pickFiles` 返回 `List<PlatformFile>`）
 - **PDF 文本提取库选型**：`dart_pdf` 已无文本提取 API；`pdfrx 1.x` 与 Dart 3.13 不兼容（null 安全 bug）、`pdfrx 2.x` 需运行时下载 GitHub 的 PDFium（校园网不可达）；最终用 **`syncfusion_flutter_pdf`（纯 Dart）**，其 `PdfDocument(inputBytes:)` + `PdfTextExtractor.extractText()`
 
-## 数据表结构（v4，app_settings / notes / chat_sessions / operation_log 走版本升级补建，其余建库时一次性建好，含阶段五预留字段/表）
+## 数据表结构（v6，app_settings / notes 走版本升级补建，其余建库时一次性建好，含阶段五预留字段/表）
 
 - **semesters**：`id` PK、`name`、`startDate`(TEXT, ISO yyyy-MM-dd)、`totalWeeks`(默认20)、`isCurrent`(0/1)
 - **time_slots**：`section` PK(1~12)、`startTime`、`endTime`（首启内置 12 节默认时间）
 - **courses**：`id` PK、`semesterId` FK、`name`、`teacher?`、`classroom?`、`colorValue`(ARGB int)、`dayOfWeek`(1~7)、`startSection`、`endSection`、`weeksJson`(周次数组 JSON)、`weekType`(0全部/1单/2双)、`note?`、`examDate?`(毫秒时间戳，阶段五预留)；索引 `idx_courses_semester(semesterId, dayOfWeek)`
 - **course_overrides**（阶段五预留）：`id` PK、`courseId` FK、`originalWeek`、`targetWeek`(-1=停课标记 `CourseOverride.cancelFlag`)、`targetDayOfWeek?`、`targetStartSection?`、`targetEndSection?`、`targetClassroom?`
-- **app_settings**（v2 新增，阶段四提醒设置持久化）：`key` PK、`value`；当前键 `reminder_enabled`("1"/"0")、`reminder_advance_minutes`("15")、`ongoing_enabled`("1"/"0")、`theme_mode`("system"/"light"/"dark"，阶段五)、`lunch_after_section`("5")、`dinner_after_section`("9")（阶段六·作息三段化）、`last_error_log`（1.3.1 全局异常日志，只留最近一条「时间 + 摘要」）。`_dbVersion=4`，`onUpgrade` 对 v1 库补建 app_settings、对 v1/v2 库补建 notes、对 v1~v3 库补建 chat_sessions 与 operation_log。1.3.6 新增 AI 桥五键：`bridge_owner` / `bridge_repo` / `bridge_token`（**只存本机，注意"备份到文件"会把它们带上，别外发备份**）/ `processed_command_ids`(JSON 数组，最多 200 条) / `bridge_pending`(JSON 数组，待确认队列) / `last_bridge_sync`（时间 + 摘要文案）。2.0.0 新增内置 AI 三键 `ai_base_url` / `ai_model` / `ai_api_key`（**同样只存本机、同样会被备份带走**）与首次权限引导标记 `permissions_asked_v1`（'1' = 已引导过）。2.1.0 新增 `developer_options_unlocked`（"1"/"0"，开发者选项解锁，默认关）与 `home_menu_config`（JSON 数组，主页「更多」菜单六项的显隐 + 顺序）。
-- **notes**（v3 新增，AI 备注）：`id` PK、`date`(TEXT, yyyy-MM-dd)、`content`、`createdAt`(毫秒时间戳)；索引 `idx_notes_date(date)`。与学期/课程无外键，备注页维护，供常驻通知与桌面小部件按日取用；`onCreate`（新装）与 `onUpgrade(oldVersion<3)`（老用户无感升级）都会建这张表。
-- **chat_sessions**（v4 新增，智能助手对话历史）：`id` PK、`title`、`createdAt`(毫秒时间戳)、`updatedAt`(毫秒时间戳)、`messagesJson`(整段消息数组 JSON)。一段对话一行，消息整体存 messagesJson；历史记录页维护。
-- **operation_log**（v4 新增，AI / AI 桥操作撤回）：`id` PK、`createdAt`(毫秒时间戳)、`source`("ai"/"bridge")、`summary`、`snapshotJson`(执行前快照 JSON)、`undone`(0/1)。`onUpgrade(oldVersion<4)`（老用户无感升级）与 `onCreate`（新装）都会建这张表。
+- **app_settings**（v2 新增，阶段四提醒设置持久化）：`key` PK、`value`；当前键 `reminder_enabled`("1"/"0")、`reminder_advance_minutes`("15")、`ongoing_enabled`("1"/"0")、`theme_mode`("system"/"light"/"dark"，阶段五)、`lunch_after_section`("5")、`dinner_after_section`("9")（阶段六·作息三段化）、`last_error_log`（1.3.1 全局异常日志，只留最近一条「时间 + 摘要」）。`_dbVersion=6`，`onUpgrade`（= `DbHelper.upgradeSchema`）对 v1 库补建 app_settings、对 v1/v2 库补建 notes、对 v1~v4 库补 v5 的四个列、对 v1~v5 库执行 v6 的删表 + 清遗留键。2.1.0 新增 `home_menu_config`（JSON 数组，主页「更多」菜单六项的显隐 + 顺序）。首次权限引导标记 `permissions_asked_v1`（'1' = 已引导过）。**2.1.3 起 `retiredSettingKeys` 名单里的十个键（三组实验性 AI 配置、解锁开关、外部信箱同步六项）在升到 v6 时被一次性 DELETE，App 内不再有任何读写路径**；之后即使从老备份恢复回这些键，也没有代码读它们，且不会被再次清理。
+- **notes**（v3 新增，日期备注）：`id` PK、`date`(TEXT, yyyy-MM-dd)、`content`、`createdAt`(毫秒时间戳)、`updatedAt`(v5 起，云同步水位)；索引 `idx_notes_date(date)`。与学期/课程无外键，备注页维护，供常驻通知与桌面小部件按日取用；`onCreate`（新装）与 `onUpgrade(oldVersion<3)`（老用户无感升级）都会建这张表。
+- **（2.1.3 已删除）** v4 引入的两张表 `chat_sessions` / `operation_log` 随对应功能整体移除：`createSchema` 不再创建，`upgradeSchema` 的 `oldVersion < 6` 分支 `DROP TABLE IF EXISTS`，新装用户根本没有这两张表。表名集中在 `DbHelper.retiredTables`，仅由迁移分支与迁移测试引用。
 
 首启自动创建：默认学期（2026-09-07 开学、20 周、isCurrent=1）+ 12 节默认节次时间。
 
@@ -273,8 +301,7 @@
 - `coursesProvider` — `CoursesNotifier extends AsyncNotifier<List<Course>>`（watch 当前学期，切学期自动联动）
 - `reminderSettingsProvider` — `ReminderSettingsNotifier extends AsyncNotifier<ReminderSettings>`：上课提醒开关 + 提前分钟，读写 `app_settings` 表，改动即持久化并触发 `NotificationService.rescheduleAll()`（阶段四）
 - `segmentSettingsProvider` — `SegmentSettingsNotifier extends AsyncNotifier<SegmentSettings>`：作息三段化分段点（午休/晚餐在第几节课之后），读写 `app_settings` 表 `lunch_after_section`/`dinner_after_section`，供作息设置页与周视图共用（阶段六）
-- `notesProvider` — `NotesNotifier extends AsyncNotifier<List<Note>>`（1.3.5 AI 备注）：全量备注按日期升序；`addNote/updateNote/deleteNote` 末尾联动「备注常驻通知 refreshNoteNotice + 小部件 refreshWidgets」（不重排课程提醒，两者互不影响）
-- `developerOptionsProvider` — `DeveloperOptionsNotifier extends AsyncNotifier<bool>`（2.1.0 WB_SPEC_212 第 3 节）：开发者选项解锁状态，读写 `app_settings` 键 `developer_options_unlocked`（默认关）；`unlock()` 由关于页连点 5 次后调用
+- `notesProvider` — `NotesNotifier extends AsyncNotifier<List<Note>>`（1.3.5 日期备注）：全量备注按日期升序；`addNote/updateNote/deleteNote` 末尾联动「备注常驻通知 refreshNoteNotice + 小部件 refreshWidgets」（不重排课程提醒，两者互不影响）
 - `menuConfigProvider` — `MenuConfigNotifier extends AsyncNotifier<MenuConfig>`（2.1.0 WB_SPEC_212 第 4 节）：主页「更多」菜单六项的显隐 + 顺序，读写 `app_settings` 键 `home_menu_config`（JSON 数组）；`setVisible/reorder/reset` 改动即落库并即时刷新主页菜单
 
 ## 阶段六·作息时间三段化新增/改动文件（2026-10-20）
@@ -558,11 +585,7 @@
 
 ## 工具类
 
-- `AiContext`（lib/utils/ai_context.dart）：`parseAiReply`（抽/摘指令块）+ `buildTimetableContext`（课表上下文）+ `buildSystemPrompt`；**20 个单元测试**（test/ai_context_test.dart）
-- `CommandDescribe`（lib/utils/command_describe.dart）：`describeCommand` / `isDestructiveCommand`——内置 AI 确认卡片与 AI 桥待确认列表共用的人话描述唯一实现
-- `AiService`（lib/services/ai_service.dart）：OpenAI 兼容客户端，`extractReplyText` 等纯函数 **8 个单元测试**（test/ai_service_test.dart）
 - `WeekCalc.parityLabel`（lib/utils/week_calc.dart）：单双周小标识文本，学期外返回 null；5 个单元测试（test/week_parity_test.dart）
-- `BridgeCodec`（lib/utils/bridge_codec.dart）：AI 桥协议编解码 + destructive 拆分/合并/去重策略；**35 个单元测试**（test/bridge_codec_test.dart）
 - `WidgetData`（lib/utils/widget_data.dart）：`buildWidgetPayload` / `widgetDayKey` / `buildWidgetPayloadDays`（跨天逐日表）；**13 个单元测试**（test/widget_data_test.dart，1.3.5 增至 17，新增当日备注一组）
 - `NoteNotice`（lib/utils/note_notice.dart）：`buildNoteNotice`（今天/明天分组的多行文案，均无则 null）+ `noteDayKey`；8 个单元测试（test/note_notice_test.dart）
 - `WeekInfer`（lib/utils/week_infer.dart）：`maxWeek`(草稿里最晚周次) / `inferredTotalWeeks`(要不要扩学期总周数)；5 个单元测试（test/week_infer_test.dart）
