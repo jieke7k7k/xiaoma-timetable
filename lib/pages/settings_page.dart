@@ -45,7 +45,8 @@ class SettingsPage extends ConsumerWidget {
     // 菜单配置驱动「更多工具」分组右侧的显隐标注（实时一致，无需重启）
     final menuConfig =
         ref.watch(menuConfigProvider).value ?? MenuConfig.defaults();
-    // 底部栏形态（WB_SPEC_215 第 2 节）：壳内列表底部留白要按形态算
+    // 底部栏形态（WB_SPEC_216 第 1 节）：壳内列表底部留白要按形态算
+    // （标签栏 64 / 胶囊 52，口径同主页网格，见 ui/bottom_bar_metrics.dart）
     final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
 
     return Scaffold(
@@ -56,7 +57,7 @@ class SettingsPage extends ConsumerWidget {
         automaticallyImplyLeading: !isEmbeddedInShell,
       ),
       body: ListView(
-        // 壳内一级视图底部留白：按当前底部栏形态算（通栏贴底 68 / 胶囊贴底 52，
+        // 壳内一级视图底部留白：按当前底部栏形态算（标签栏 64 / 胶囊贴底 52，
         // 再加底部安全区），防止栏体遮挡列表末尾；独立 Push 路由维持常规留白。
         // 口径与主页网格同源，见 ui/bottom_bar_metrics.dart。
         padding: EdgeInsets.only(

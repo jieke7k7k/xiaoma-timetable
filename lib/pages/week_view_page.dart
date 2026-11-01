@@ -1138,12 +1138,13 @@ class _GridArea extends ConsumerWidget {
             totalHeight < constraints.maxHeight
                 ? constraints.maxHeight
                 : totalHeight;
-        // 底部安全留白（WB_SPEC_213 网格处理；2.1.4 按底部栏形态分档）：
+        // 底部安全留白（WB_SPEC_213 网格处理；2.1.5 按底部栏形态分档）：
         // 只加在滚动视图底部，不改外框高度、不改外层 Column/Expanded 约束、
         // 不因读取 showBottomBar / bottomBarStyle 导致课表组件 Key 变化或
         // ScrollController 重建。口径统一在 ui/bottom_bar_metrics.dart：
-        // 通栏贴底 68（52 键高 + 上下各 8）、胶囊贴底 52（胶囊高）、关栏 16，
-        // 另加底部安全区高度——既不会让内容被栏遮住，也不会留白过大。
+        // 标签栏 64（该 widget 实测高度）、胶囊贴底 52（胶囊高）、关栏 16，
+        // 另加底部安全区高度——既不会让内容被栏遮住，也不会留白过大
+        // （WB_SPEC_216 第 2 节：滚动到底最后一节必须完整露出）。
         final bottomInset = bottomBarGridBottomPadding(
           MediaQuery.paddingOf(context).bottom,
           showBottomBar: ui.showBottomBar,

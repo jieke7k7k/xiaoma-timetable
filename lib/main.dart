@@ -29,8 +29,8 @@ import 'pages/settings_sections.dart';
 import 'pages/time_settings_page.dart';
 import 'pages/week_view_page.dart';
 import 'providers/providers.dart';
-import 'widgets/home_bottom_bar.dart';
 import 'widgets/home_capsule.dart';
+import 'widgets/home_tab_bar.dart';
 import 'widgets/permission_guide.dart';
 
 import 'package:quick_actions/quick_actions.dart';
@@ -377,10 +377,15 @@ class _RootGate extends ConsumerWidget {
 ///   底部栏恒两键；设置根页作为一级视图、无返回箭头。
 /// - 关：恢复为 2.1.1 单页结构，设置从右上角菜单 Push 进入（300ms 右滑、有返回箭头）。
 ///
-/// 2.1.4（WB_SPEC_215 第 2 节）：开栏时底部栏按 `UiSettings.bottomBarStyle`
-/// 二选一，两种形态都**不悬浮**（无悬浮间距、无悬浮阴影）：
-/// - [BottomBarStyle.bar] 通栏贴底（默认）：整宽贴住屏幕底边，内部两键是胶囊圆角键；
-/// - [BottomBarStyle.capsule] 胶囊贴底：栏体保持胶囊外形，下移贴底。
+/// 2.1.5（WB_SPEC_216 第 1 节）：开栏时底部栏按 `UiSettings.bottomBarStyle`
+/// 二选一，两种形态都**贴底不悬浮**（无悬浮间距、无悬浮阴影）：
+/// - [BottomBarStyle.tab] 图标+文字标签栏（默认）：整宽贴住屏幕底边、顶部一条
+///   1 像素细分割线，两格等宽（图标在上、文字在下），选中态图标与文字同为琥珀黄；
+/// - [BottomBarStyle.capsule] 胶囊贴底：栏体保持胶囊外形，贴底。
+///
+/// 2.1.4 的「通栏贴底」（`BottomBarStyle.bar`）已随 `lib/widgets/home_bottom_bar.dart`
+/// 一并删除；旧库里残留的字符串 `bar` 由 `BottomBarStyle.fromId` 回落到 [BottomBarStyle.tab]，
+/// 不会出现「未知样式 → 无栏」或崩溃。
 ///
 /// 保留 [ConsumerStatefulWidget]：云同步的静默同步可能产生数据变更，改完要失效
 /// coursesProvider/notesProvider 并联动两个服务，这些都得有 ref；启动联动
@@ -516,6 +521,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     }
 
     // 2.1.2（WB_SPEC_213 第 2 节）：开底栏时升级为单层壳结构
+    // 2.1.5（WB_SPEC_216 第 1 节）：默认形态为图标+文字标签栏，通栏形态已删除
     return PopScope(
       // 壳内非课表视图时，系统返回先切回课表，再按一次才退出 App
       canPop: _tab == HomeShellTab.schedule,
@@ -546,17 +552,19 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     );
   }
 
-  /// 底部栏（WB_SPEC_215 第 2 节）：两种形态都贴底、都不悬浮，只换外形。
+  /// 底部栏（WB_SPEC_216 第 1 节）：两种形态都贴底、都不悬浮，只换外形。
   ///
   /// 会随 `uiSettingsProvider` 变化在下一帧重建，因此设置页切换形态即时生效、
   /// 无需重启；切换形态不改 `_tab`、不重建周视图（网格留白由周视图自己按
   /// `bottomBarGridBottomInset` 重算，见 week_view_page.dart）。
   ///
-  /// - 通栏贴底 [HomeBottomBar]：`Positioned` 撑满整宽并贴住 `bottom: 0`，
+  /// - 图标+文字标签栏 [HomeTabBar]（默认）：`Positioned` 撑满整宽并贴住 `bottom: 0`，
   ///   底部安全区由栏体内部的 SafeArea 吃掉（色块铺到屏幕最底部）；
-  /// - 胶囊贴底 [HomeCapsule]：同样 `bottom: 0`（2.1.3 的 12 悬浮间距已删），
-  ///   外层 SafeArea 保留安全区内边距，胶囊无阴影、宽度仍随内容自适应；
-  ///   左右两侧空白由 Align 之外的区域穿透，不拦点击。
+  /// - 胶囊贴底 [HomeCapsule]：同样 `bottom: 0`，外层 SafeArea 保留安全区内边距，
+  ///   胶囊无阴影、宽度仍随内容自适应；左右两侧空白由 Align 之外的区域穿透，
+  ///   不拦点击。
+  ///
+  /// 2.1.4 的通栏形态分支已删除；`style` 只可能是 tab / capsule。
   Widget _buildBottomBar(BottomBarStyle style) {
     if (style == BottomBarStyle.capsule) {
       return Positioned(
@@ -580,7 +588,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       left: 0,
       right: 0,
       bottom: 0,
-      child: HomeBottomBar(
+      child: HomeTabBar(
         activeTab: _tab,
         onSelectTab: (tab) => setState(() => _tab = tab),
         onTapSchedule: _onTapScheduleKey,

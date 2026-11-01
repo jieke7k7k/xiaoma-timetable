@@ -2,6 +2,30 @@
 
 > 每完成一个阶段更新本文件，防止上下文丢失。
 
+## 2.1.5 变更（2026-11-01，WB_SPEC_216 底部栏换图标+文字标签栏、删通栏、整页课表显示完全）
+
+用户发了一张自助打印小程序的主页截图：「底部做成这样的，而且进入主页确保整页课表能显示完全」，并逐项确认「标签文案保留」（右边那格继续叫「设置」）、「保留胶囊，删掉另外一种再添加这个」。本版做两件事：底部栏换成截图里那种**图标+文字标签栏**（新默认），删掉 2.1.4 的通栏贴底形态、保留胶囊贴底；同时把「进主页整页课表能显示完全」做成几何断言。
+
+| 文件 | 改动 |
+|---|---|
+| `lib/widgets/home_tab_bar.dart`（新建） | 形态 A 图标+文字标签栏 `HomeTabBar`：`Material(surface, elevation: 0, shadowColor: transparent)` + `SafeArea(bottom)` 铺到屏幕最底边，内部 `DecoratedBox` 画顶部 1 逻辑像素细分割线（主题 outline 低透明度，不参与布局），`SizedBox(height: 64)` 内两格 `Expanded` 等宽——图标在上、文字在下、垂直居中；选中态图标与文字同为琥珀黄 `kTabBarActiveColor`（`Colors.amber[600]`），未选中同为 `onSurfaceVariant` 灰；Key：`kHomeTabBarScheduleKey` / `kHomeTabBarSettingsKey` / `kHomeTabBarDividerKey` |
+| `lib/widgets/home_bottom_bar.dart`（删除） | 2.1.4 的通栏贴底 `HomeBottomBar` 整个删掉；`main.dart` 里对应分支与 import 一并删除 |
+| `lib/models/ui_settings.dart` | `enum BottomBarStyle` 改为 `{ tab('tab','新标签栏'), capsule('capsule','胶囊贴底') }`：删 `bar`、`fromId` 兜底改回 `tab`（缺失 / null / 未知值 / 旧值 `bar` 一律回落，不会无栏、不会崩）；`UiSettings.bottomBarStyle` 默认值改 `tab`，`fromEncoded` 落库默认值同步改 `tab`，存库只存 id 字符串 |
+| `lib/ui/bottom_bar_metrics.dart` | 唯一留白口径改造：删通栏栏高 68 与通栏内边距常量，新增 `kBottomBarTabHeight = 64`（**该 widget 的实测高度**，与 `HomeTabBar.height` 同源）、`kBottomBarDividerWidth = 1`、`kTabBarActiveColor`；胶囊 52、关栏 16 不变；`bottomBarGridBottomInset` 按 tab / capsule / 关栏三档返回，安全区仍只加一次 |
+| `lib/main.dart` | `HomeShell._buildBottomBar`：默认分支换 `HomeTabBar`（`Positioned(left/right/bottom: 0)`，栏内 `SafeArea`），胶囊分支不动；壳的防困死、系统返回、关栏回单页结构一律不动；注释写明旧值 `bar` 回落 |
+| `lib/pages/settings_sections.dart` | 「底部栏样式」两项文案随枚举自动变为「新标签栏（默认）」/「胶囊贴底」，旧项「通栏贴底」消失；关栏时仍整行置灰、`onSelected: null`；切换仍走 `UiSettingsNotifier.apply`，即时生效并落库 |
+| `lib/pages/week_view_page.dart` / `lib/pages/settings_page.dart` | 两处底部留白都调同一个 `bottomBarGridBottomPadding`（标签栏 64 / 胶囊 52 / 关栏 16 + 安全区），注释同步；网格本身、周日弹窗、AI 入口一律未动 |
+| `pubspec.yaml` | 版本 2.1.5+30；依赖零增减 |
+| 测试 | 改写 `bottom_bar_style_test`（标签栏：整宽贴底、实测高 64、elevation 0、1px 顶部分割线、两格等宽、图标在上文字在下、选中琥珀黄/未选中灰、文案仍「课表/设置」、安全区只加一次、1.3 倍字体不溢出；胶囊仍在且贴底无阴影；三态留白口径）；新增 `home_grid_bottom_inset_test`（标签栏/胶囊/关栏/带 34 安全区四种情况下滚到底，断言内容底边 ≈ 栏顶、最后一节完整可见、留白 == 栏高 + 安全区）；改写 `home_shell_test`（默认标签栏、切换即时生效并落库、**关→开恢复上次形态**、**旧值 bar 回落标签栏**、关栏菜单进设置）、`settings_sections_test`（两项 + 旧项不存在 + 置灰 + 重开恢复）、`ui_settings_test`（默认 tab、旧值 bar/null/未知回落 tab、存 id） |
+
+### 关键设计决策
+
+- **删形态要连兜底一起删干净**：`bar` 从枚举里消失后，老用户库里的 `"bottomBarStyle": "bar"` 会变成未知值。`BottomBarStyle.fromId` 的兜底从 `bar` 改成 `tab`，于是「未知值」与「默认值」指向同一个形态——既不会走到「无栏」分支，也不会在 `_buildBottomBar` 里掉进没有返回值的路径（编译期就只剩两个分支）。
+- **栏高必须是实测值，不能是算术值**：标签栏高度 = 图标 24 + 间距 4 + 文字行高 + 留白，随字体度量浮动。实现上用 `SizedBox(height: 64)` 定死并用 `DecoratedBox`（而非 `Container`+`decoration`）画分割线——`Container` 会把 border 计入高度，实测会变成 65，与留白口径对不上。测试里直接拿 `tester.getSize(find.byType(HomeTabBar))` 和 `bottomBarGridBottomInset(...)` 对比，两边一旦分叉立刻红。
+- **「整页显示完全」不靠目测**：断言的是几何等式——滚动到底后「网格内容底边 == 底部栏顶边」（留白 == 栏高 + 安全区，既不被压住也不空一截），并额外断言最后一节的节次文字完整落在栏顶之上。三种栏状态 + 34 安全区各跑一遍。
+- **琥珀黄写死，不接主题 primary**：截图里的选中色是琥珀黄，而本项目默认种子色是雾绿 / 可可棕一类，`ColorScheme.primary` 对不上；`kTabBarActiveColor` 取 `Colors.amber[600]`，深浅色主题下都用它，测试里同时断言它 `!= scheme.primary`。
+- **关栏不清样式字段**：`bottomBarStyle` 与 `showBottomBar` 是两个独立字段，关栏只置灰样式行，重开即恢复上次形态（测试覆盖胶囊与标签栏两个方向）。
+
 ## 2.1.4 变更（2026-11-01，WB_SPEC_215 周日弹窗一天一次 + 底部栏两形态可选）
 
 两件事：一是把周日收尾弹窗从「每次进主页弹」修成「同一个周日只弹一次」；二是底部栏从「悬浮胶囊」改成两种都不悬浮的贴底形态（通栏贴底 / 胶囊贴底），用设置项切换。

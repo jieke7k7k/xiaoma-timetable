@@ -25,10 +25,10 @@ void main() {
       expect(ui.showWeekParity, isFalse); // 2.0.1 标题单双周默认关
       expect(ui.showClassBroadcast, isFalse); // 2.0.1 上课播报默认关
       expect(ui.showBottomBar, isTrue); // 2.1.2 底部栏默认开
-      // 2.1.4（WB_SPEC_215 第 2 节）：底部栏形态默认「通栏贴底」
-      expect(ui.bottomBarStyle, BottomBarStyle.bar);
-      expect(ui.bottomBarStyle.id, 'bar');
-      expect(ui.bottomBarStyle.label, '通栏贴底');
+      // 2.1.5（WB_SPEC_216 第 1 节）：底部栏形态默认「新标签栏」
+      expect(ui.bottomBarStyle, BottomBarStyle.tab);
+      expect(ui.bottomBarStyle.id, 'tab');
+      expect(ui.bottomBarStyle.label, '新标签栏');
       expect(UiSettings.fromEncoded('').cellHeight, 46);
       expect(UiSettings.fromEncoded('坏掉的 json').cellHeight, 46);
     });
@@ -78,6 +78,11 @@ void main() {
       expect(back.showBottomBar, isFalse);
       expect(back.bottomBarStyle, BottomBarStyle.capsule);
       expect(back.bottomBarStyle.id, 'capsule');
+      // 默认形态 tab 同样往返不丢（2.1.5 起 tab 是默认值）
+      expect(
+        UiSettings.fromEncoded(const UiSettings().encode()).bottomBarStyle,
+        BottomBarStyle.tab,
+      );
     });
 
     test('showBottomBar 反序列化容错：缺失/null/非 bool 一律回默认开', () {
@@ -89,32 +94,50 @@ void main() {
       expect(UiSettings.fromEncoded('{"showBottomBar": true}').showBottomBar, isTrue);
     });
 
-    test('bottomBarStyle 反序列化容错：缺失/null/未知值一律回「通栏贴底」', () {
-      // 2.1.4（WB_SPEC_215 第 2 节）：旧数据没有这个字段时按默认 bar 兜底
+    test('bottomBarStyle 反序列化容错：缺失/null/未知值一律回「新标签栏」', () {
+      // 2.1.5（WB_SPEC_216 第 1 节）：旧数据没有这个字段时按默认 tab 兜底
       expect(
         UiSettings.fromEncoded('{}').bottomBarStyle,
-        BottomBarStyle.bar,
+        BottomBarStyle.tab,
       );
       expect(
         UiSettings.fromEncoded('{"showBottomBar": true}').bottomBarStyle,
-        BottomBarStyle.bar,
+        BottomBarStyle.tab,
       );
       expect(
         UiSettings.fromEncoded('{"bottomBarStyle": null}').bottomBarStyle,
-        BottomBarStyle.bar,
+        BottomBarStyle.tab,
       );
       expect(
         UiSettings.fromEncoded('{"bottomBarStyle": "胶囊"}').bottomBarStyle,
-        BottomBarStyle.bar,
+        BottomBarStyle.tab,
       );
-      // 两个合法值都能读回来
+      expect(
+        UiSettings.fromEncoded('{"bottomBarStyle": ""}').bottomBarStyle,
+        BottomBarStyle.tab,
+      );
+      // 2.1.4 的旧值 bar（该形态已删除）读取时回落到新标签栏
       expect(
         UiSettings.fromEncoded('{"bottomBarStyle": "bar"}').bottomBarStyle,
-        BottomBarStyle.bar,
+        BottomBarStyle.tab,
+      );
+      expect(BottomBarStyle.fromId('bar'), BottomBarStyle.tab);
+      expect(BottomBarStyle.fromId(null), BottomBarStyle.tab);
+      expect(BottomBarStyle.fromId(''), BottomBarStyle.tab);
+      expect(BottomBarStyle.fromId('unknown'), BottomBarStyle.tab);
+      // 两个合法值都能读回来
+      expect(
+        UiSettings.fromEncoded('{"bottomBarStyle": "tab"}').bottomBarStyle,
+        BottomBarStyle.tab,
       );
       expect(
         UiSettings.fromEncoded('{"bottomBarStyle": "capsule"}').bottomBarStyle,
         BottomBarStyle.capsule,
+      );
+      // 枚举里不再有 bar：任何写法都拿不到它
+      expect(
+        BottomBarStyle.values.map((s) => s.id).toList(),
+        <String>['tab', 'capsule'],
       );
     });
 
@@ -124,8 +147,12 @@ void main() {
         'capsule',
       );
       expect(
+        const UiSettings(bottomBarStyle: BottomBarStyle.tab).toJson()['bottomBarStyle'],
+        'tab',
+      );
+      expect(
         const UiSettings().toJson()['bottomBarStyle'],
-        'bar',
+        'tab',
       );
       // 只改形态时其余字段原样保留（copyWith 不误伤）
       final ui = const UiSettings(cellHeight: 60, showBottomBar: false)

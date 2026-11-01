@@ -49,9 +49,11 @@ import '../widgets/empty_state.dart';
 /// 实时预览「今天整列边框」覆盖层的 Key：测试据此断言开关开/关时该层的有无。
 const Key kPreviewTodayHighlightKey = ValueKey('preview_today_highlight');
 
-/// 外观页「底部栏样式」某个选项的 Key（WB_SPEC_215 第 2 节）。
+/// 外观页「底部栏样式」某个选项的 Key（WB_SPEC_215 第 2 节；WB_SPEC_216 第 1 节改项）。
 ///
 /// 测试据此取 ChoiceChip，断言选中态、置灰（onSelected == null）与切换后的持久化。
+/// 2.1.5 起两项是「新标签栏」（tab，默认）与「胶囊贴底」（capsule），
+/// 2.1.4 的「通栏贴底」（bar）选项已删除。
 Key bottomBarStyleChipKey(BottomBarStyle style) =>
     ValueKey('bottom_bar_style_${style.id}');
 
@@ -246,9 +248,10 @@ class AppearanceSettingsPage extends StatelessWidget {
               );
             },
           ),
-          // 2.1.4（WB_SPEC_215 第 2 节）：底部栏样式二选一（通栏贴底 / 胶囊贴底），
-          // 紧跟在「底部栏显示」开关下方。两形态都不悬浮，切换即时生效并持久化；
+          // 2.1.5（WB_SPEC_216 第 1 节）：底部栏样式二选一（新标签栏 / 胶囊贴底），
+          // 紧跟在「底部栏显示」开关下方。两形态都贴底不悬浮，切换即时生效并持久化；
           // 开关关闭时整行置灰、两个选项不可点（onSelected 传 null）。
+          // 「通栏贴底」（2.1.4 的 bar）选项已删除，选项直接取自 BottomBarStyle.values。
           Consumer(
             builder: (ctx, ref, _) {
               final ui =

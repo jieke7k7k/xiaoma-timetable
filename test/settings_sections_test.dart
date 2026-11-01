@@ -110,7 +110,7 @@ void main() {
     expect(tester.widget<SwitchListTile>(tile).value, isFalse);
   });
 
-  testWidgets('外观子页：底部栏样式二选一，默认通栏贴底，点胶囊即时切换并落库（WB_SPEC_215 第 2 节）', (
+  testWidgets('外观子页：底部栏样式二选一，默认新标签栏，点胶囊即时切换并落库（WB_SPEC_216 第 1 节）', (
     tester,
   ) async {
     await tester.runAsync(() async {
@@ -126,17 +126,18 @@ void main() {
     }
 
     expect(find.text('底部栏样式'), findsOneWidget);
-    final barChip = find.byKey(bottomBarStyleChipKey(BottomBarStyle.bar));
+    final tabChip = find.byKey(bottomBarStyleChipKey(BottomBarStyle.tab));
     final capsuleChip = find.byKey(
       bottomBarStyleChipKey(BottomBarStyle.capsule),
     );
-    expect(barChip, findsOneWidget);
+    expect(tabChip, findsOneWidget);
     expect(capsuleChip, findsOneWidget);
-    // 两项文案就是规格里的「通栏贴底」「胶囊贴底」
-    expect(find.text('通栏贴底'), findsOneWidget);
+    // 两项文案就是规格里的「新标签栏」「胶囊贴底」；2.1.4 的「通栏贴底」已删除
+    expect(find.text('新标签栏'), findsOneWidget);
     expect(find.text('胶囊贴底'), findsOneWidget);
-    // 默认选中通栏贴底
-    expect(tester.widget<ChoiceChip>(barChip).selected, isTrue);
+    expect(find.text('通栏贴底'), findsNothing);
+    // 默认选中新标签栏
+    expect(tester.widget<ChoiceChip>(tabChip).selected, isTrue);
     expect(tester.widget<ChoiceChip>(capsuleChip).selected, isFalse);
 
     // 点「胶囊贴底」→ 即时切换（走 apply，真实 FFI 异步落库，放进 runAsync 等它写完）
@@ -150,24 +151,78 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(tester.widget<ChoiceChip>(capsuleChip).selected, isTrue);
-    expect(tester.widget<ChoiceChip>(barChip).selected, isFalse);
+    expect(tester.widget<ChoiceChip>(tabChip).selected, isFalse);
 
     // 落库：ui_settings 里存的是 capsule（杀进程重进保持）
     final raw = await tester.runAsync(
       () => Dao.instance.getSetting('ui_settings'),
     );
     expect(UiSettings.fromEncoded(raw).bottomBarStyle, BottomBarStyle.capsule);
+
+    // 再点回「新标签栏」→ 同样即时生效并落库 tab
+    await tester.ensureVisible(tabChip);
+    await tester.pumpAndSettle();
+    await tester.tap(tabChip);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 400)),
+    );
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(tester.widget<ChoiceChip>(tabChip).selected, isTrue);
+    final raw2 = await tester.runAsync(
+      () => Dao.instance.getSetting('ui_settings'),
+    );
+    expect(UiSettings.fromEncoded(raw2).bottomBarStyle, BottomBarStyle.tab);
   });
 
-  testWidgets('外观子页：底部栏开关关闭时，样式选项置灰不可点（WB_SPEC_215 第 2 节）', (
+  testWidgets('外观子页：样式行列出的是新标签栏/胶囊贴底两项，旧项 bar 已不存在', (
     tester,
   ) async {
-    // 预置「底部栏关闭」，样式行应整行置灰、两个选项 onSelected 为 null。
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: AppearanceSettingsPage()),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+    });
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    // 选项数量 = BottomBarStyle.values.length = 2，key 也只对应这两项
+    final chips = tester.widgetList<ChoiceChip>(
+      find.descendant(
+        of: find.byType(Wrap),
+        matching: find.byType(ChoiceChip),
+      ),
+    );
+    expect(chips.length, BottomBarStyle.values.length);
+    expect(chips.length, 2);
+    expect(
+      find.byKey(bottomBarStyleChipKey(BottomBarStyle.tab)),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(bottomBarStyleChipKey(BottomBarStyle.capsule)),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('外观子页：底部栏开关关闭时，样式选项置灰不可点（WB_SPEC_216 第 1 节）', (
+    tester,
+  ) async {
+    // 预置「底部栏关闭 + 已选胶囊」，样式行应整行置灰、两个选项 onSelected 为 null，
+    // 且样式字段不被清掉（重开栏要恢复胶囊）。
     // 真实 FFI 写库必须放进 runAsync：testWidgets 的假时钟不会推进真实 IO。
     await tester.runAsync(
       () => Dao.instance.setSetting(
         'ui_settings',
-        const UiSettings(showBottomBar: false).encode(),
+        const UiSettings(
+          showBottomBar: false,
+          bottomBarStyle: BottomBarStyle.capsule,
+        ).encode(),
       ),
     );
     await tester.runAsync(() async {
@@ -182,12 +237,21 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
-    final barChip = find.byKey(bottomBarStyleChipKey(BottomBarStyle.bar));
+    final tabChip = find.byKey(bottomBarStyleChipKey(BottomBarStyle.tab));
     final capsuleChip = find.byKey(
       bottomBarStyleChipKey(BottomBarStyle.capsule),
     );
-    expect(tester.widget<ChoiceChip>(barChip).onSelected, isNull);
+    expect(tester.widget<ChoiceChip>(tabChip).onSelected, isNull);
     expect(tester.widget<ChoiceChip>(capsuleChip).onSelected, isNull);
+    // 整行置灰：ListTile.enabled == false
+    expect(
+      tester
+          .widget<ListTile>(
+            find.widgetWithText(ListTile, '底部栏样式'),
+          )
+          .enabled,
+      isFalse,
+    );
     // 开关本身是关的
     expect(
       tester
@@ -197,7 +261,7 @@ void main() {
           .value,
       isFalse,
     );
-    // 置灰时点了也不改设置（仍是关闭 + 默认形态）
+    // 置灰时点了也不改设置（仍是关闭，样式仍是关栏前的胶囊）
     await tester.tap(capsuleChip, warnIfMissed: false);
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 300)),
@@ -207,7 +271,32 @@ void main() {
     );
     final ui = UiSettings.fromEncoded(raw);
     expect(ui.showBottomBar, isFalse);
-    expect(ui.bottomBarStyle, BottomBarStyle.bar);
+    expect(ui.bottomBarStyle, BottomBarStyle.capsule);
+
+    // 重新打开开关 → 恢复上次形态（胶囊），样式选项重新可点
+    await tester.tap(find.widgetWithText(SwitchListTile, '底部栏显示'));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 400)),
+    );
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.widgetWithText(SwitchListTile, '底部栏显示'),
+          )
+          .value,
+      isTrue,
+    );
+    expect(tester.widget<ChoiceChip>(capsuleChip).selected, isTrue);
+    expect(tester.widget<ChoiceChip>(tabChip).onSelected, isNotNull);
+    final raw2 = await tester.runAsync(
+      () => Dao.instance.getSetting('ui_settings'),
+    );
+    final ui2 = UiSettings.fromEncoded(raw2);
+    expect(ui2.showBottomBar, isTrue);
+    expect(ui2.bottomBarStyle, BottomBarStyle.capsule, reason: '开栏恢复上次形态');
   });
 
   testWidgets('提醒子页：ⓘ 说明按钮存在且点开能看到对应弹窗', (tester) async {

@@ -1,8 +1,55 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-11-01（2.1.4+29：WB_SPEC_215 周日弹窗一天一次 + 底部栏两形态可选）
+> 更新时间：2026-11-01（2.1.5+30：WB_SPEC_216 底部栏换图标+文字标签栏、删通栏、整页课表显示完全）
 
 ## 做到哪了
+
+## 2026-11-01（2.1.5+30：WB_SPEC_216 底部栏换图标+文字标签栏、删通栏、整页课表显示完全）
+
+规格见任务内 WB_SPEC_216 全文。用户发了一张自助打印小程序的主页截图，原话：「底部做成这样的，而且进入主页确保整页课表能显示完全」，随后逐项确认：标签文案「保留」（右边那格继续叫「设置」，不改成「我的」）、「保留胶囊，删掉另外一种再添加这个」（保留 2.1.4 的胶囊贴底，删掉通栏贴底，新增截图里这种图标+文字标签栏）。沿用 Riverpod 手写 Notifier / Dao 单例 / 中文文案注释；未改周视图网格本身、周日弹窗逻辑、云同步、菜单自定义，未恢复任何 AI 入口。
+
+### 交付形态
+- 本版**未推仓库、未建分支**：交付物是统一 diff（`diff -ruN`，路径为仓库相对路径；`.diff` 不支持时另给同名 `.txt`）+ 新增文件包 zip。
+- **本环境真跑通了**：在线拉 Flutter 3.47.7 / Dart 3.13.5（与 `environment.sdk: ^3.13.5` 对齐，走 `storage.flutter-io.cn` / `pub.flutter-io.cn` 镜像），`flutter pub get` → `flutter analyze`（**No issues found!**）→ `flutter test`（见第 3 节的用例数）。
+- 唯一的环境性动作：仓库里 `assets/fonts/*.ttf` 按 `.gitignore` 不入库，本地用等宽占位字体文件补齐后才能构建 asset bundle；这四个 ttf 不进 diff。
+
+### 第 1 节 底部栏形态调整
+- **删通栏**：删除 `lib/widgets/home_bottom_bar.dart`（`HomeBottomBar`）与 `main.dart` 的 `_buildBottomBar` bar 分支、对应 import；`BottomBarStyle` 枚举删掉 `bar`，`fromId` 兜底改回 `tab`——旧库里残留的 `"bottomBarStyle": "bar"` 读取后回落成新标签栏，不会走到「未知样式 → 无栏」，也不会崩（枚举只剩 tab / capsule 两个分支，编译期就不会漏）。
+- **增标签栏**（`lib/widgets/home_tab_bar.dart`，id `tab`，**新默认**）：栏体 `Material(colorScheme.surface, elevation: 0, shadowColor: transparent)`，由 `HomeShell` 以 `Positioned(left/right/bottom: 0)` 贴屏幕底边，栏内 `SafeArea(bottom)` 吃底部手势条安全区（色块铺到最底部）；`DecoratedBox` 画顶部 1 逻辑像素细分割线（主题 `outline` 35% 透明度，装饰不参与布局、不额外占高）；栏内 `SizedBox(height: 64)` + 两格 `Expanded` 等宽——图标在上、文字在下、垂直居中，左边「课表」（`calendar_today_outlined`）、右边「设置」（`settings_outlined`），文案沿用 2.1.4 未改名。
+- **颜色**：选中态图标与文字同为琥珀黄 `kTabBarActiveColor = Color(0xFFFFB300)`（`Colors.amber[600]`），未选中同为 `onSurfaceVariant` 灰；刻意不用主题 primary（默认种子色是雾绿 / 可可棕，与截图不符），测试里同时断言 `!= scheme.primary`。
+- **功能不变**：课表键回课表视图（已在课表则 `displayWeekProvider.goToday()` 回本周），设置键进壳内设置根页；关栏时恢复 2.1.1 单页结构、设置从右上角菜单 Push 进入（带返回箭头）；`PopScope` 防困死与系统返回逻辑原样不动。
+- **设置项与持久化**：外观页「底部栏样式」两项变为「新标签栏（默认）」/「胶囊贴底」（选项直接取自 `BottomBarStyle.values`，旧项自动消失），关栏时 `onSelected: null` 整行置灰；`UiSettings.bottomBarStyle` 默认值改 `tab`，存库只存 id 字符串，切换走 `UiSettingsNotifier.apply` 即时生效并落库；关栏**不清除** `bottomBarStyle` 字段，重开恢复上次形态。
+
+### 第 2 节 进主页整页课表能显示完全
+- 唯一口径在 `lib/ui/bottom_bar_metrics.dart`：标签栏 64（**该 widget 的实测高度**，与 `HomeTabBar.height` 同源）/ 胶囊 52 / 关栏 16，各加一次底部安全区。主页网格（`week_view_page.dart` 的 `bottomInset`）与壳内设置页列表（`settings_page.dart`）都调它，无硬编码。
+- 「实测高度」怎么保证：栏体用 `SizedBox(height: 64)` 定高 + `DecoratedBox` 画分割线。最初用 `Container(decoration: border)` 时 `Container` 会把 border 计入布局，实测变成 65，与留白口径差 1；换成 `DecoratedBox` 后实测正好 64，测试里直接拿 `tester.getSize(find.byType(HomeTabBar))` 与 `bottomBarGridBottomInset(...)` 对比，两边一分叉立刻红。
+- 未改周视图网格本身、未改周日弹窗逻辑、未恢复任何 AI 入口。
+
+### 第 3 节 版本 / 文档 / 测试
+- `pubspec.yaml` → `2.1.5+30`；`CHANGELOG.md` 新增 v2.1.5+30（换标签栏、删通栏并回落、保留胶囊、整页显示完全、关栏置灰与恢复）；`DEV_STATE.md`（本文件）、`ARCHITECTURE.md` 同步写明。
+- 测试（本次变更相关）：
+  - 改写 `test/bottom_bar_style_test.dart`（13 例）：标签栏整宽贴底 / 实测高 64 / `elevation == 0` + `shadowColor` 透明 / 顶部 1px 分割线且只画顶边 / 两格等分整宽 / 图标在上文字在下且水平居中 / 选中琥珀黄（图标与文字同色、`!= primary`）、未选中灰 / 文案仍「课表」「设置」且恒两键 / 回调分流 / 34 安全区时高度 = 64+34 且仍贴底 / 1.3 倍字体不溢出；胶囊仍在（宽度自适应、贴底、`elevation 0`、圆角 26）；留白口径三态 + 安全区只加一次 + 异常值按 0。
+  - 新增 `test/home_grid_bottom_inset_test.dart`（4 例）：标签栏 / 胶囊 / 关栏 / 带 34 安全区四种情况下滚到底，断言「网格内容底边 ≈ 底部栏顶边」（留白 == 栏高 + 安全区）、最后一节节次文字完整落在栏顶之上且在视口内。
+  - 改写 `test/home_shell_test.dart`（6 例）：默认标签栏（整宽、贴底、高 64、恒两键）、设置键切壳内设置页无返回箭头且设置格选中为琥珀黄、切换形态即时生效并落库 capsule、**关→开恢复上次形态（胶囊与标签栏两个方向）**、**旧值 `bar` 回落标签栏且 `takeException()` 为 null**、关栏时无栏且右上角菜单进设置带返回箭头。
+  - 改写 `test/settings_sections_test.dart`：样式两项为「新标签栏」/「胶囊贴底」（断言「通栏贴底」不存在）、默认选中新标签栏、点胶囊即时切换并落库、再点回新标签栏落库 tab、选项数 = 枚举长度 2、关栏时两 chip `onSelected == null` 且整行 `enabled == false`、点了不改设置（仍保留关栏前的胶囊）、重开开关恢复胶囊且选项恢复可点。
+  - 改写 `test/ui_settings_test.dart`：默认值 `tab`（id/label）、tab 与 capsule 往返不丢、缺失 / null / 空串 / 未知 / **旧值 `bar`** 一律回落 `tab`、枚举只剩 `['tab','capsule']`、存的是 id 字符串、`copyWith` 不误伤其它字段。
+- 门禁：`flutter analyze` 零 issue；`flutter test` 全绿（最终用例数见本次交付说明）。
+
+### 常见 Bug 预查（逐条：适用 / 不适用）
+1. **配置损坏与原子写入（样式 id 兜底）— 适用**：`BottomBarStyle.fromId` 对缺失 / null / 空串 / 未知值 / 已删除的旧值 `bar` 一律回 `tab`；`UiSettings.fromEncoded` 整体解析失败回全默认；`bottomBarGridBottomPadding` 对负数 / 无穷安全区按 0 处理，绝不把 NaN 塞进 `EdgeInsets`。已写用例覆盖。
+2. **升级残留（旧 `bar` 值回落）— 适用**：老用户库里的 `"bottomBarStyle": "bar"` 读取后是 `tab`，渲染标签栏，不会无栏、不会崩（`home_shell_test` 有专门用例断言 `takeException()` 为 null）。
+3. **睡眠唤醒 / 切后台后状态陈旧 — 不适用（但已天然免疫）**：底部栏形态只由 `UiSettings`（Riverpod provider，读库内存态）驱动，不缓存任何时间相关状态；`week_view_page` 的分钟级刷新定时器与本改动无关。
+4. **版本号缺失 — 不适用**：`pubspec.yaml` 明确写 `2.1.5+30`；`PackageInfo` 只在 UI 展示与更新比较里用，底部栏不读版本；测试里 `PackageInfo.setMockInitialValues` 已同步打桩为 2.1.5 / 30。
+5. **敏感信息进日志 — 不适用**：本次改动没有新增任何网络 / 文件 IO，也没有日志语句；形态 id 只是 `tab` / `capsule` 两个常量字符串，不存在凭据、Token、手机号之类内容。
+6. **手势冲突 / 安全区重复计算 — 适用（已处理并测）**：栏体自己吃 `SafeArea(bottom)`，网格留白只叠加一次 `MediaQuery.paddingOf(context).bottom`；测试里 34 安全区场景断言「栏高 = 64+34」且「留白 == 栏高」。
+7. **系统字体放大导致纵向溢出 — 适用（已处理并测）**：栏高固定 64，两格内容（图标 24 + 间距 4 + 文字）在 1.3 倍缩放下仍小于 64，测试断言无异常。
+8. **关栏后样式被重置 — 适用（已处理并测）**：关栏只置灰样式行、不动 `bottomBarStyle` 字段，重开恢复上次形态（设置页与壳层各有用例）。
+
+### 未覆盖 / 待人工确认
+- 真机目视：标签栏白底与底部手势条的衔接、1 像素分割线在深浅色下的观感、琥珀黄 `#FFB300` 与截图的接近程度，需要真机看一眼（测试只断言几何与颜色常量，不代替肉眼）。
+- 琥珀黄是固定值，不随主题种子色变；若用户日后想让选中色跟着主题走，需要再改一处常量（已集中在 `kTabBarActiveColor`）。
+- 「整页显示完全」测的是滚动到底的几何等式；`autoFitHeight` 默认开时整表恰好一屏（不滚动），该场景由常量口径保证，未单独写用例。
+- 极端字体缩放（1.3 倍以上，如系统开到 2.0）未覆盖：栏高固定 64，文字行高理论上仍在范围内，但真机上建议顺手看一眼。
 
 ## 2026-11-01（2.1.4+29：WB_SPEC_215 周日弹窗一天一次 + 底部栏两形态可选）
 
