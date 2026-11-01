@@ -25,6 +25,10 @@ void main() {
       expect(ui.showWeekParity, isFalse); // 2.0.1 标题单双周默认关
       expect(ui.showClassBroadcast, isFalse); // 2.0.1 上课播报默认关
       expect(ui.showBottomBar, isTrue); // 2.1.2 底部栏默认开
+      // 2.1.4（WB_SPEC_215 第 2 节）：底部栏形态默认「通栏贴底」
+      expect(ui.bottomBarStyle, BottomBarStyle.bar);
+      expect(ui.bottomBarStyle.id, 'bar');
+      expect(ui.bottomBarStyle.label, '通栏贴底');
       expect(UiSettings.fromEncoded('').cellHeight, 46);
       expect(UiSettings.fromEncoded('坏掉的 json').cellHeight, 46);
     });
@@ -50,6 +54,7 @@ void main() {
         autoFitHeight: true,
         highlightTodayColumn: true,
         showBottomBar: false,
+        bottomBarStyle: BottomBarStyle.capsule,
       );
       final back = UiSettings.fromEncoded(ui.encode());
       expect(back.cellHeight, 64);
@@ -71,6 +76,8 @@ void main() {
       expect(back.autoFitHeight, isTrue);
       expect(back.highlightTodayColumn, isTrue);
       expect(back.showBottomBar, isFalse);
+      expect(back.bottomBarStyle, BottomBarStyle.capsule);
+      expect(back.bottomBarStyle.id, 'capsule');
     });
 
     test('showBottomBar 反序列化容错：缺失/null/非 bool 一律回默认开', () {
@@ -80,6 +87,52 @@ void main() {
       expect(UiSettings.fromEncoded('{"showBottomBar": "yes"}').showBottomBar, isTrue);
       expect(UiSettings.fromEncoded('{"showBottomBar": false}').showBottomBar, isFalse);
       expect(UiSettings.fromEncoded('{"showBottomBar": true}').showBottomBar, isTrue);
+    });
+
+    test('bottomBarStyle 反序列化容错：缺失/null/未知值一律回「通栏贴底」', () {
+      // 2.1.4（WB_SPEC_215 第 2 节）：旧数据没有这个字段时按默认 bar 兜底
+      expect(
+        UiSettings.fromEncoded('{}').bottomBarStyle,
+        BottomBarStyle.bar,
+      );
+      expect(
+        UiSettings.fromEncoded('{"showBottomBar": true}').bottomBarStyle,
+        BottomBarStyle.bar,
+      );
+      expect(
+        UiSettings.fromEncoded('{"bottomBarStyle": null}').bottomBarStyle,
+        BottomBarStyle.bar,
+      );
+      expect(
+        UiSettings.fromEncoded('{"bottomBarStyle": "胶囊"}').bottomBarStyle,
+        BottomBarStyle.bar,
+      );
+      // 两个合法值都能读回来
+      expect(
+        UiSettings.fromEncoded('{"bottomBarStyle": "bar"}').bottomBarStyle,
+        BottomBarStyle.bar,
+      );
+      expect(
+        UiSettings.fromEncoded('{"bottomBarStyle": "capsule"}').bottomBarStyle,
+        BottomBarStyle.capsule,
+      );
+    });
+
+    test('bottomBarStyle 存的是 id 字符串，不是枚举下标', () {
+      expect(
+        const UiSettings(bottomBarStyle: BottomBarStyle.capsule).toJson()['bottomBarStyle'],
+        'capsule',
+      );
+      expect(
+        const UiSettings().toJson()['bottomBarStyle'],
+        'bar',
+      );
+      // 只改形态时其余字段原样保留（copyWith 不误伤）
+      final ui = const UiSettings(cellHeight: 60, showBottomBar: false)
+          .copyWith(bottomBarStyle: BottomBarStyle.capsule);
+      expect(ui.cellHeight, 60);
+      expect(ui.showBottomBar, isFalse);
+      expect(ui.bottomBarStyle, BottomBarStyle.capsule);
     });
 
     test('越界值被钳制：格高、圆角、字号系数', () {

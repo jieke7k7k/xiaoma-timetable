@@ -1,8 +1,48 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-10-30（2.1.3+28：WB_SPEC_214 删除全部实验性 AI 功能，只做减法）
+> 更新时间：2026-11-01（2.1.4+29：WB_SPEC_215 周日弹窗一天一次 + 底部栏两形态可选）
 
 ## 做到哪了
+
+## 2026-11-01（2.1.4+29：WB_SPEC_215 周日弹窗一天一次 + 底部栏两形态可选）
+
+规格见任务内 WB_SPEC_215 全文。用户原话：「这个弹窗就算读过了，从设置界面切回主页还是有弹窗，不要这样。然后底下的胶囊做成开关吧，把以前底部显示去掉 AI 的底部栏加回来，按钮做成胶囊，圆角，但是不要悬浮。」随后确认「都做吧，做成可选的」——两形态都实现，用设置项切换。沿用 Riverpod 手写 Notifier / Dao 单例 / 中文文案注释；未改网格行高、带子高度、云同步、菜单自定义。
+
+### 交付形态
+- 本版**未推送仓库**：交付物是统一 diff（`diff -ruN`，路径为仓库相对路径）+ 新增文件全文，打包 zip。
+- **本环境这次真跑通了**：在线拉取 Flutter 3.47.7 / Dart 3.13.5（与 `environment.sdk: ^3.13.5` 对齐，经 `pub.flutter-io.cn` 镜像下载，官方源只有 70 KB/s），`flutter pub get` → `flutter analyze`（**No issues found**）→ `flutter test`（**382 个用例全绿**，2.1.3 基线为 350 个，净增 32）。上一版文档里「本环境跑不了 analyze/test」的说明只适用于当时的沙箱，这一版已不适用。
+- 唯一的环境性动作：仓库里 `assets/fonts/*.ttf` 按 `.gitignore` 不入库，本地用等宽占位字体文件补齐后才能构建 asset bundle；这四个 ttf 不进 diff。
+
+### 第 1 节 周日弹窗一天一次（Bug 修复）
+- 根因：`week_view_page.dart` 里只有 `_sundayDialogShown` 一个 State 内布尔值；壳内一级视图被 `AnimatedSwitcher` 换掉（切到设置再切回主页）时 State 重建，标记丢失 → 弹窗重弹。
+- 做法：新增 `lib/utils/sunday_dialog.dart`（纯函数 `isSundayDialogDue` / `sundayDialogDateStamp` / 键名 `kSundayDialogShownDateKey`）+ `lib/services/sunday_dialog_service.dart`（`SundayDialogGate.shouldShow/markShown`，走 `Dao` 读写 app_settings）。已读日期存 `app_settings.sunday_dialog_shown_date`，值为 `yyyy-MM-dd`。
+- 判定条件不变：今天周日 + 正看本周 + 今天还没记过已读。弹出即写已读，所以「知道了」「看下周」「点弹窗外区域关闭」三种关闭方式等效；当天切 Tab、重建页面、杀进程重进都不再弹，下一个周日重新弹。
+- 文案、按钮、「看下周」跳周、最后一周不显示「看下周」一律未改（`_showSundayDialog` 只把返回类型改成 `Future<void>`，内容一字未动）。
+- 为实现可测，新增全局可替换时钟 `sundayDialogNow`（默认 `DateTime.now`）：页面判定与 `SundayDialogGate` 都读它，测试可把日期锁到某个周日；生产代码只读不写。
+
+### 第 2 节 底部栏两形态可选（均不悬浮）
+- `UiSettings.bottomBarStyle`（`BottomBarStyle.bar` 默认 / `BottomBarStyle.capsule`），存 id 字符串，缺失/未知值一律回 `bar`；关栏时保留用户上次选择，重新打开恢复同一形态。
+- 形态 A 通栏贴底（`lib/widgets/home_bottom_bar.dart` 新建）：栏体整宽、贴屏幕底边（`Positioned(bottom: 0)` + 栏内 `SafeArea` 吃掉安全区，色块铺到最底部），背景 `colorScheme.surface`，无圆角无阴影（`elevation: 0`）；内部两键各为圆角 26、最小高 52 的胶囊键，选中实心 `primary` + `onPrimary` 前景，未选中透明 + `onSurfaceVariant`，两键等宽平铺。
+- 形态 B 胶囊贴底（`home_capsule.dart`）：外形不动（圆角 26、宽度随内容自适应），`elevation` 3 → 0、`shadowColor` 删除、外层悬浮间距 12 → 0，只保留底部安全区内边距。
+- 设置项：「设置 → 外观」在「底部栏显示」下方新增「底部栏样式」行 + 两个 `ChoiceChip`（通栏贴底 / 胶囊贴底），关栏时 `onSelected: null` 整行置灰不可点；切换走 `UiSettingsNotifier.apply`，即时生效并落库。
+- 留白联动：新增 `lib/ui/bottom_bar_metrics.dart` 作为唯一口径——通栏 68（52 键高 + 上下各 8）/ 胶囊 52 / 关栏 16，再各加底部安全区。主页网格（`week_view_page.dart` 的 `bottomInset`）与壳内设置页（`settings_page.dart` 原本硬编码 76）都改成调它。
+- 功能一致性：两形态共用同一套回调（课表键回课表视图 / 已在课表则回本周；设置键进壳内设置根页），`PopScope` 防困死逻辑未动；关栏时恢复单页结构、设置从右上角菜单 Push 进入（带返回箭头），与 2.1.3 一致。
+- 未恢复任何 AI 入口与助手键：`homeMenuItems` 过滤、路由表、胶囊键数一律未动。
+
+### 第 3 节 测试
+- 新增 `test/sunday_dialog_once_test.dart`（15 例）：纯判定 7 例（周日+本周+未读才弹、非周日不弹、非本周不弹、已读不弹、同日不同时刻不弹、下周日重弹、日期补零）；`SundayDialogGate` 落库 3 例（标记后同一天/新实例不弹、下周日重弹且覆盖为最新日期、非周日不写库）；页面行为 5 例（首次进入弹一次并落库、**点「知道了」后切设置 Tab 再切回不再弹**、同周日内整体重建不再弹、拨到下个周日重弹、**「看下周」仍跳周**）。
+- 新增 `test/bottom_bar_style_test.dart`（10 例）：形态 A 整宽贴底/高度 68、`elevation` 0、两键圆角 26 且最小高 52 等宽平铺、选中与未选中填充色区分、两键回调、字体放大 1.3 不溢出；形态 B 宽度自适应且贴底（底边与屏幕底边齐平）、`elevation` 0 + 圆角 26；留白口径 2 例（关栏 16 / 通栏 68 / 胶囊 52、安全区只加一次、异常值按 0）。
+- 改写 `test/home_shell_test.dart`：默认形态＝通栏贴底（`HomeBottomBar`、无 `HomeCapsule`、恒两键、整宽）、设置键切壳内设置页无返回箭头、**改 provider 后形态即时生效且落库为 capsule**、**关栏后无栏且右上角菜单仍能进设置（有返回箭头）**。
+- 改写 `test/settings_sections_test.dart`：新增「样式二选一、默认通栏、点胶囊即时切换并落库」「关栏时两个选项 `onSelected == null` 置灰且点了不改设置」两例；原「外观项存在」用例因新增一行导致 ⓘ 落到首屏外，改为先 `ensureVisible` 再点。
+- 改写 `test/ui_settings_test.dart`：`bottomBarStyle` 默认值、往返、缺失/null/未知值兜底、存 id 而非下标、`copyWith` 不误伤其它字段。
+- 门禁：`flutter analyze` 零 issue；`flutter test` 382 用例全绿（基线 350 例无回归，净增 32）。
+
+### 未覆盖 / 待人工确认
+- 真机目视：通栏贴底的色块与底部手势条衔接、胶囊贴底后与屏幕下沿的视觉留白，需要真机看一眼（测试只断言几何与 `elevation`，不代替肉眼）。
+- 系统字体放到最大（1.3+）时通栏两键的横向排布：已用 `Flexible` + `ellipsis` 兜底并测了 1.3 倍不溢出，更极端的 2.0 倍未覆盖。
+- 周日判定依赖设备本地日期：跨时区旅行、手动改系统时间会让「今天是不是周日」跟着变，属预期行为，未做额外防护。
+- 网格留白用的是常量栏高（68 / 52），若系统字体把栏撑高，留白不会跟着长；与 2.1.3 的 76 常量口径一致，未引入动态测量。
+
 
 ## 2026-10-30（2.1.3+28：WB_SPEC_214 删除全部实验性 AI 功能）
 

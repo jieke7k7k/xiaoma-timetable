@@ -49,6 +49,12 @@ import '../widgets/empty_state.dart';
 /// 实时预览「今天整列边框」覆盖层的 Key：测试据此断言开关开/关时该层的有无。
 const Key kPreviewTodayHighlightKey = ValueKey('preview_today_highlight');
 
+/// 外观页「底部栏样式」某个选项的 Key（WB_SPEC_215 第 2 节）。
+///
+/// 测试据此取 ChoiceChip，断言选中态、置灰（onSelected == null）与切换后的持久化。
+Key bottomBarStyleChipKey(BottomBarStyle style) =>
+    ValueKey('bottom_bar_style_${style.id}');
+
 /// 把同一节内的一组连续设置行用 1px 分隔线隔开（2.0.7 Taste 化）。
 ///
 /// 分隔线用现有主题 dividerColor（`Divider` 不指定 color 即取主题值），
@@ -231,12 +237,64 @@ class AppearanceSettingsPage extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.w500),
                 ),
                 subtitle: const Text(
-                  '开启后主页底部显示悬浮胶囊，可一键切换课表与设置；关闭后设置改从右上角菜单进入',
+                  '开启后主页底部显示底部栏，可一键切换课表与设置；关闭后设置改从右上角菜单进入',
                 ),
                 value: ui.showBottomBar,
                 onChanged: (v) => ref
                     .read(uiSettingsProvider.notifier)
                     .apply(ui.copyWith(showBottomBar: v)),
+              );
+            },
+          ),
+          // 2.1.4（WB_SPEC_215 第 2 节）：底部栏样式二选一（通栏贴底 / 胶囊贴底），
+          // 紧跟在「底部栏显示」开关下方。两形态都不悬浮，切换即时生效并持久化；
+          // 开关关闭时整行置灰、两个选项不可点（onSelected 传 null）。
+          Consumer(
+            builder: (ctx, ref, _) {
+              final ui =
+                  ref.watch(uiSettingsProvider).value ?? const UiSettings();
+              final enabled = ui.showBottomBar;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ListTile(
+                    enabled: enabled,
+                    leading: const Icon(Icons.view_agenda_outlined),
+                    title: const Text(
+                      '底部栏样式',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    subtitle: Text(
+                      enabled
+                          ? '两种形态都贴住屏幕底边、都不悬浮'
+                          : '先打开上方「底部栏显示」，才能选择样式',
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(56, 0, 16, 12),
+                    child: Wrap(
+                      spacing: AppSpacing.s,
+                      runSpacing: AppSpacing.s,
+                      children: [
+                        for (final style in BottomBarStyle.values)
+                          ChoiceChip(
+                            key: bottomBarStyleChipKey(style),
+                            label: Text(style.label),
+                            selected: ui.bottomBarStyle == style,
+                            visualDensity: VisualDensity.compact,
+                            // 关栏时置灰不可点：onSelected == null 即禁用态
+                            onSelected: enabled
+                                ? (_) => ref
+                                      .read(uiSettingsProvider.notifier)
+                                      .apply(
+                                        ui.copyWith(bottomBarStyle: style),
+                                      )
+                                : null,
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               );
             },
           ),

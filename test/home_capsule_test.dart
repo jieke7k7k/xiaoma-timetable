@@ -2,14 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xiaoma_timetable/widgets/home_capsule.dart';
 
-/// 悬浮胶囊纯 UI 测试（WB_SPEC_213 第 2/3 节；2.1.3 WB_SPEC_214 第 1 节改写）
+/// 胶囊形态纯 UI 测试（WB_SPEC_213 第 2/3 节；2.1.3 WB_SPEC_214 第 1 节改写；
+/// 2.1.4 WB_SPEC_215 第 2 节：悬浮 → 贴底、去阴影）
 ///
 /// [HomeCapsule] 不依赖 Riverpod（选中态由构造参数传入），可直接构造做
 /// widget 测试，无需打 DB/网络。2.1.3 起胶囊恒为两键，断言：
 /// 1. 只有［课表｜设置］两键，第三个键（此前解锁后才会出现的那一个）不存在；
 /// 2. 无该键的图标、无 Push 路由动作——点两键只走回调，不产生新页面；
 /// 3. 课表键 / 设置键回调正确（课表键双职责由 HomeShell 层封装，这里只验键回调）；
-/// 4. 字体放大 1.3 倍时胶囊不纵向溢出。
+/// 4. 字体放大 1.3 倍时胶囊不纵向溢出；
+/// 5. 2.1.4 起胶囊贴底不悬浮：`elevation` 为 0（无悬浮阴影），圆角仍 26。
+///    贴底位置（底边与屏幕底边齐平）由 bottom_bar_style_test 在 Stack 里断言。
 void main() {
   Widget wrap(HomeCapsule capsule) =>
       MaterialApp(home: Scaffold(body: Center(child: capsule)));
@@ -98,6 +101,32 @@ void main() {
     // 仍在同一页：胶囊还在、没有额外路由压栈（有返回箭头就说明 Push 了）
     expect(find.byType(HomeCapsule), findsOneWidget);
     expect(find.byType(BackButton), findsNothing);
+  });
+
+  testWidgets('贴底不悬浮：elevation 0（无悬浮阴影）、圆角 26（WB_SPEC_215 第 2 节）', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(
+        HomeCapsule(
+          activeTab: HomeShellTab.schedule,
+          onSelectTab: (_) {},
+          onTapSchedule: () {},
+        ),
+      ),
+    );
+
+    final material = tester.widget<Material>(
+      find
+          .descendant(
+            of: find.byType(HomeCapsule),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(material.elevation, 0, reason: '贴底后不再有悬浮阴影');
+    final shape = material.shape! as RoundedRectangleBorder;
+    expect(shape.borderRadius, BorderRadius.circular(26));
   });
 
   testWidgets('字体放大 1.3 倍：胶囊不纵向溢出（复审 P0-1）', (tester) async {

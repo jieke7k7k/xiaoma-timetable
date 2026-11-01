@@ -5,21 +5,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:xiaoma_timetable/database/dao.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/main.dart';
+import 'package:xiaoma_timetable/models/semester.dart';
+import 'package:xiaoma_timetable/models/ui_settings.dart';
 import 'package:xiaoma_timetable/pages/settings_page.dart';
 import 'package:xiaoma_timetable/pages/week_view_page.dart';
+import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
+import 'package:xiaoma_timetable/providers/providers.dart';
+import 'package:xiaoma_timetable/widgets/home_bottom_bar.dart';
 import 'package:xiaoma_timetable/widgets/home_capsule.dart';
 
-/// 悬浮胶囊底部栏测试（WB_SPEC_213 第 2 节；2.1.3 WB_SPEC_214 第 1 节改写）
+/// 底部栏两形态的壳层测试（WB_SPEC_215 第 2/3 节）。
 ///
-/// 2.1.2 起底部栏以「悬浮胶囊」形态回归：默认开、壳内默认停在课表一级视图，
-/// 底部居中胶囊两键［课表｜设置］。2.1.3 起胶囊恒为两键，壳不再按任何开关展开
-/// 出第三个键。断言：
-/// 1. 根页面仍渲染 WeekViewPage（课表一级视图）+ 悬浮胶囊；
-/// 2. 不再用 IndexedStack 三页签 / NavigationBar / BottomNavigationBar；
-/// 3. 胶囊恰好两键、无「主页」键、无第三个键及其图标；
-/// 4. 点「设置」键切到壳内设置根页，且无左上角返回箭头。
+/// 2.1.2 起底部栏以「悬浮胶囊」回归；2.1.4 起改为两种**都不悬浮**的贴底形态，
+/// 由 `UiSettings.bottomBarStyle` 切换（默认 bar 通栏贴底）：
+/// 1. 默认渲染：WeekViewPage + 通栏贴底栏（HomeBottomBar），恒两键；
+/// 2. 点「设置」键切到壳内设置根页，且无左上角返回箭头；
+/// 3. 样式切换即时生效（改 provider 后立刻换成胶囊形态），并已持久化；
+/// 4. 关栏（showBottomBar=false）时不出栏，右上角菜单仍能进设置（逻辑不变）。
 ///
 /// HomeShell 的启动联动 / WeekViewPage 的公告检查会走平台通道与网络，这里用
 /// PackageInfo 打桩 + HttpOverrides 阻断网络，并把首帧放进 runAsync 里让真实
@@ -45,22 +50,69 @@ void main() {
     PackageInfo.setMockInitialValues(
       appName: '小马课表',
       packageName: 'com.example.simple_timetable',
-      version: '2.1.2',
-      buildNumber: '27',
+      version: '2.1.4',
+      buildNumber: '29',
       buildSignature: '',
     );
+    // 把当前学期改成本周开学：开学日期取真实今天的周一，保证「本周 = 第 1 周」，
+    // 周视图能正常渲染出课表（否则停在加载态）。建库时 createSchema 已写入一条
+    // isCurrent=1 的默认学期，这里改它而不是再插一条，避免 current 指错。
+    final now = DateTime.now();
+    final monday = now.subtract(Duration(days: now.weekday - 1));
+    // 复审 P2-1：把周日时钟锁到本周一，避免周日跑测试时真实周日弹窗遮挡底部栏
+    // 导致点设置键等用例命中弹窗 barrier（日期依赖 flaky）。
+    sundayDialogNow = () => monday;
+    String two(int v) => v.toString().padLeft(2, '0');
+    final start = '${monday.year}-${two(monday.month)}-${two(monday.day)}';
+    final existing = await Dao.instance.getCurrentSemester();
+    if (existing == null) {
+      await Dao.instance.insertSemester(
+        Semester(name: '测试学期', startDate: start, isCurrent: true),
+      );
+    } else {
+      await Dao.instance.updateSemester(existing.copyWith(startDate: start));
+    }
   });
 
   tearDown(() async {
+    sundayDialogNow = DateTime.now;
     await db.close();
   });
 
+  /// 反复「真实等待 + 推进假时钟」直到目标出现：学期/课程等 provider 首帧是
+  /// 真实异步读库，单次 pump 拿不到数据（周视图会停在加载态，AppBar 还没出来）。
+  Future<void> pumpUntil(
+    WidgetTester tester,
+    Finder finder, {
+    int rounds = 25,
+  }) async {
+    for (var i = 0; i < rounds; i++) {
+      if (finder.evaluate().isNotEmpty) return;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 80)),
+      );
+      await tester.pump(const Duration(milliseconds: 60));
+    }
+  }
+
   Future<void> pumpHome(WidgetTester tester) async {
+    // 手机尺寸视口（逻辑 390×844）：默认 800×600 的测试窗口比真机扁，
+    // 自适应一屏会把行高压得很小，节次栏文字会挤出几点溢出的假报错。
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.runAsync(() async {
       await HttpOverrides.runZoned(
         () async {
           await tester.pumpWidget(
-            const ProviderScope(child: MaterialApp(home: HomeShell())),
+            ProviderScope(
+              child: MaterialApp(
+                home: const HomeShell(),
+                routes: {'/settings': _settingsRoute},
+              ),
+            ),
           );
           await tester.pump();
           // 让启动联动里的真实 FFI 数据库操作在这里跑完并释放锁定时器
@@ -70,21 +122,25 @@ void main() {
       );
     });
     await tester.pump();
+    // 等学期就绪、周视图真正渲染出顶部栏（加载态只有转圈，没有 AppBar 动作）
+    await pumpUntil(tester, find.byIcon(Icons.more_vert));
   }
 
-  testWidgets('主页渲染 WeekViewPage + 悬浮胶囊恒两键，无 IndexedStack/NavigationBar', (
+  testWidgets('默认形态＝通栏贴底：WeekViewPage + HomeBottomBar 恒两键，无 IndexedStack/NavigationBar', (
     tester,
   ) async {
     await pumpHome(tester);
 
-    // 课表一级视图 + 悬浮胶囊都存在
+    // 课表一级视图 + 通栏贴底栏都存在
     expect(find.byType(WeekViewPage), findsOneWidget);
-    expect(find.byType(HomeCapsule), findsOneWidget);
-    // 三页签结构已删除（胶囊是自绘悬浮胶囊，不是系统底栏）
+    expect(find.byType(HomeBottomBar), findsOneWidget);
+    // 默认不是胶囊形态（默认「通栏贴底」）
+    expect(find.byType(HomeCapsule), findsNothing);
+    // 三页签结构已删除（栏是自绘组件，不是系统底栏）
     expect(find.byType(IndexedStack), findsNothing);
     expect(find.byType(BottomNavigationBar), findsNothing);
     expect(find.byType(NavigationBar), findsNothing);
-    // 胶囊恰两键，无「主页」键，也没有第三个键及其图标
+    // 栏里恰两键，无「主页」键，也没有 AI 键及其图标
     expect(find.text('课表'), findsOneWidget);
     expect(find.text('设置'), findsOneWidget);
     expect(find.text('主页'), findsNothing);
@@ -93,23 +149,29 @@ void main() {
       tester
           .widgetList<InkWell>(
             find.descendant(
-              of: find.byType(HomeCapsule),
+              of: find.byType(HomeBottomBar),
               matching: find.byType(InkWell),
             ),
           )
           .length,
       2,
-      reason: '胶囊恒为［课表｜设置］两键，不再有任何展开逻辑',
+      reason: '底部栏恒为［课表｜设置］两键',
     );
+    // 通栏贴底：宽度撑满整宽
+    final screenWidth = tester.getSize(find.byType(MaterialApp)).width;
+    expect(screenWidth, 390);
+    expect(tester.getSize(find.byType(HomeBottomBar)).width, screenWidth);
 
-    // 卸载主页，取消 WeekViewPage 的分钟级刷新定时器
+    // 卸载主页，取消 WeekViewPage 的分钟级刷新定时器；
+    // 先把假时钟拨过 10 秒，让读库时的锁警告定时器触发释放（否则报 Timer pending）
+    await tester.pump(const Duration(seconds: 11));
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('点胶囊设置键切到壳内设置根页，且无返回箭头', (tester) async {
+  testWidgets('点设置键切到壳内设置根页，且无返回箭头', (tester) async {
     await pumpHome(tester);
 
-    // 此刻只有胶囊上的「设置」键这一处文字
+    // 此刻只有栏上的「设置」键这一处文字
     await tester.tap(find.text('设置'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -125,4 +187,69 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('切换形态即时生效：改成胶囊贴底后立刻换形态，并已持久化', (tester) async {
+    await pumpHome(tester);
+    expect(find.byType(HomeBottomBar), findsOneWidget);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(HomeShell)),
+    );
+    // 走设置页同一个入口（UiSettingsNotifier.apply），模拟在外观页点「胶囊贴底」
+    await tester.runAsync(
+      () => container
+          .read(uiSettingsProvider.notifier)
+          .updateWith((s) => s.copyWith(bottomBarStyle: BottomBarStyle.capsule)),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // 即时生效：不需要重启，直接换成胶囊形态
+    expect(find.byType(HomeCapsule), findsOneWidget);
+    expect(find.byType(HomeBottomBar), findsNothing);
+    // 两键功能不变
+    expect(find.text('课表'), findsOneWidget);
+    expect(find.text('设置'), findsOneWidget);
+
+    // 持久化：库里存的是 capsule（杀进程重进保持同一形态）
+    final raw = await tester.runAsync(
+      () => Dao.instance.getSetting('ui_settings'),
+    );
+    expect(UiSettings.fromEncoded(raw).bottomBarStyle, BottomBarStyle.capsule);
+
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('关栏：不出底部栏；右上角菜单仍能进设置（逻辑不变）', (tester) async {
+    // 预置「底部栏关闭」，壳直接渲染单页课表（真实写库放 runAsync，假时钟不会推进真实 IO）
+    await tester.runAsync(
+      () => Dao.instance.setSetting(
+        'ui_settings',
+        const UiSettings(showBottomBar: false).encode(),
+      ),
+    );
+    await pumpHome(tester);
+
+    expect(find.byType(WeekViewPage), findsOneWidget);
+    expect(find.byType(HomeBottomBar), findsNothing);
+    expect(find.byType(HomeCapsule), findsNothing);
+
+    // 右上角「更多」菜单里的「设置」项（关栏时恢复显示）→ Push 设置页，有返回箭头
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('设置').last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byType(SettingsPage), findsOneWidget);
+    expect(find.byType(BackButton), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pumpWidget(const SizedBox());
+  });
 }
+
+/// 测试用路由表里的设置页（关栏时从菜单 Push 进入：独立页面、有返回箭头）
+Widget _settingsRoute(BuildContext context) => const SettingsPage();

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:xiaoma_timetable/database/dao.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
 import 'package:xiaoma_timetable/pages/settings_sections.dart';
@@ -66,6 +67,10 @@ void main() {
       matching: find.byType(AppInfoIconButton),
     );
     expect(fitInfo, findsOneWidget);
+    // 2.1.4 起「底部栏样式」选择行插在「底部栏显示」下方，外观组整体下移，
+    // 这里先把目标行滚进视口再点，避免「点在屏幕外」导致 tap 命中失败
+    await tester.ensureVisible(fitInfo);
+    await tester.pumpAndSettle();
     await tester.tap(fitInfo);
     await tester.pumpAndSettle();
     expect(find.text('按屏幕高度均分行高，整张课表不用上下滚'), findsOneWidget);
@@ -90,7 +95,7 @@ void main() {
     expect(tester.widget<SwitchListTile>(tile).value, isTrue);
     // 说明文字作为常驻副标题显示（不再用 ⓘ）
     expect(
-      find.text('开启后主页底部显示悬浮胶囊，可一键切换课表与设置；关闭后设置改从右上角菜单进入'),
+      find.text('开启后主页底部显示底部栏，可一键切换课表与设置；关闭后设置改从右上角菜单进入'),
       findsOneWidget,
     );
 
@@ -103,6 +108,106 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(tester.widget<SwitchListTile>(tile).value, isFalse);
+  });
+
+  testWidgets('外观子页：底部栏样式二选一，默认通栏贴底，点胶囊即时切换并落库（WB_SPEC_215 第 2 节）', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: AppearanceSettingsPage()),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+    });
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(find.text('底部栏样式'), findsOneWidget);
+    final barChip = find.byKey(bottomBarStyleChipKey(BottomBarStyle.bar));
+    final capsuleChip = find.byKey(
+      bottomBarStyleChipKey(BottomBarStyle.capsule),
+    );
+    expect(barChip, findsOneWidget);
+    expect(capsuleChip, findsOneWidget);
+    // 两项文案就是规格里的「通栏贴底」「胶囊贴底」
+    expect(find.text('通栏贴底'), findsOneWidget);
+    expect(find.text('胶囊贴底'), findsOneWidget);
+    // 默认选中通栏贴底
+    expect(tester.widget<ChoiceChip>(barChip).selected, isTrue);
+    expect(tester.widget<ChoiceChip>(capsuleChip).selected, isFalse);
+
+    // 点「胶囊贴底」→ 即时切换（走 apply，真实 FFI 异步落库，放进 runAsync 等它写完）
+    await tester.ensureVisible(capsuleChip);
+    await tester.pumpAndSettle();
+    await tester.tap(capsuleChip);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 400)),
+    );
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(tester.widget<ChoiceChip>(capsuleChip).selected, isTrue);
+    expect(tester.widget<ChoiceChip>(barChip).selected, isFalse);
+
+    // 落库：ui_settings 里存的是 capsule（杀进程重进保持）
+    final raw = await tester.runAsync(
+      () => Dao.instance.getSetting('ui_settings'),
+    );
+    expect(UiSettings.fromEncoded(raw).bottomBarStyle, BottomBarStyle.capsule);
+  });
+
+  testWidgets('外观子页：底部栏开关关闭时，样式选项置灰不可点（WB_SPEC_215 第 2 节）', (
+    tester,
+  ) async {
+    // 预置「底部栏关闭」，样式行应整行置灰、两个选项 onSelected 为 null。
+    // 真实 FFI 写库必须放进 runAsync：testWidgets 的假时钟不会推进真实 IO。
+    await tester.runAsync(
+      () => Dao.instance.setSetting(
+        'ui_settings',
+        const UiSettings(showBottomBar: false).encode(),
+      ),
+    );
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: AppearanceSettingsPage()),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+    });
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final barChip = find.byKey(bottomBarStyleChipKey(BottomBarStyle.bar));
+    final capsuleChip = find.byKey(
+      bottomBarStyleChipKey(BottomBarStyle.capsule),
+    );
+    expect(tester.widget<ChoiceChip>(barChip).onSelected, isNull);
+    expect(tester.widget<ChoiceChip>(capsuleChip).onSelected, isNull);
+    // 开关本身是关的
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.widgetWithText(SwitchListTile, '底部栏显示'),
+          )
+          .value,
+      isFalse,
+    );
+    // 置灰时点了也不改设置（仍是关闭 + 默认形态）
+    await tester.tap(capsuleChip, warnIfMissed: false);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
+    final raw = await tester.runAsync(
+      () => Dao.instance.getSetting('ui_settings'),
+    );
+    final ui = UiSettings.fromEncoded(raw);
+    expect(ui.showBottomBar, isFalse);
+    expect(ui.bottomBarStyle, BottomBarStyle.bar);
   });
 
   testWidgets('提醒子页：ⓘ 说明按钮存在且点开能看到对应弹窗', (tester) async {

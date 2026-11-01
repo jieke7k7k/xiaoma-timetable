@@ -2,6 +2,36 @@ import 'dart:convert';
 
 import '../utils/color_schemes.dart';
 
+/// 底部栏形态（WB_SPEC_215 第 2 节）：两种都实现、都不悬浮，用设置项切换。
+///
+/// - [bar] 通栏贴底：栏体撑满整宽、贴住屏幕底边（含底部安全区），背景取表面色，
+///   内部「课表｜设置」两键各自做成胶囊圆角按钮；
+/// - [capsule] 胶囊贴底：栏体保持胶囊外形（宽度随内容自适应），下移贴底，
+///   悬浮间距与阴影都归零。
+///
+/// 存库只存 [id]（`bar` / `capsule`），读取用 [fromId] 兜底——
+/// 旧数据没有这个字段、或值被改坏时一律回 [bar]（默认「通栏贴底」）。
+enum BottomBarStyle {
+  bar('bar', '通栏贴底'),
+  capsule('capsule', '胶囊贴底');
+
+  const BottomBarStyle(this.id, this.label);
+
+  /// 持久化用的字符串值（app_settings 的 ui_settings JSON 字段）
+  final String id;
+
+  /// 设置页显示的中文名
+  final String label;
+
+  /// 字符串 → 枚举；未知值/空值回默认 [BottomBarStyle.bar]
+  static BottomBarStyle fromId(String? raw) {
+    for (final s in BottomBarStyle.values) {
+      if (s.id == raw) return s;
+    }
+    return BottomBarStyle.bar;
+  }
+}
+
 /// 界面设置（1.1.1 新增）：课表格子外观、课程配色方案、主题色、显示字体。
 ///
 /// 整体以 JSON 存 app_settings 的 ui_settings 键；字段都有默认值，
@@ -27,6 +57,7 @@ class UiSettings {
     this.autoFitHeight = true,
     this.highlightTodayColumn = false,
     this.showBottomBar = true,
+    this.bottomBarStyle = BottomBarStyle.bar,
   });
 
   /// 课程格子高度（逻辑像素 px），范围 44~96；默认 46 与旧版按屏均分的手感接近
@@ -114,6 +145,12 @@ class UiSettings {
   /// 旧数据无此字段时按默认开兜底，绝不为 null 导致启动白屏。
   final bool showBottomBar;
 
+  /// 底部栏形态（WB_SPEC_215 第 2 节）：通栏贴底 / 胶囊贴底，默认通栏贴底。
+  ///
+  /// 只在 [showBottomBar] 为 true 时有意义；关闭底部栏时保留用户上次选择，
+  /// 重新打开后恢复同一形态（不重置成默认）。旧数据无此字段时按默认兜底。
+  final BottomBarStyle bottomBarStyle;
+
   /// 实际生效的主题种子色（ARGB）
   int get themeSeedValue =>
       themeCustomColor ?? themePresetById(themePresetId).seed;
@@ -151,6 +188,7 @@ class UiSettings {
     bool? autoFitHeight,
     bool? highlightTodayColumn,
     bool? showBottomBar,
+    BottomBarStyle? bottomBarStyle,
   }) {
     return UiSettings(
       cellHeight: cellHeight ?? this.cellHeight,
@@ -174,6 +212,7 @@ class UiSettings {
       autoFitHeight: autoFitHeight ?? this.autoFitHeight,
       highlightTodayColumn: highlightTodayColumn ?? this.highlightTodayColumn,
       showBottomBar: showBottomBar ?? this.showBottomBar,
+      bottomBarStyle: bottomBarStyle ?? this.bottomBarStyle,
     );
   }
 
@@ -197,6 +236,7 @@ class UiSettings {
     'autoFitHeight': autoFitHeight,
     'highlightTodayColumn': highlightTodayColumn,
     'showBottomBar': showBottomBar,
+    'bottomBarStyle': bottomBarStyle.id,
   };
 
   String encode() => jsonEncode(toJson());
@@ -253,6 +293,8 @@ class UiSettings {
         highlightTodayColumn: bl('highlightTodayColumn', false),
         // 反序列化容错：旧数据无此字段或字段为 null 时一律按默认开兜底（true）
         showBottomBar: bl('showBottomBar', true),
+        // 形态容错：缺失/空/未知值（含被手工改坏）一律回默认「通栏贴底」
+        bottomBarStyle: BottomBarStyle.fromId(st('bottomBarStyle', 'bar')),
       );
     } catch (_) {
       return const UiSettings();

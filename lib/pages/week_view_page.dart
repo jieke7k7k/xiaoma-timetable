@@ -13,13 +13,16 @@ import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../services/channel_service.dart';
 import '../services/ongoing_notice_service.dart';
+import '../services/sunday_dialog_service.dart';
 import '../utils/color_schemes.dart';
 import '../utils/deliberate_page_physics.dart';
 import '../utils/next_class.dart';
 import '../utils/override_effect.dart';
 import '../utils/slot_layout.dart';
+import '../utils/sunday_dialog.dart';
 import '../utils/week_calc.dart';
 import '../ui/app_styles.dart';
+import '../ui/bottom_bar_metrics.dart';
 import '../ui/grid_metrics.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/course_card.dart';
@@ -96,8 +99,15 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
   /// 网格纵向滚动锁：长按空白格拖动扩展节次期间锁定纵向滚动，避免手势打架
   bool _gridScrollLocked = false;
 
-  /// 周日收尾小弹窗是否已在本会话弹过（每启动会话最多弹一次）
-  bool _sundayDialogShown = false;
+  /// 本页面实例是否已做过「今天该不该弹周日弹窗」的判定（WB_SPEC_215 第 1 节）。
+  ///
+  /// 只用于避免一次 build 触发多次异步判定；**不再承担「弹过没弹过」的语义**——
+  /// 那个语义已挪到 app_settings 的 `sunday_dialog_shown_date`（见 SundayDialogGate），
+  /// 所以页面重建、切设置 Tab 再切回、杀进程重进都不会重弹。
+  bool _sundayDialogChecked = false;
+
+  /// 周日弹窗判定器（读/写 app_settings 里的已读日期）
+  final SundayDialogGate _sundayDialogGate = SundayDialogGate();
 
   /// 状态条分钟级刷新计时器（下一节课倒计时/上下课切换靠它推进）
   Timer? _focusTimer;
@@ -366,8 +376,9 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
   /// 周日收尾小弹窗（WB_SPEC_209 第 1 节）：文案「今天是周日，本周已结束」，
   /// 「知道了」关闭；未到最后一周时多一个「看下周」跳到下周，最后一周不显示。
   /// 点弹窗外区域关闭与「知道了」等效（AlertDialog 默认可点外关闭）。
-  void _showSundayDialog(int week, int totalWeeks) {
-    showDialog<void>(
+  /// 文案、按钮、「看下周」跳周行为在 2.1.4 一律不变，只改「弹不弹」的判定。
+  Future<void> _showSundayDialog(int week, int totalWeeks) {
+    return showDialog<void>(
       context: context,
       builder: (ctx) => AppDialog(
         title: '今天是周日',
@@ -388,6 +399,38 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
         ],
       ),
     );
+  }
+
+  /// 判定并弹出周日收尾弹窗（WB_SPEC_215 第 1 节）。
+  ///
+  /// 判定依据是 app_settings 里持久化的「已读日期」（见 [SundayDialogGate]），
+  /// 不再是页面 State 的布尔值：
+  /// - 同一个周日只弹一次：点了「知道了」、点了「看下周」、点了弹窗外区域关闭，
+  ///   都算已读——已读是在弹窗弹出的那一刻写下的，不依赖任何一个按钮回调；
+  /// - 当天内切设置再切回、页面重建、杀进程重进都不再弹；
+  /// - 到了下一个周日，日期戳变了，重新弹一次。
+  Future<void> _maybeShowSundayDialog({
+    required int week,
+    required int totalWeeks,
+    required int todayWeek,
+  }) async {
+    if (_sundayDialogChecked) return;
+    _sundayDialogChecked = true;
+    try {
+      final due = await _sundayDialogGate.shouldShow(
+        displayWeek: week,
+        todayWeek: todayWeek,
+      );
+      // 读库期间页面可能已被销毁（切走/退出），此时不弹
+      if (!due || !mounted) return;
+      final closed = _showSundayDialog(week, totalWeeks);
+      // 弹出后立刻落库：即便用户点弹窗外关掉、或直接杀进程，也算已读
+      await _sundayDialogGate.markShown();
+      unawaited(closed);
+    } catch (e) {
+      // 读库/写库失败只打日志，绝不因为一个提示弹窗把主页搞崩
+      debugPrint('周日弹窗判定失败：$e');
+    }
   }
 
   @override
@@ -492,16 +535,26 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
       }
     });
 
-    // 周日收尾小弹窗（WB_SPEC_209 第 1 节）：今天周日且正看本周时进入主页弹一次
-    // 居中小弹窗，关闭后本会话不再重复；不影响「回到本周」悬浮按钮的显隐。
-    final isSunday = DateTime.now().weekday == DateTime.sunday;
-    if (isSunday && displayWeek == todayWeek && !_sundayDialogShown) {
-      _sundayDialogShown = true;
+    // 周日收尾小弹窗（WB_SPEC_209 第 1 节；2.1.4 改为一天一次）：
+    // 今天周日且正看本周时，进入主页判定一次「今天是否已读」（判定要读库，
+    // 放首帧后异步跑）。是否已读记在 app_settings 的 sunday_dialog_shown_date，
+    // 不再依赖页面 State——切设置再切回、页面重建都不会重弹。
+    // 不影响「回到本周」悬浮按钮的显隐。
+    // 时钟走 sundayDialogNow()：运行时等于 DateTime.now，测试可锁到某个周日
+    final isSunday = sundayDialogNow().weekday == DateTime.sunday;
+    if (isSunday && displayWeek == todayWeek && !_sundayDialogChecked) {
       final week = displayWeek;
       final total = semester.totalWeeks;
+      final today = todayWeek;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _showSundayDialog(week, total);
+        unawaited(
+          _maybeShowSundayDialog(
+            week: week,
+            totalWeeks: total,
+            todayWeek: today,
+          ),
+        );
       });
     }
 
@@ -1085,12 +1138,17 @@ class _GridArea extends ConsumerWidget {
             totalHeight < constraints.maxHeight
                 ? constraints.maxHeight
                 : totalHeight;
-        // 底部安全留白（WB_SPEC_213 网格处理）：只加在滚动视图底部，不改外框
-        // 高度、不改外层 Column/Expanded 约束、不因读取 showBottomBar 导致课表
-        // 组件 Key 变化或 ScrollController 重建。胶囊显示时 76（12 下边距 +
-        // 52 胶囊高 + 12 上方呼吸间距），隐藏时 16，另加底部安全区高度。
-        final bottomInset = MediaQuery.paddingOf(context).bottom +
-            (ui.showBottomBar ? 76.0 : 16.0);
+        // 底部安全留白（WB_SPEC_213 网格处理；2.1.4 按底部栏形态分档）：
+        // 只加在滚动视图底部，不改外框高度、不改外层 Column/Expanded 约束、
+        // 不因读取 showBottomBar / bottomBarStyle 导致课表组件 Key 变化或
+        // ScrollController 重建。口径统一在 ui/bottom_bar_metrics.dart：
+        // 通栏贴底 68（52 键高 + 上下各 8）、胶囊贴底 52（胶囊高）、关栏 16，
+        // 另加底部安全区高度——既不会让内容被栏遮住，也不会留白过大。
+        final bottomInset = bottomBarGridBottomPadding(
+          MediaQuery.paddingOf(context).bottom,
+          showBottomBar: ui.showBottomBar,
+          style: ui.bottomBarStyle,
+        );
         return MediaQuery(
           // 降灵敏：子树手势触发距离 18 → 30，静置手指不再拖动课表
           data: MediaQuery.of(context).copyWith(

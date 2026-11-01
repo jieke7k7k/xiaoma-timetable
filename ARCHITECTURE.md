@@ -2,6 +2,34 @@
 
 > 每完成一个阶段更新本文件，防止上下文丢失。
 
+## 2.1.4 变更（2026-11-01，WB_SPEC_215 周日弹窗一天一次 + 底部栏两形态可选）
+
+两件事：一是把周日收尾弹窗从「每次进主页弹」修成「同一个周日只弹一次」；二是底部栏从「悬浮胶囊」改成两种都不悬浮的贴底形态（通栏贴底 / 胶囊贴底），用设置项切换。
+
+| 文件 | 改动 |
+|---|---|
+| `lib/utils/sunday_dialog.dart`（新建） | 纯函数层：`kSundayDialogShownDateKey`（app_settings 键）、`sundayDialogDateStamp`（yyyy-MM-dd，补零）、`isSundayDialogDue`（周日 + 本周 + 今天没记过才弹）；另暴露可替换时钟 `sundayDialogNow`（运行时即 `DateTime.now`，测试用来锁日期） |
+| `lib/services/sunday_dialog_service.dart`（新建） | `SundayDialogGate`：`shouldShow()` 读 app_settings 已读日期再判定（非周日/非本周不读库直接返回），`markShown()` 覆盖写当天日期；库访问仍走 `Dao` 单例 |
+| `lib/pages/week_view_page.dart` | 删 `_sundayDialogShown` 布尔标记，改 `_sundayDialogChecked`（仅防同帧重复判定）+ `_maybeShowSundayDialog()`：判定→弹出→立刻落库；`_showSundayDialog` 改返回 `Future<void>`；网格底部留白改为 `bottomBarGridBottomPadding(...)` |
+| `lib/models/ui_settings.dart` | 新增 `enum BottomBarStyle { bar('bar','通栏贴底'), capsule('capsule','胶囊贴底') }`（含 `fromId` 兜底）与 `bottomBarStyle` 字段（默认 bar），构造/copyWith/toJson/fromEncoded 全链路，存 id 字符串 |
+| `lib/ui/bottom_bar_metrics.dart`（新建） | 两形态共用几何常量（键高 52 / 圆角 26 / 通栏栏高 68 / 胶囊高 52 / 关栏 16）与唯一留白口径 `bottomBarGridBottomInset` / `bottomBarGridBottomPadding`（含安全区，异常值按 0 处理） |
+| `lib/widgets/home_bottom_bar.dart`（新建） | 形态 A 通栏贴底 `HomeBottomBar`：`Material(surface, elevation: 0)` + `SafeArea(bottom)` 铺到屏幕最底边，内部两键各为圆角 26、最小高 52 的胶囊键（选中实心 primary / 未选中透明），两键等宽平铺 |
+| `lib/widgets/home_capsule.dart` | 形态 B 胶囊贴底：删 `elevation: 3` 与 `shadowColor`（改 0），几何常量改引 `bottom_bar_metrics`；键数、键功能、选中语义不动 |
+| `lib/main.dart` | `HomeShell` 新增 `_buildBottomBar(style)`：两形态都 `Positioned(bottom: 0)`，胶囊形态外层 `SafeArea` 保留安全区内边距、悬浮间距 12 → 0；关栏时不渲染 |
+| `lib/pages/settings_sections.dart` | 外观子页「底部栏显示」下方新增「底部栏样式」行 + 两个 `ChoiceChip`（Key `bottom_bar_style_bar` / `bottom_bar_style_capsule`）；关栏时 `onSelected: null` 置灰不可点 |
+| `lib/pages/settings_page.dart` | 壳内列表底部留白由硬编码 76 改为按形态计算（通栏 68 / 胶囊 52 + 安全区） |
+| `pubspec.yaml` | 版本 2.1.4+29；依赖零增减 |
+| 测试 | 新增 `sunday_dialog_once_test`（纯判定 + 落库 + 页面行为 5 例）、`bottom_bar_style_test`（两形态渲染/几何/键语义）；改写 `home_shell_test`（默认通栏 + 形态切换即时生效 + 关栏菜单进设置）、`settings_sections_test`（样式选择/置灰/落库）、`ui_settings_test`（新字段默认与容错） |
+
+### 关键设计决策
+
+- **按日期记已读，不按会话/页面记**：用户原话「这个弹窗就算读过了，从设置界面切回主页还是有弹窗」。根因是标记挂在 `_WeekViewPageState` 上，壳内一级视图被 `AnimatedSwitcher` 换掉时 State 一起销毁。改存 `app_settings.sunday_dialog_shown_date`（值 `2026-11-01`）后，页面重建、切 Tab、杀进程重进读到的都是同一个值；下一个周日日期戳对不上，自然重新弹。
+- **弹出即写已读**：写库放在 `showDialog` 之后、不等任何按钮回调。这样「知道了」「看下周」「点弹窗外区域关闭」三种关闭方式天然等效，不需要给 `barrierDismissible` 补回调。
+- **判定与 IO 分离**：`isSundayDialogDue` 是纯函数（单测直接覆盖），`SundayDialogGate` 只负责读库/写库；页面里再套一层 `_sundayDialogChecked` 防止同一帧多次 `postFrameCallback` 重复判定。判定失败只 `debugPrint`，不因提示弹窗把主页搞崩。
+- **留白只有一个口径**：两形态的栏高差异（68 / 52）集中在 `bottom_bar_metrics.dart`，主页网格与壳内设置页都调它，不再各自硬编码 76；安全区只加一次（栏体自己吃 `SafeArea`，留白只加 `MediaQuery.padding.bottom`）。
+- **形态切换不改壳结构**：`_buildBottomBar` 只按 style 换 widget，不动 `_tab`、不重建周视图、不重置 `PopScope`；`ref.listen` 里「关栏时静默重置 Tab」的防困死逻辑保持原样。
+- **键几何两形态共用**：圆角 26、最小高 52 提到常量层，通栏的键与胶囊的键观感一致；高度用 `minHeight` 而非写死，系统字体放大时纵向可伸展，不溢出。
+
 ## 2.1.3 变更（2026-10-30，WB_SPEC_214 删除全部实验性 AI 功能）
 
 本版不新增功能，只做减法：把 2.0.0 起陆续加进来的实验性 AI 模块（内置对话、历史记录、隐藏调试入口、外部信箱同步、指令执行器）从代码里整体删掉，不是隐藏、不是开关关掉。

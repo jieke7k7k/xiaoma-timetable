@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
 
+import '../ui/bottom_bar_metrics.dart';
+
 /// 壳内一级视图（WB_SPEC_213 第 2 节）：只用枚举、不用整数索引，
 /// 从源头避免「键数变化」时的下标越界（RangeError 红屏）。
 enum HomeShellTab { schedule, settings }
 
-/// 底部居中悬浮胶囊（WB_SPEC_213 第 2 节）。
+/// 胶囊贴底底部栏（WB_SPEC_213 第 2 节；WB_SPEC_215 第 2 节·形态 B 改写）。
 ///
 /// 2.1.3（WB_SPEC_214 第 1 节）起恒为两键［课表｜设置］：此前「解锁后展开第三个
 /// 路由键」的形态随该功能整体删除，本组件不再有 unlock 参数、不再有第三个键，
 /// 也不再有展开/收起的尺寸动画——键数固定，宽度自然固定。
+///
+/// 2.1.4（WB_SPEC_215 第 2 节）：从「底部居中悬浮胶囊」改为「胶囊贴底」——
+/// 保留胶囊外形（圆角 26、宽度随内容自适应），但下移到贴住屏幕底边：
+/// 悬浮间距归零（外层不再留 12 的底部间隙）、悬浮阴影归零（elevation 0），
+/// 只保留底部安全区内边距。改动只动外形，键数、键功能、选中语义一律不变。
 ///
 /// 两个键都是**视图切换键**（有常驻选中高亮），点击只改 [activeTab] 或回到本周，
 /// 不 Push 任何路由。本组件保持纯 UI、不依赖 Riverpod，方便直接构造做 widget 测试。
@@ -27,8 +34,9 @@ class HomeCapsule extends StatelessWidget {
   // 胶囊几何（第 2 节定版）：最小高 52、圆角 26（半圆胶囊）、水平内边距 20、
   // 键间距 16，宽度由内容自适应撑开，不死写固定宽度。高度用最小值而不用
   // 写死值：系统字体放大时胶囊可纵向伸展，避免 RenderFlex 纵向溢出（复审 P0-1）。
-  static const double height = 52;
-  static const double radius = 26;
+  // 2.1.4 起常量统一由 ui/bottom_bar_metrics.dart 提供，两形态共用同一套键体尺寸。
+  static const double height = kBottomBarKeyHeight;
+  static const double radius = kBottomBarRadius;
   static const double hPadding = 20;
   static const double gap = 16;
 
@@ -36,10 +44,11 @@ class HomeCapsule extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
+    // 贴底不悬浮：elevation 恒 0（不再有 2.1.3 的 3 与半透明阴影色），
+    // 胶囊外形只靠圆角与表面色表达。
     return Material(
       color: scheme.surface,
-      elevation: 3,
-      shadowColor: Colors.black.withValues(alpha: 0.15),
+      elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
