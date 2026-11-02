@@ -41,11 +41,26 @@ const double kBottomBarCapsuleHeight = kBottomBarKeyHeight;
 /// 关闭底部栏时的网格底部留白（沿用 2.1.3 的 16）
 const double kBottomBarHiddenInset = 16;
 
-/// 标签栏选中态前景色（图标与文字同色）：琥珀黄，取 Colors.amber[600]。
+/// 标签栏选中态基色（金黄系）：琥珀黄，取 Colors.amber[600]。
 ///
 /// 刻意不用主题 primary（本项目默认种子色是雾绿 / 可可棕一类，与截图里的
 /// 琥珀黄不是一回事），写死常量，浅色与深色主题下都用它。
+///
+/// 2.1.6（WB_SPEC_217）起它有两个下家：
+/// - **液态滑动指示器**的金黄渐变直接用它（与 2.1.5 同色，规格第 1 节要求）；
+/// - 选中态图标与文字的**前景色**改由 `HomeTabBar.activeColorFor(scheme)` 按
+///   主题亮度取 [kTabBarActiveColorLight] / [kTabBarActiveColorDark]——因为
+///   滑块本身已经是金黄底，浅色主题下再用这个亮黄会看不清（对比度不足）。
 const Color kTabBarActiveColor = Color(0xFFFFB300);
+
+/// 浅色主题下的选中态前景色：深金黄（压在金黄滑块上仍清楚）。
+///
+/// 与 [kTabBarActiveColor] 同色系（HSV 色相约 36°），只是压暗到与金黄底
+/// 的对比度 ≥ 4.5:1，避免「黄底黄字」看不清。
+const Color kTabBarActiveColorLight = Color(0xFF7C4A00);
+
+/// 深色主题下的选中态前景色：浅金黄（压在深底上够亮）。
+const Color kTabBarActiveColorDark = Color(0xFFFFD54F);
 
 /// 网格滚动视图底部留白（**不含**底部安全区）。
 ///

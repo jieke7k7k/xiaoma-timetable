@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
@@ -160,7 +161,7 @@ void main() {
       }
     });
 
-    testWidgets('选中态琥珀黄、未选中态灰：图标与文字同色', (tester) async {
+    testWidgets('选中态金黄系、未选中态灰：图标与文字同色', (tester) async {
       // 选「设置」：设置格金黄、课表格灰
       await pumpBar(tester, tabBarAtBottom(active: HomeShellTab.settings));
       final scheme = Theme.of(
@@ -192,15 +193,82 @@ void main() {
         ),
       );
 
-      // 琥珀黄：不能用主题 primary（本项目默认种子色是雾绿 / 可可棕一类）
+      // 金黄系基色仍是 2.1.5 的琥珀黄（液态滑块的渐变用它，与样品一致）；
+      // 不用主题 primary（本项目默认种子色是雾绿 / 可可棕一类）。
       expect(HomeTabBar.activeColor, const Color(0xFFFFB300));
       expect(HomeTabBar.activeColor, Colors.amber[600]);
-      expect(settingsIcon.color, HomeTabBar.activeColor);
-      expect(settingsText.style?.color, HomeTabBar.activeColor);
       expect(settingsIcon.color, isNot(scheme.primary));
+      // 2.1.6 起选中格底下多了一块实心金黄滑块，前景色按主题亮度分档：
+      // 浅色主题用深金黄（亮黄压亮黄会糊），仍是金黄系、不是灰。
+      expect(settingsIcon.color, HomeTabBar.activeColorFor(scheme));
+      expect(settingsText.style?.color, HomeTabBar.activeColorFor(scheme));
+      expect(settingsIcon.color, kTabBarActiveColorLight);
+      expect(_isGolden(settingsIcon.color!), isTrue, reason: '选中态图标必须是金黄系');
+      expect(
+        _isGolden(settingsText.style!.color!),
+        isTrue,
+        reason: '选中态文字必须是金黄系',
+      );
+      // 压在金黄滑块上仍看得清（滑块中段色 #FFC400）
+      expect(
+        _contrastRatio(settingsIcon.color!, const Color(0xFFFFC400)),
+        greaterThanOrEqualTo(4.5),
+        reason: '深金黄压在金黄滑块上的对比度要够',
+      );
       // 未选中：图标与文字同为 onSurfaceVariant 灰
       expect(scheduleIcon.color, scheme.onSurfaceVariant);
       expect(scheduleText.style?.color, scheme.onSurfaceVariant);
+      expect(scheduleIcon.color, isNot(HomeTabBar.activeColorFor(scheme)));
+      expect(_isGolden(scheduleIcon.color!), isFalse, reason: '未选中态是灰，不是金黄');
+    });
+
+    testWidgets('深色主题：选中态换浅金黄（与浅色主题的深金黄分档）', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
+          home: Scaffold(
+            body: Stack(
+              children: [
+                const SizedBox.expand(),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: tabBarAtBottom(active: HomeShellTab.settings),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      final scheme = Theme.of(
+        tester.element(find.byType(HomeTabBar)),
+      ).colorScheme;
+      expect(scheme.brightness, Brightness.dark);
+
+      final settingsIcon = tester.widget<Icon>(
+        find.descendant(
+          of: find.byKey(kHomeTabBarSettingsKey),
+          matching: find.byType(Icon),
+        ),
+      );
+      expect(HomeTabBar.activeColorFor(scheme), kTabBarActiveColorDark);
+      expect(settingsIcon.color, kTabBarActiveColorDark);
+      expect(_isGolden(settingsIcon.color!), isTrue, reason: '深色主题也是金黄系');
+      // 深色主题下滑块压暗成暗金，浅金黄压上去仍有对比度
+      expect(
+        _contrastRatio(settingsIcon.color!, const Color(0xFF71590B)),
+        greaterThanOrEqualTo(4.5),
+        reason: '浅金黄压在压暗后的滑块上要看得清',
+      );
+      // 未选中态仍是灰
+      final scheduleIcon = tester.widget<Icon>(
+        find.descendant(
+          of: find.byKey(kHomeTabBarScheduleKey),
+          matching: find.byType(Icon),
+        ),
+      );
+      expect(scheduleIcon.color, scheme.onSurfaceVariant);
     });
 
     testWidgets('两格文案仍是「课表」「设置」，键数恒为 2', (tester) async {
@@ -423,3 +491,22 @@ void main() {
 
 void _noop(HomeShellTab _) {}
 void _noopVoid() {}
+
+/// 是否「金黄系」：HSV 色相落在 25°~60°（琥珀黄 #FFB300 是 42°）且不是灰。
+///
+/// 2.1.6 起选中态不再写死 == #FFB300（浅色主题压暗、深色主题提亮），
+/// 所以断言改成「色相仍是金黄」而不是「等于某个固定 RGB」——
+/// 这样既能分档保证对比度，又不会让选中色跑成蓝的绿的。
+bool _isGolden(Color color) {
+  final hsv = HSVColor.fromColor(color);
+  return hsv.hue >= 25 && hsv.hue <= 60 && hsv.saturation >= 0.5;
+}
+
+/// WCAG 对比度（用于断言「深金黄压在金黄滑块上」看得清，不靠肉眼）。
+double _contrastRatio(Color a, Color b) {
+  final la = a.computeLuminance();
+  final lb = b.computeLuminance();
+  final hi = la > lb ? la : lb;
+  final lo = la > lb ? lb : la;
+  return (hi + 0.05) / (lo + 0.05);
+}

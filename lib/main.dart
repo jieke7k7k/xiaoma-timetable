@@ -42,6 +42,7 @@ import 'services/ongoing_notice_service.dart';
 import 'services/supabase_sync_service.dart';
 import 'services/widget_service.dart';
 import 'ui/app_styles.dart';
+import 'ui/liquid_glass.dart';
 import 'ui/page_transitions.dart';
 
 /// 全局异常日志的持久化键（app_settings 表）。
@@ -383,6 +384,14 @@ class _RootGate extends ConsumerWidget {
 ///   1 像素细分割线，两格等宽（图标在上、文字在下），选中态图标与文字同为琥珀黄；
 /// - [BottomBarStyle.capsule] 胶囊贴底：栏体保持胶囊外形，贴底。
 ///
+/// 2.1.6（WB_SPEC_217）：
+/// - 第 1 节：标签栏形态 [HomeTabBar] 改为**液态玻璃**渲染（毛玻璃独立层 +
+///   50% 宽滑动指示器 + 弹簧曲线 + 按压回弹），布局、文案、功能一律不变；
+///   胶囊形态原样保留不做液态化。
+/// - 第 2 节：壳内两个一级视图的切换改为 260ms（反向 200ms）、进入减速 /
+///   退出加速、淡入 + 0.985→1.0 微缩放，消除纯淡入的重影感；防困死与系统
+///   返回逻辑不动。
+///
 /// 2.1.4 的「通栏贴底」（`BottomBarStyle.bar`）已随 `lib/widgets/home_bottom_bar.dart`
 /// 一并删除；旧库里残留的字符串 `bar` 由 `BottomBarStyle.fromId` 回落到 [BottomBarStyle.tab]，
 /// 不会出现「未知样式 → 无栏」或崩溃。
@@ -534,9 +543,18 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       child: Stack(
         children: [
           // 底层：当前一级视图，原地淡入淡出切换，不压导航栈
+          // 2.1.6（WB_SPEC_217 第 2 节）：260ms（反向 200ms）、进入减速 /
+          // 退出加速，过渡从「纯淡入」升级为「淡入 + 0.985→1.0 微缩放」——
+          // 纯淡入时新旧视图在中段各占一半透明度，课表格子与设置列表叠出
+          // 重影，加一点微缩放就有了前后关系。两视图各有自己的 ValueKey
+          // （ValueKey(_tab)），防困死与系统返回逻辑一律不动。
           Positioned.fill(
             child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
+              duration: kLiquidShellDuration,
+              reverseDuration: kLiquidShellReverseDuration,
+              switchInCurve: kLiquidShellInCurve,
+              switchOutCurve: kLiquidShellOutCurve,
+              transitionBuilder: liquidShellTransition,
               child: KeyedSubtree(
                 key: ValueKey(_tab),
                 child: _tab == HomeShellTab.schedule

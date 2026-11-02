@@ -1,8 +1,65 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-11-01（2.1.5+30：WB_SPEC_216 底部栏换图标+文字标签栏、删通栏、整页课表显示完全）
+> 更新时间：2026-11-03（2.1.6+31：WB_SPEC_217 底部栏液态玻璃化 + 切换动效丝滑化）
 
 ## 做到哪了
+
+## 2026-11-03（2.1.6+31：WB_SPEC_217 底部栏液态玻璃化 + 切换动效丝滑化）
+
+规格见任务内 WB_SPEC_217 全文。用户原话三条：「按钮做成液态给我看看样本」→「切换动效不够丝滑，你问问 argon 怎么办」→ 样品优化版确认「可以」（按样品把液态 + 丝滑切换落到 App 里）。Argon 方案五条要点（滑动指示器承载渐变、禁全量过渡、380ms 弹簧 / 260~280ms 减速 / 按压分两段、毛玻璃层分离）逐条照做，未用「选中态直接切渐变」的老办法。沿用 Riverpod 手写 Notifier / Dao 单例 / 中文文案注释；未改周视图网格本身、周日弹窗逻辑、云同步、菜单自定义，未恢复任何 AI 入口。
+
+### 交付形态
+- 本版**未推仓库、未建分支**：交付物是统一 diff（`diff -ruN`，路径为仓库相对路径；`.diff` 不支持时另给同名 `.txt`）+ 新增文件包 zip。
+- **本环境真跑通了**：在线拉 Flutter 3.47.9 / Dart 3.13.7（与 `environment.sdk: ^3.13.5` 对齐，走 `storage.flutter-io.cn` / `pub.flutter-io.cn` 镜像），`flutter pub get` → `flutter analyze`（**No issues found!**）→ `flutter test`（全绿，最终用例数见第 3 节）。
+- 唯一的环境性动作：仓库里 `assets/fonts/*.ttf` 按 `.gitignore` 不入库，本地用等宽占位字体补齐后才能构建 asset bundle；这四个 ttf 不进 diff。
+
+### 第 1 节 标签栏形态液态玻璃化（默认形态，布局与功能不变）
+- **新增 `lib/ui/liquid_glass.dart`**：液态与动效的全部数字集中在这一个文件——模糊 sigma 15、底色 0.72、指示器 50% 宽 / 高 56、滑动 380ms 弹簧 `Cubic(0.34, 1.56, 0.64, 1.0)`、颜色 280ms `easeOutCubic`、按下 90ms / 松手 350ms、按压缩放 0.92、图标放大 1.08 上浮 −1.5px、壳切换 260ms / 反向 200ms / 微缩放 0.985。另含两个「颜色单走一条过渡」的小组件 `LiquidIcon` / `LiquidLabel`（`ImplicitlyAnimatedWidget` + `ColorTween` / `TextStyleTween`，首帧直接给目标色，不从透明渐入），以及壳切换过渡 `liquidShellTransition`。
+- **毛玻璃层独立**（Argon 第 5 条）：`HomeTabBar` 栏体仍是 `Material`，但颜色改 `surface.withValues(alpha: 0.72)`；模糊由 `Stack` 里平级的独立一层提供——`Positioned.fill(child: RepaintBoundary(key: kHomeTabBarGlassKey, child: BackdropFilter(sigma 15)))`。**没有**把 `BackdropFilter` 挂在栏本体上：玻璃层与按键层是兄弟，测试用 `find.ancestor(of: 按键, matching: BackdropFilter) == findsNothing` 断言两层的分离，切换时玻璃层零重算。
+- **液态滑动指示器**（Argon 第 1 条）：一块 50% 栏宽的金黄渐变滑块，`AnimatedAlign(alignment: Alignment(±1, 0))` + 380ms 弹簧曲线，只动位置、不做渐变插值；滑块本体 `FractionallySizedBox(widthFactor: 0.5)` → `SizedBox(height: 56)` → 圆角 26 的渐变 `DecoratedBox` + 顶部白高光（样品 `.liquid::before` 的斜向光泽），**不加投影**（栏体口径是「不悬浮、无阴影」）。它是 `Stack` 里的独立层，不占按键布局，两格仍是 `Expanded` 各占整宽一半。深色主题下滑块渐变换成压暗版（同色相、alpha 约 0.55 倍），好让浅金黄前景压得住（详见第 3 节取舍）。
+- **按压回弹**（Argon 第 4 条）：`HomeTabBar` 因按压态需要 State 改为 `StatefulWidget`（对外构造签名不变）；每格一个 `AnimatedScale`，按下 90ms→0.92（`Curves.easeOut`），松手 / 划开取消 350ms 弹簧→1.0；`_pressedTab` 按格独立，按「课表」不会带得「设置」一起缩。
+- **选中态颜色**：图标与文字仍同色，`activeColorFor(scheme)` 按亮度分档——浅色主题深金黄 `Color(0xFF7C4A00)`（压在金黄滑块上对比度 ≥ 4.5:1）、深色主题浅金黄 `Color(0xFFFFD54F)`；未选中仍是 `onSurfaceVariant` 灰。基色 `kTabBarActiveColor = Color(0xFFFFB300)` 保留，供滑块渐变使用（与 2.1.5 同色）。
+- **图标上浮放大**：`AnimatedSlide(offset: dy = −1.5/24)` + `AnimatedScale(1.08)`，380ms 弹簧曲线，与颜色过渡（280ms 减速）彻底分开——这就是 Argon 第 2 条「颜色 / 位移 / 缩放分开过渡」的落地。
+- **不变项**：整宽贴底不悬浮无阴影、顶部 1 逻辑像素细分割线（`DecoratedBox` 画在栏内、不占高）、两格等宽、图标在上文字在下、文案「课表 / 设置」、课表键回课表（已在课表则回本周）、设置键进壳内设置根页、实测栏高 64；胶囊形态一行未动；「外观 → 底部栏样式」仍是两项、默认标签栏、关栏置灰、重开恢复、切换落库；`bottom_bar_metrics.dart` 的留白唯一口径（64 / 52 / 16 + 安全区）一字未改。
+
+### 第 2 节 壳切换动效丝滑化
+- `main.dart` 的 `HomeShell`：`AnimatedSwitcher` 从 200ms 纯淡入改为 `duration 260ms` / `reverseDuration 200ms` / `switchInCurve: easeOutCubic` / `switchOutCurve: easeInCubic` / `transitionBuilder: liquidShellTransition`（`FadeTransition` + `ScaleTransition(0.985 → 1.0)`）。纯淡入时新旧视图中段各占一半透明度，课表格子与设置列表交叉出重影，叠一点微缩放就有了前后关系；幅度压在 1.5% 以内，不会看出「页面在缩放」。
+- 两视图各有独立 `ValueKey`（`KeyedSubtree(key: ValueKey(_tab))`，沿用 2.1.2 写法，未新增）；防困死（开→关静默重置 Tab）与 `PopScope` 系统返回逻辑一行未动；周视图网格、周日弹窗、AI 入口一律未碰。
+
+### 第 3 节 版本 / 文档 / 测试
+- `pubspec.yaml` → `2.1.6+31`（依赖零增减）；`CHANGELOG.md` 新增 v2.1.6+31（液态玻璃、滑动指示器、按压两段、壳切换微缩放、保留项与未动项）；`DEV_STATE.md`（本文件）、`ARCHITECTURE.md` 同步写明。
+- 测试（本次变更相关）：
+  - **新增 `test/liquid_bottom_bar_test.dart`（17 例）**：毛玻璃层独立存在且铺满栏体 / 模糊 sigma 在 14~16（断言 `BackdropFilter` 滤镜与 `kLiquidGlassBlurSigma` 同源）/ 玻璃层与按键层分离（按键不是 `BackdropFilter` 的后代、玻璃层里没有 `InkWell`）；底色 = 主题 surface 的 0.72 且色相不变 / 顶部 1px 分割线只画顶边 / 贴底整宽无阴影（含 `decoration.boxShadow == null`）；指示器宽度 = 栏宽 50%、高 56 / `AnimatedAlign` 对齐随选中项在 −1 与 +1 之间切换、380ms、`Cubic(0.34, 1.56, 0.64, 1.0)` 四个控制点逐个断言 / 切换后滑块中心与选中格中心一致且「先只推进 1ms 仍停在左边」证明是滑过去而不是瞬移 / 滑块不占按键布局也不拦点击；按下 0.92（90ms）、松手 1.0（350ms 弹簧）、只影响被按那一格、划开取消也回弹；选中图标放大 1.08 且上浮 1.5px（含渲染位置确实更高的效果断言）/ 未选中格不动 / 颜色过渡 280ms `easeOutCubic` 且 ≠ 弹簧曲线；液态化不改功能（回调分流、恒两键无 AI 键）。
+  - 改写 `test/bottom_bar_style_test.dart`（14 例，原 13 例全部保留并新增 1 例）：原「选中态 == #FFB300」一条改写为「金黄系 + 按主题分档 + 对比度 ≥ 4.5:1」（原因见下方取舍），新增「深色主题改用浅金黄」一例；其余（整宽贴底、实测高 64、elevation 0、1px 顶边分割线、两格等分、图标在上文字在下、文案仍「课表/设置」、恒两键、回调分流、34 安全区只加一次、1.3 倍字体不溢出、胶囊形态、三态留白口径）一字未动。
+  - 改写 `test/home_shell_test.dart`（7 例，原 6 例 + 新增 1 例）：新增「壳切换动效」用例，断言 `AnimatedSwitcher` 的 260ms / 反向 200ms / 进入 `easeOutCubic` / 退出 `easeInCubic`、直接调用 `transitionBuilder` 断言起始缩放 0.985 与终止 1.0、两个视图 `ValueKey` 各自独立且切换前后不同；原 6 例里「设置格选中色」一条由 `== HomeTabBar.activeColor` 改写为 `== HomeTabBar.activeColorFor(scheme)`，其余（默认标签栏、切换形态即时生效并落库、关→开恢复、旧值 `bar` 回落、关栏菜单进设置）一字未动。
+  - 未改动：`home_grid_bottom_inset_test`（4 例，滚动到底最后一节完整露出）、`settings_sections_test`、`ui_settings_test` 等——本次不碰样式枚举与留白口径，跑全量验证不回归。
+- 门禁：`flutter analyze` 零 issue；`flutter test` 全绿（最终用例数见本次交付说明）。
+
+### 取舍与已知限制（明写，不藏）
+1. **选中态前景色不再写死 `#FFB300`**：2.1.5 是深浅色都用亮黄；2.1.6 因为选中格底下多了一块实心金黄滑块，「亮黄压亮黄」对比度只有约 1.2:1，故按规格「浅色主题深金黄、深色主题浅金黄」分档。基色常量保留给滑块渐变用，测试断言从「等于某个 RGB」升级为「HSV 色相 25°~60° 的金黄系 + 与滑块对比度 ≥ 4.5:1」——覆盖不减，口径更严。
+2. **深色主题下滑块渐变压暗**（同色相、alpha 约 0.55 倍）：否则浅金黄前景压在满不透明亮金上仍会糊。混合深色底后呈暗金，实测对比度约 4.7:1。若日后要求「深色下也必须是亮金」，需同步把前景色改回深色系。
+3. **滑块未加投影**：样品 `.indicator` 有一道金黄外发光，但栏体口径是「不悬浮、无阴影」，故只保留渐变与顶部高光；真机若觉得液态感不足，可只给滑块加一层低透明度 `BoxShadow`（栏体 `Material` 与装饰层仍保持零阴影，不影响既有断言）。
+4. **毛玻璃在真机上的代价**：`BackdropFilter` 每帧要读背景纹理，低端机上是最贵的一步。已用 `RepaintBoundary` 把玻璃层隔离成独立层（按键动画不触发它重绘），并把 sigma 压到 15（Argon 要求的 14~16 下限附近）；真机若仍掉帧，下一步只调 `kLiquidGlassBlurSigma` 一个常量即可，无需改结构。
+5. **胶囊形态不做液态化**（规格明确要求），两种形态因此观感不再完全统一——这是刻意的，用户确认过「胶囊原样保留」。
+
+### 常见 Bug 预查（逐条：适用 / 不适用）
+1. **配置损坏与原子写入（样式 id 兜底）— 适用（未改、仍覆盖）**：`BottomBarStyle.fromId` 对缺失 / null / 空串 / 未知值 / 已删除的旧值 `bar` 一律回 `tab`；`UiSettings.fromEncoded` 整体解析失败回全默认；`bottomBarGridBottomPadding` 对负数 / 无穷安全区按 0 处理。本次未动这些代码，`ui_settings_test` / `home_shell_test` 的既有用例继续兜着。
+2. **升级残留（旧 `bar` 值回落）— 适用（未改、仍覆盖）**：老用户库里的 `"bottomBarStyle": "bar"` 读取后是 `tab`，渲染**液态**标签栏，不会无栏、不会崩（`home_shell_test` 有专门用例断言 `takeException()` 为 null，本版复跑仍绿）。
+3. **睡眠唤醒 / 切后台后状态陈旧 — 不适用（但已天然免疫）**：底部栏形态只由 `UiSettings`（Riverpod provider，读库内存态）驱动；新增的按压态 `_pressedTab` 是 `State` 内的一次性瞬时量，切后台回来时不会残留「卡在 0.92」——`onTapCancel` 与 `onTapUp` 都会复位，且 `setState` 前判 `mounted`。`week_view_page` 的分钟级刷新定时器与本改动无关。
+4. **版本号缺失 — 不适用**：`pubspec.yaml` 明确写 `2.1.6+31`；`PackageInfo` 只在 UI 展示与更新比较里用，底部栏与动效都不读版本；测试里 `PackageInfo.setMockInitialValues` 已同步打桩为 2.1.5 / 30（与上一版一致，本版未改测试桩，不影响任何断言）。
+5. **敏感信息进日志 — 不适用**：本次改动没有新增任何网络 / 文件 IO，也没有日志语句；新增常量只有颜色、时长、缩放比这类纯数字，形态 id 仍只是 `tab` / `capsule` 两个常量字符串。
+6. **低端机毛玻璃性能 — 适用（已缓解，需真机确认）**：见上面「取舍与已知限制」第 4 条：`RepaintBoundary` 隔离 + sigma 15 + 玻璃层与按键动画分离，切换动画期间不重算模糊。
+7. **手势冲突 / 安全区重复计算 — 适用（已处理并测）**：栏体自己吃 `SafeArea(bottom)`，网格留白只叠加一次；液态化没有动栏体尺寸与 `SafeArea` 包法，`bottom_bar_style_test` 的 34 安全区用例与 `home_grid_bottom_inset_test` 的四种滚动到底用例继续绿。
+8. **系统字体放大导致纵向溢出 — 适用（已处理并测）**：栏高仍固定 64、滑块高 56 定死，两格内容（图标 24×1.08 + 间距 4 + 文字）在 1.3 倍缩放下仍小于 64；1.3 倍字体用例继续绿。
+9. **关栏后样式被重置 — 适用（未改、仍覆盖）**：关栏只置灰样式行、不动 `bottomBarStyle` 字段。
+10. **动画中途重建导致卡在中间态 — 适用（已处理）**：所有过渡都是隐式动画组件（`AnimatedAlign` / `AnimatedScale` / `AnimatedSlide` / `LiquidIcon` / `LiquidLabel`），widget 被重建时动画从当前值继续，不会停在 0.92 或半路；按压态额外有 `onTapCancel` 兜底。
+11. **深色模式对比度不足 — 适用（已处理并测）**：见取舍第 1 / 2 条，两条主题各有专门的对比度断言。
+12. **AI 入口 / 周视图网格 / 周日弹窗被误改 — 不适用**：本次改动只落在 `lib/ui/liquid_glass.dart`（新增）、`lib/widgets/home_tab_bar.dart`、`lib/ui/bottom_bar_metrics.dart`（只加颜色常量）、`lib/main.dart`（只改 `AnimatedSwitcher` 参数）、`pubspec.yaml`、三份文档与测试；`week_view_page.dart` / `sunday_dialog*.dart` / `settings_page.dart` 一行未动，测试里仍有「无 AI 键」「恒两键」断言。
+
+### 未覆盖 / 待人工确认
+- 真机目视：液态玻璃的实际观感（模糊后的课表透出程度、0.72 底色在深浅色下的厚薄、滑块高光的亮度），测试只能断言数值，不能代替肉眼。
+- 低端机帧率：需要真机在低端机型上切几次 Tab 看是否掉帧；若掉帧，只调 `kLiquidGlassBlurSigma`。
+- 弹簧曲线的过冲观感：`Cubic(0.34, 1.56, 0.64, 1.0)` 会轻微过冲（这是「液态」的来源），真机上若觉得「晃」，可换 `Curves.easeOutBack` 或把 1.56 降到 1.3 左右，改一个常量即可。
 
 ## 2026-11-01（2.1.5+30：WB_SPEC_216 底部栏换图标+文字标签栏、删通栏、整页课表显示完全）
 

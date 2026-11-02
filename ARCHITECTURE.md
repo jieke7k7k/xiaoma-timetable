@@ -2,6 +2,31 @@
 
 > 每完成一个阶段更新本文件，防止上下文丢失。
 
+## 2.1.6 变更（2026-11-03，WB_SPEC_217 底部栏液态玻璃化 + 切换动效丝滑化）
+
+用户先要「按钮做成液态给我看看样本」，再问「切换动效不够丝滑，你问问 argon 怎么办」，样品（网页版，已按 Argon 方案优化）确认「可以」后落到 App。本版两件事：标签栏形态（默认）改成**液态玻璃 + 滑动指示器 + 弹簧曲线 + 按压回弹**（布局与功能一律不变），壳内两个一级视图的切换改成**淡入 + 微缩放**。Argon 五条要点（滑动指示器承载渐变、禁全量过渡、380ms 弹簧 / 260~280ms 减速、按压分两段、毛玻璃层分离）逐条照做，未用「选中态直接切渐变」的老办法。
+
+| 文件 | 改动 |
+|---|---|
+| `lib/ui/liquid_glass.dart`（新建） | 液态与动效的唯一数字来源：模糊 sigma 15、底色 0.72、指示器 50% 宽 / 高 56、滑动 380ms 弹簧 `Cubic(0.34, 1.56, 0.64, 1.0)`、颜色 280ms `easeOutCubic`、按下 90ms / 松手 350ms、按压 0.92、图标 1.08 / 上浮 −1.5px、壳切换 260ms / 反向 200ms / 微缩放 0.985；另含 `LiquidIcon` / `LiquidLabel`（`ImplicitlyAnimatedWidget` + `ColorTween` / `TextStyleTween`，首帧直接给目标色）与 `liquidShellTransition`（`FadeTransition` + `ScaleTransition`） |
+| `lib/widgets/home_tab_bar.dart` | 液态化改写：`Material` 底色改 `surface.withValues(alpha: 0.72)`；栏内 `SizedBox(height: 64)` 改 `Stack(fit: expand)` 三层——① 独立毛玻璃层 `Positioned.fill(RepaintBoundary(key: kHomeTabBarGlassKey) → BackdropFilter(sigma 15))` ② 液态指示器 `AnimatedAlign(±1, 0)` + 380ms 弹簧 + `FractionallySizedBox(0.5)` + 圆角 26 金黄渐变 + 顶部白高光 ③ 两格 `Expanded` `InkWell` 按键（布局与 2.1.5 逐字一致）。因按压态需要 State 改 `StatefulWidget`（对外构造签名不变）；新增 `activeColorFor(scheme)`（浅色深金黄 / 深色浅金黄）、`_pressedTab` 按格独立按压、`AnimatedScale`（按压）+ `AnimatedSlide` + `AnimatedScale`（图标上浮放大）。新增 Key：`kHomeTabBarGlassKey` / `kHomeTabBarBlurKey` / `kHomeTabBarIndicatorKey` / `kHomeTabBarIndicatorBoxKey` / 两格的 press / lift / icon / label Key |
+| `lib/ui/bottom_bar_metrics.dart` | 只**新增**颜色常量：`kTabBarActiveColorLight = Color(0xFF7C4A00)`（浅色主题深金黄）、`kTabBarActiveColorDark = Color(0xFFFFD54F)`（深色主题浅金黄）；`kTabBarActiveColor` 保留给滑块渐变用。几何与留白口径（64 / 52 / 16 + 安全区）一字未改 |
+| `lib/main.dart` | `HomeShell` 的 `AnimatedSwitcher`：`duration 260ms`、`reverseDuration 200ms`、`switchInCurve: easeOutCubic`、`switchOutCurve: easeInCubic`、`transitionBuilder: liquidShellTransition`（淡入 + 0.985→1.0 微缩放，消除纯淡入的重影感）；两视图的独立 `ValueKey`（`KeyedSubtree(key: ValueKey(_tab))`）沿用 2.1.2 写法。防困死（开→关静默重置 Tab）、`PopScope` 系统返回、`_buildBottomBar` 两形态分支一律未动 |
+| `lib/widgets/home_capsule.dart` / `lib/models/ui_settings.dart` / `lib/pages/settings_sections.dart` / `lib/pages/week_view_page.dart` / `lib/pages/settings_page.dart` | **一行未动**：胶囊形态不做液态化；样式枚举仍是 `tab` / `capsule` 两项、默认 `tab`、`fromId` 兜底不变；留白唯一口径不变 |
+| `pubspec.yaml` | 版本 2.1.6+31；依赖零增减 |
+| 测试 | 新增 `test/liquid_bottom_bar_test.dart`（17 例：玻璃层独立 / sigma 14~16 / 玻璃层与按键层分离 / 底色 0.72 / 1px 顶边分割线 / 贴底整宽无阴影 / 指示器 50% 宽 56 高 / `AnimatedAlign` −1↔+1 + 380ms + 弹簧四参数 / 切换后位置一致且「1ms 时仍在左边」证明是滑过去 / 不占按键布局不拦点击 / 按下 0.92（90ms）松手 1.0（350ms 弹簧）/ 划开取消也回弹 / 图标 1.08 上浮 1.5px（含渲染位置更高）/ 未选中格不动 / 颜色 280ms 减速且 ≠ 弹簧 / 回调分流 / 恒两键无 AI 键）；改写 `bottom_bar_style_test`（14 例：新增深色主题一例；「选中 == #FFB300」改写为「金黄系 + 按主题分档 + 对比度 ≥ 4.5:1」，其余 12 例一字未动）；改写 `home_shell_test`（7 例：新增「壳切换动效」一例断言 260/200ms、进出曲线、`transitionBuilder` 起始缩放 0.985、两视图 `ValueKey` 独立；「设置格选中色」改写为 `activeColorFor(scheme)`，其余 5 例一字未动） |
+
+### 关键设计决策
+
+- **选中态背景不再「切渐变」，改由滑块「走位移」**：渐变插值（无论 CSS 还是 Flutter）在颜色跨度大时中段会脏，而且会触发整格重绘。改成一块 50% 宽的滑块用 `AnimatedAlign` 平移后，动画只改一个 alignment，纯走合成层；滑块与按键是 `Stack` 里平级的两层，按键布局（`Expanded` 各占一半）完全不受影响，「两格等分整宽」的几何断言照旧成立。
+- **毛玻璃必须是独立层，不能挂在栏本体上**：`BackdropFilter` 每帧要读背景纹理，是最贵的一步。写法上它是 `Stack` 里 `Positioned.fill` 的一层、外面套 `RepaintBoundary`，与按键层是兄弟（不是父子），所以按键的按压 / 滑动动画不会带着模糊一起重算。测试用「按键的祖先里没有 `BackdropFilter`」和「玻璃层里没有 `InkWell`」双向断言这层分离——比断言「存在 BackdropFilter」严格得多。
+- **颜色 / 位移 / 缩放三条过渡分开**：位移与缩放 380ms 弹簧（末端过冲是「液态」手感的来源），颜色 280ms 减速（`LiquidIcon` / `LiquidLabel` 各自 `ColorTween` / `TextStyleTween`），按压另有 90ms / 350ms 两段。四条曲线各管各的，绝不用「一条过渡管所有属性」。
+- **选中态前景色按主题分档，但仍是金黄系**：2.1.5 深浅色都用亮黄 `#FFB300`；2.1.6 选中格底下多了一块实心金黄滑块，亮黄压亮黄的对比度只有约 1.2:1。故浅色主题用深金黄 `#7C4A00`（与滑块对比度 ≥ 4.5:1）、深色主题用浅金黄 `#FFD54F`（同时把滑块渐变在深色下压暗到 alpha 0.55 倍，混合深底呈暗金，对比度约 4.7:1）。基色常量保留给滑块渐变，测试断言从「等于某个 RGB」升级为「HSV 色相 25°~60° 且对比度达标」——覆盖不减、口径更严。
+- **滑块不加投影**：样品 `.indicator` 有一道金黄外发光，但栏体口径是「不悬浮、无阴影」。只保留渐变与顶部高光（液态感主要来自高光），测试额外断言装饰层的 `boxShadow == null`。真机若觉得不够，加 `BoxShadow` 也不影响既有断言。
+- **微缩放只压到 1.5%**：纯淡入时新旧视图中段各占一半透明度，课表格子与设置列表交叉出重影；加 0.985→1.0 的微缩放就有了前后关系。幅度超过 2% 就能明显看出「页面在缩放」，喧宾夺主。过渡写成公开函数 `liquidShellTransition`，测试能直接调它、断言起始缩放确实是 0.985，不用靠肉眼。
+- **所有过渡都用隐式动画组件**：`AnimatedAlign` / `AnimatedScale` / `AnimatedSlide` / `LiquidIcon` / `LiquidLabel` 在 widget 重建时都从当前值继续，不会卡在中间态；按压态额外由 `onTapUp` / `onTapCancel` 双路复位，`setState` 前判 `mounted`。
+- **数字全部集中在 `liquid_glass.dart`**：模糊半径、时长、曲线、缩放比、颜色只有一处定义，测试只断言常量与「实现与常量同源」（例如 `liquidGlassImageFilter().toString() == BackdropFilter.filter.toString()`），不会出现「代码写 380、测试写 300」的分叉。真机要调手感只改这一个文件。
+
 ## 2.1.5 变更（2026-11-01，WB_SPEC_216 底部栏换图标+文字标签栏、删通栏、整页课表显示完全）
 
 用户发了一张自助打印小程序的主页截图：「底部做成这样的，而且进入主页确保整页课表能显示完全」，并逐项确认「标签文案保留」（右边那格继续叫「设置」）、「保留胶囊，删掉另外一种再添加这个」。本版做两件事：底部栏换成截图里那种**图标+文字标签栏**（新默认），删掉 2.1.4 的通栏贴底形态、保留胶囊贴底；同时把「进主页整页课表能显示完全」做成几何断言。

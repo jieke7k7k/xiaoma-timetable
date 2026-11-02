@@ -10,6 +10,7 @@ import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/main.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
+import 'package:xiaoma_timetable/ui/liquid_glass.dart';
 import 'package:xiaoma_timetable/pages/settings_page.dart';
 import 'package:xiaoma_timetable/pages/week_view_page.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
@@ -52,8 +53,8 @@ void main() {
     PackageInfo.setMockInitialValues(
       appName: '小马课表',
       packageName: 'com.example.simple_timetable',
-      version: '2.1.5',
-      buildNumber: '30',
+      version: '2.1.6',
+      buildNumber: '31',
       buildSignature: '',
     );
     // 把当前学期改成本周开学：开学日期取真实今天的周一，保证「本周 = 第 1 周」，
@@ -185,14 +186,18 @@ void main() {
     expect(find.byType(SettingsPage), findsOneWidget);
     // 壳内一级视图：设置根页不显示左上角返回箭头
     expect(find.byType(BackButton), findsNothing);
-    // 设置在「设置」视图时，栏上设置格为选中态（琥珀黄）
+    // 设置在「设置」视图时，栏上设置格为选中态：金黄系
+    // （2.1.6 起按主题亮度分档——浅色主题深金黄，不再写死 == #FFB300）
+    final scheme = Theme.of(
+      tester.element(find.byType(HomeTabBar)),
+    ).colorScheme;
     final settingsIcon = tester.widget<Icon>(
       find.descendant(
         of: find.byKey(kHomeTabBarSettingsKey),
         matching: find.byType(Icon),
       ),
     );
-    expect(settingsIcon.color, HomeTabBar.activeColor);
+    expect(settingsIcon.color, HomeTabBar.activeColorFor(scheme));
 
     // 设置页挂载触发的两次数据库查询各带一个 10 秒锁警告定时器（假时钟），
     // 测完前把假时钟拨过 10 秒让它们触发释放，否则 teardown 报 Timer pending。
@@ -348,6 +353,76 @@ void main() {
     await tester.pump(const Duration(seconds: 11));
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    '壳切换动效：260ms（反向 200ms）、进入减速/退出加速、淡入 + 0.985→1.0 微缩放',
+    (tester) async {
+      await pumpHome(tester);
+
+      final switcher = tester.widget<AnimatedSwitcher>(
+        find.byType(AnimatedSwitcher),
+      );
+      expect(switcher.duration, kLiquidShellDuration);
+      expect(switcher.duration, const Duration(milliseconds: 260));
+      expect(switcher.reverseDuration, kLiquidShellReverseDuration);
+      expect(switcher.reverseDuration, const Duration(milliseconds: 200));
+      expect(switcher.switchInCurve, kLiquidShellInCurve);
+      expect(switcher.switchInCurve, Curves.easeOutCubic);
+      expect(switcher.switchOutCurve, kLiquidShellOutCurve);
+      expect(switcher.switchOutCurve, Curves.easeInCubic);
+
+      // 过渡不是纯淡入：叠了 0.985 → 1.0 的微缩放（消除新旧视图的重影感）
+      final builtStart = switcher.transitionBuilder(
+        const SizedBox(),
+        const AlwaysStoppedAnimation<double>(0.0),
+      );
+      expect(builtStart, isA<FadeTransition>());
+      final fadeStart = builtStart as FadeTransition;
+      expect(fadeStart.child, isA<ScaleTransition>());
+      expect(
+        (fadeStart.child! as ScaleTransition).scale.value,
+        closeTo(kLiquidShellScaleBegin, 1e-9),
+      );
+      expect(kLiquidShellScaleBegin, 0.985);
+      final builtEnd = switcher.transitionBuilder(
+        const SizedBox(),
+        const AlwaysStoppedAnimation<double>(1.0),
+      ) as FadeTransition;
+      expect(builtEnd.opacity.value, 1.0);
+      expect((builtEnd.child! as ScaleTransition).scale.value, 1.0);
+
+      // 两个一级视图各有独立的 ValueKey（切回时能识别反向、也能正确重建）
+      Key? keyOfSwitcher() => tester
+          .widgetList<KeyedSubtree>(
+            find.descendant(
+              of: find.byType(AnimatedSwitcher),
+              matching: find.byType(KeyedSubtree),
+            ),
+          )
+          .first
+          .key;
+      final keyBefore = keyOfSwitcher();
+      expect(keyBefore, isNotNull);
+
+      // 课表 → 设置：260ms 内完成
+      await tester.tap(find.byKey(kHomeTabBarSettingsKey));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byType(SettingsPage), findsOneWidget);
+      expect(find.byType(WeekViewPage), findsNothing);
+      expect(keyOfSwitcher(), isNot(keyBefore), reason: '两视图的 ValueKey 各自独立');
+
+      // 设置 → 课表：反向 200ms（泵 260ms 必然已完成）
+      await tester.tap(find.byKey(kHomeTabBarScheduleKey));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 260));
+      expect(find.byType(WeekViewPage), findsOneWidget);
+      expect(find.byType(SettingsPage), findsNothing);
+
+      await tester.pump(const Duration(seconds: 11));
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }
 
 /// 测试用路由表里的设置页（关栏时从菜单 Push 进入：独立页面、有返回箭头）
