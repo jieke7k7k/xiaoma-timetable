@@ -512,17 +512,21 @@ class RemindersSettingsPage extends ConsumerWidget {
   }
 }
 
-/// 学期与数据子页：导入课表 / 学期管理 / 备份到文件 / 从备份恢复 /
-/// 导出课表（ICS）/ 数据管理，共 6 行（2.0.2 起由「高级与数据」拆解并入）
+/// 数据备份与换机子页：导入课表 / 学期管理 / 备份到文件 / 从备份恢复 /
+/// 导出课表（ICS）/ 数据管理，共 6 行（2.0.2 起由「高级与数据」拆解并入；
+/// 2.1.7 WB_SPEC_218 第 ③/④ 节改名为「数据备份与换机」，顶部加纯本地存储提示条）。
 class DataSettingsPage extends ConsumerWidget {
   const DataSettingsPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(title: const Text('学期与数据'), centerTitle: true),
+      appBar: AppBar(title: const Text('数据备份与换机'), centerTitle: true),
       body: ListView(
         children: [
+          // 2.1.7（WB_SPEC_218 第 ③ 节）：删云同步后的纯本地存储说明，
+          // 顶部 InfoBanner 常驻提示换机/重装前先导出备份，不弹全屏公告。
+          const _LocalOnlyInfoBanner(),
           ListTile(
             leading: const Icon(Icons.upload_file_outlined),
             title: const _InfoTitle(
@@ -757,6 +761,41 @@ class DataSettingsPage extends ConsumerWidget {
             .showSnackBar(SnackBar(content: Text('ICS 导出失败：$e')));
       }
     }
+  }
+}
+
+/// 纯本地存储提示条（WB_SPEC_218 第 ③ 节）：数据备份与换机页顶部的常驻说明。
+///
+/// 删云同步后 App 不再往云端同步数据，换机靠手动备份恢复。这条提示在备份页
+/// 顶部常驻说明，不弹全屏公告，也不阻断任何操作。
+class _LocalOnlyInfoBanner extends StatelessWidget {
+  const _LocalOnlyInfoBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      color: scheme.tertiaryContainer,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 18, color: scheme.onTertiaryContainer),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '小马课表采用纯本地隐私存储，不包含云端同步。换机或重装应用前，'
+              '请点击下方「备份到文件」并保存至微信文件传输助手或系统下载目录。',
+              style: TextStyle(
+                fontSize: 13,
+                color: scheme.onTertiaryContainer,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

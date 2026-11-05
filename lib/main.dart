@@ -39,9 +39,9 @@ import 'services/auto_backup_service.dart';
 import 'services/fonts_service.dart';
 import 'services/notification_service.dart';
 import 'services/ongoing_notice_service.dart';
-import 'services/supabase_sync_service.dart';
 import 'services/widget_service.dart';
 import 'ui/app_styles.dart';
+import 'ui/bottom_bar_metrics.dart';
 import 'ui/liquid_glass.dart';
 import 'ui/page_transitions.dart';
 
@@ -65,8 +65,6 @@ void main() {
       // 兜底界面：任何 build 失败都显示中文提示，不再是红屏堆栈原文
       ErrorWidget.builder = (_) => const _FriendlyErrorWidget();
       await _initServices();
-      // 云同步：挂上 DAO 本地变更钩子（变动后防抖同步）；未配置时无副作用。
-      SupabaseSyncService.attachToDao();
       runApp(const ProviderScope(child: SimpleTimetableApp()));
       // 通知初始化挪到首帧之后：时区库加载 + 插件平台通道都不是首帧渲染所需，
       // 不再占启动串行时间。失败只打日志不阻断（rescheduleAll 内部也会兜底
@@ -392,13 +390,18 @@ class _RootGate extends ConsumerWidget {
 ///   退出加速、淡入 + 0.985→1.0 微缩放，消除纯淡入的重影感；防困死与系统
 ///   返回逻辑不动。
 ///
+/// 2.1.7（WB_SPEC_218 第 ① 节）：胶囊形态从「悬浮贴底」改为**占位式**——
+/// 主布局底部切出一整条专属槽位（高 64 + 安全区、背景与页面底色一致），
+/// 胶囊在槽位内居中，课表/设置的滚动视口截断在槽位上方，内容永远不滑到
+/// 胶囊下面去；胶囊外观（圆角 26、居中自适应宽、两键）与样式切换、关栏
+/// 行为一律不变。标签栏形态保持悬浮 overlay（轻透玻璃需要底下内容透出来）。
+///
 /// 2.1.4 的「通栏贴底」（`BottomBarStyle.bar`）已随 `lib/widgets/home_bottom_bar.dart`
 /// 一并删除；旧库里残留的字符串 `bar` 由 `BottomBarStyle.fromId` 回落到 [BottomBarStyle.tab]，
 /// 不会出现「未知样式 → 无栏」或崩溃。
 ///
-/// 保留 [ConsumerStatefulWidget]：云同步的静默同步可能产生数据变更，改完要失效
-/// coursesProvider/notesProvider 并联动两个服务，这些都得有 ref；启动联动
-/// （提醒重排 / 常驻通知 / 小组件 / 快捷入口 / 自动备份）也仍挂在这里。
+/// 保留 [ConsumerStatefulWidget]：启动联动（提醒重排 / 常驻通知 / 小组件 /
+/// 快捷入口 / 自动备份）需要 ref，且壳内一级视图切换要用 setState。
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
@@ -450,8 +453,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         _setupQuickActions(),
         // 自动备份（7 天一次，内部全静默，不到期立即返回）
         AutoBackupService.runIfDue(),
-        // 云同步：启动联网自动同步一次（未配置/离线都静默）
-        _silentSupabaseSync(),
       ]);
       // 今日课程常驻通知必须排在 rescheduleAll 之后：rescheduleAll 的 cancelAll
       // 会连原生常驻通知一起清掉，并发执行时谁后到谁说了算，常驻通知会被误清
@@ -460,27 +461,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     } catch (e) {
       debugPrint('启动联动刷新失败：$e');
     }
-  }
-
-  /// 首帧后静默同步一次 Supabase 云。
-  ///
-  /// 失败一律静默：未配置、离线、网络差都属于可预期的日常状态，启动时不该
-  /// 用它打扰用户；同步服务内部已捕获异常、记日志、写失败摘要（设置页可见）。
-  Future<void> _silentSupabaseSync() async {
-    try {
-      final outcome = await SupabaseSyncService.instance.syncNow();
-      if (outcome.changed && mounted) _applyCloudChanges();
-    } catch (e) {
-      debugPrint('云同步静默失败：$e');
-    }
-  }
-
-  /// 云同步改动本地数据后的联动刷新（失效 Provider + 联动服务）。
-  void _applyCloudChanges() {
-    ref.invalidate(coursesProvider);
-    ref.invalidate(notesProvider);
-    unawaited(NotificationService.instance.rescheduleAll());
-    unawaited(WidgetService.instance.refreshWidgets());
   }
 
   /// 桌面长按快捷入口（1.2.4）：新建课程 / 导入课表直达
@@ -540,59 +520,83 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           setState(() => _tab = HomeShellTab.schedule);
         }
       },
-      child: Stack(
-        children: [
-          // 底层：当前一级视图，原地淡入淡出切换，不压导航栈
-          // 2.1.6（WB_SPEC_217 第 2 节）：260ms（反向 200ms）、进入减速 /
-          // 退出加速，过渡从「纯淡入」升级为「淡入 + 0.985→1.0 微缩放」——
-          // 纯淡入时新旧视图在中段各占一半透明度，课表格子与设置列表叠出
-          // 重影，加一点微缩放就有了前后关系。两视图各有自己的 ValueKey
-          // （ValueKey(_tab)），防困死与系统返回逻辑一律不动。
-          Positioned.fill(
-            child: AnimatedSwitcher(
-              duration: kLiquidShellDuration,
-              reverseDuration: kLiquidShellReverseDuration,
-              switchInCurve: kLiquidShellInCurve,
-              switchOutCurve: kLiquidShellOutCurve,
-              transitionBuilder: liquidShellTransition,
-              child: KeyedSubtree(
-                key: ValueKey(_tab),
-                child: _tab == HomeShellTab.schedule
-                    ? const WeekViewPage()
-                    : const SettingsPage(isEmbeddedInShell: true),
-              ),
-            ),
-          ),
-          // 顶层：底部栏（恒两键［课表｜设置］），形态由设置项决定，均贴底不悬浮
-          if (ui.showBottomBar) _buildBottomBar(ui.bottomBarStyle),
-        ],
-      ),
+      child: _buildShell(ui.bottomBarStyle),
     );
   }
 
-  /// 底部栏（WB_SPEC_216 第 1 节）：两种形态都贴底、都不悬浮，只换外形。
+  /// 壳层主体：按底部栏形态二选一。
   ///
-  /// 会随 `uiSettingsProvider` 变化在下一帧重建，因此设置页切换形态即时生效、
-  /// 无需重启；切换形态不改 `_tab`、不重建周视图（网格留白由周视图自己按
-  /// `bottomBarGridBottomInset` 重算，见 week_view_page.dart）。
-  ///
-  /// - 图标+文字标签栏 [HomeTabBar]（默认）：`Positioned` 撑满整宽并贴住 `bottom: 0`，
-  ///   底部安全区由栏体内部的 SafeArea 吃掉（色块铺到屏幕最底部）；
-  /// - 胶囊贴底 [HomeCapsule]：同样 `bottom: 0`，外层 SafeArea 保留安全区内边距，
-  ///   胶囊无阴影、宽度仍随内容自适应；左右两侧空白由 Align 之外的区域穿透，
-  ///   不拦点击。
-  ///
-  /// 2.1.4 的通栏形态分支已删除；`style` 只可能是 tab / capsule。
-  Widget _buildBottomBar(BottomBarStyle style) {
+  /// - 胶囊（WB_SPEC_218 第 ① 节）：占位式——[Column] 把主布局底部切出一整条
+  ///   专属槽位，课表/设置的滚动视口截断在槽位上方，内容永远不滑到胶囊下面；
+  /// - 标签栏（液态玻璃）：悬浮 overlay——[Stack] 里玻璃栏浮在视图之上，
+  ///   [BackdropFilter] 才有背景可糊（轻透玻璃需要底下有内容透出来）。
+  Widget _buildShell(BottomBarStyle style) {
+    // 底层：当前一级视图，原地淡入淡出切换，不压导航栈
+    // 2.1.6（WB_SPEC_217 第 2 节）：260ms（反向 200ms）、进入减速 /
+    // 退出加速，过渡从「纯淡入」升级为「淡入 + 0.985→1.0 微缩放」——
+    // 纯淡入时新旧视图在中段各占一半透明度，课表格子与设置列表叠出
+    // 重影，加一点微缩放就有了前后关系。两视图各有自己的 ValueKey
+    // （ValueKey(_tab)），防困死与系统返回逻辑一律不动。
+    final view = AnimatedSwitcher(
+      duration: kLiquidShellDuration,
+      reverseDuration: kLiquidShellReverseDuration,
+      switchInCurve: kLiquidShellInCurve,
+      switchOutCurve: kLiquidShellOutCurve,
+      transitionBuilder: liquidShellTransition,
+      child: KeyedSubtree(
+        key: ValueKey(_tab),
+        child: _tab == HomeShellTab.schedule
+            ? const WeekViewPage()
+            : const SettingsPage(isEmbeddedInShell: true),
+      ),
+    );
+
     if (style == BottomBarStyle.capsule) {
-      return Positioned(
-        left: 0,
-        right: 0,
-        bottom: 0,
-        child: SafeArea(
-          top: false,
-          child: Align(
-            alignment: Alignment.bottomCenter,
+      return Column(
+        children: [
+          Expanded(child: view),
+          _buildCapsuleSlot(),
+        ],
+      );
+    }
+    return Stack(
+      children: [
+        Positioned.fill(child: view),
+        // 顶层：液态玻璃标签栏（恒两键［课表｜设置］），悬浮贴底
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: HomeTabBar(
+            activeTab: _tab,
+            onSelectTab: (tab) => setState(() => _tab = tab),
+            onTapSchedule: _onTapScheduleKey,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 胶囊占位式专属槽位（WB_SPEC_218 第 ① 节；2.1.7 复查 Bug 5 后改 padding 式）。
+  ///
+  /// 主布局底部一整条不滚动区域：背景与页面底色一致、最小高 = 胶囊槽高 64 +
+  /// 底部安全区，胶囊在槽位内居中，距课表滚动区底边与系统手势栏顶边各留
+  /// 6dp；悬浮「离底边留空隙、不贴死底边」在此依然遵守（胶囊不顶到手势栏）。
+  /// 槽位不用写死高度的 SizedBox：系统字体放大时胶囊纵向伸展，Container
+  /// 用 minHeight 64 + 上下各 6 padding 随内容长高，不顶破、不溢出黄条。
+  Widget _buildCapsuleSlot() {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      // 背景与页面底色一致，把槽位视觉上「并入」页面，而不是一块悬浮遮挡
+      color: scheme.surface,
+      child: SafeArea(
+        top: false,
+        child: Container(
+          constraints: const BoxConstraints(
+            minHeight: kCapsuleSlotHeight,
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Center(
             child: HomeCapsule(
               activeTab: _tab,
               onSelectTab: (tab) => setState(() => _tab = tab),
@@ -600,16 +604,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             ),
           ),
         ),
-      );
-    }
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      child: HomeTabBar(
-        activeTab: _tab,
-        onSelectTab: (tab) => setState(() => _tab = tab),
-        onTapSchedule: _onTapScheduleKey,
       ),
     );
   }

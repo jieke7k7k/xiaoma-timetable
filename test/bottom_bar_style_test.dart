@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
 import 'package:xiaoma_timetable/ui/bottom_bar_metrics.dart';
+import 'package:xiaoma_timetable/ui/liquid_glass.dart';
 import 'package:xiaoma_timetable/widgets/home_capsule.dart';
 import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 
@@ -10,9 +11,11 @@ import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 ///
 /// 两个形态都贴底、都不悬浮，只换外形：
 /// - 形态 A「图标+文字标签栏」[HomeTabBar]（默认）：整宽、贴屏幕底边、无悬浮阴影、
-///   顶部一条 1 像素细分割线，两格等宽（图标在上、文字在下），
+///   顶部一条细分割线（浅色 0.8dp／深色 0.6dp，2.1.7 WB_SPEC_218 第 ② 节），
+///   两格等宽（图标在上、文字在下），
 ///   选中态图标与文字同为琥珀黄，未选中态同为灰；
-/// - 形态 B「胶囊贴底」[HomeCapsule]：宽度随内容自适应、贴屏幕底边、无阴影、圆角 26。
+/// - 形态 B「胶囊占位式」[HomeCapsule]（2.1.7 WB_SPEC_218 第 ① 节改占位式，
+///   不再贴底）：宽度随内容自适应、在主布局底部专属槽位内居中、无阴影、圆角 26。
 ///
 /// 2.1.4 的「通栏贴底」形态（HomeBottomBar）已删除，本文件不再有它的用例。
 ///
@@ -98,7 +101,7 @@ void main() {
       );
     });
 
-    testWidgets('顶部一条 1 逻辑像素细分割线', (tester) async {
+    testWidgets('顶部一条细分割线（浅色 0.8dp）', (tester) async {
       await pumpBar(tester, tabBarAtBottom());
 
       final box = tester.widget<DecoratedBox>(
@@ -109,10 +112,10 @@ void main() {
       expect(border, isA<Border>());
       expect(
         border.top.width,
-        kBottomBarDividerWidth,
-        reason: '标签栏顶部必须是 1 逻辑像素细分割线',
+        kBottomBarDividerWidthLight,
+        reason: '标签栏顶部细分割线：浅色 0.8dp（WB_SPEC_218 第 ② 节）',
       );
-      expect(kBottomBarDividerWidth, 1);
+      expect(bottomBarDividerWidth(Brightness.light), 0.8);
       // 只有顶边有线，其余三边没有
       final sides = border as Border;
       expect(sides.bottom, BorderSide.none);
@@ -161,12 +164,13 @@ void main() {
       }
     });
 
-    testWidgets('选中态金黄系、未选中态灰：图标与文字同色', (tester) async {
-      // 选「设置」：设置格金黄、课表格灰
+    testWidgets('选中态前景色按主题分档：浅色深褐黑、未选中态灰', (tester) async {
+      // 选「设置」：设置格深褐黑、课表格灰
       await pumpBar(tester, tabBarAtBottom(active: HomeShellTab.settings));
       final scheme = Theme.of(
         tester.element(find.byType(HomeTabBar)),
       ).colorScheme;
+      expect(scheme.brightness, Brightness.light);
 
       final settingsIcon = tester.widget<Icon>(
         find.descendant(
@@ -193,27 +197,22 @@ void main() {
         ),
       );
 
-      // 金黄系基色仍是 2.1.5 的琥珀黄（液态滑块的渐变用它，与样品一致）；
+      // 金黄基色仍是 2.1.5 的琥珀黄（液态滑块渐变用它），前景色与滑块分家；
       // 不用主题 primary（本项目默认种子色是雾绿 / 可可棕一类）。
       expect(HomeTabBar.activeColor, const Color(0xFFFFB300));
       expect(HomeTabBar.activeColor, Colors.amber[600]);
       expect(settingsIcon.color, isNot(scheme.primary));
-      // 2.1.6 起选中格底下多了一块实心金黄滑块，前景色按主题亮度分档：
-      // 浅色主题用深金黄（亮黄压亮黄会糊），仍是金黄系、不是灰。
+      // 2.1.7（WB_SPEC_218 第 ② 节）：滑块降到半透明金黄后，浅色主题前景色
+      // 改用深褐黑 #1C1917（压在金黄上对比度 ≥ 4.5:1），不再沿用金黄系。
+      expect(kTabBarActiveColorLight, const Color(0xFF1C1917));
       expect(settingsIcon.color, HomeTabBar.activeColorFor(scheme));
-      expect(settingsText.style?.color, HomeTabBar.activeColorFor(scheme));
       expect(settingsIcon.color, kTabBarActiveColorLight);
-      expect(_isGolden(settingsIcon.color!), isTrue, reason: '选中态图标必须是金黄系');
+      expect(settingsText.style?.color, kTabBarActiveColorLight);
+      // 深褐黑压在滑块最亮端 #FFE066 上仍看得清
       expect(
-        _isGolden(settingsText.style!.color!),
-        isTrue,
-        reason: '选中态文字必须是金黄系',
-      );
-      // 压在金黄滑块上仍看得清（滑块中段色 #FFC400）
-      expect(
-        _contrastRatio(settingsIcon.color!, const Color(0xFFFFC400)),
+        _contrastRatio(settingsIcon.color!, const Color(0xFFFFE066)),
         greaterThanOrEqualTo(4.5),
-        reason: '深金黄压在金黄滑块上的对比度要够',
+        reason: '深褐黑压在金黄滑块上对比度要够',
       );
       // 未选中：图标与文字同为 onSurfaceVariant 灰
       expect(scheduleIcon.color, scheme.onSurfaceVariant);
@@ -222,7 +221,7 @@ void main() {
       expect(_isGolden(scheduleIcon.color!), isFalse, reason: '未选中态是灰，不是金黄');
     });
 
-    testWidgets('深色主题：选中态换浅金黄（与浅色主题的深金黄分档）', (tester) async {
+    testWidgets('深色主题：选中态换暖白（与浅色主题的深褐黑分档）', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
@@ -252,14 +251,21 @@ void main() {
           matching: find.byType(Icon),
         ),
       );
+      // 2.1.7（WB_SPEC_218 第 ② 节）：深色主题前景色改为暖白 #FEF3C7，
+      // 压在压暗的金黄滑块上对比度 ≥ 4.5:1，不再是 2.1.6 的浅金黄。
+      expect(kTabBarActiveColorDark, const Color(0xFFFEF3C7));
       expect(HomeTabBar.activeColorFor(scheme), kTabBarActiveColorDark);
       expect(settingsIcon.color, kTabBarActiveColorDark);
-      expect(_isGolden(settingsIcon.color!), isTrue, reason: '深色主题也是金黄系');
-      // 深色主题下滑块压暗成暗金，浅金黄压上去仍有对比度
+      // 深色滑块是 28%→18% 低不透明金黄叠加在 #18181C 栏底上，有效色很暗，
+      // 暖白压上去仍有对比度（按最亮端 #F59F00 28% 叠加算，最保守）
+      final effectiveSlider = _over(
+        kLiquidSliderGradientDark.first,
+        kLiquidGlassSurfaceColorDark,
+      );
       expect(
-        _contrastRatio(settingsIcon.color!, const Color(0xFF71590B)),
+        _contrastRatio(settingsIcon.color!, effectiveSlider),
         greaterThanOrEqualTo(4.5),
-        reason: '浅金黄压在压暗后的滑块上要看得清',
+        reason: '暖白压在压暗后的滑块上要看得清',
       );
       // 未选中态仍是灰
       final scheduleIcon = tester.widget<Icon>(
@@ -394,8 +400,8 @@ void main() {
         reason: '胶囊形态必须贴住屏幕底边，不再悬浮',
       );
       // 胶囊最小高 52
-      expect(size.height, greaterThanOrEqualTo(kBottomBarCapsuleHeight));
-      expect(kBottomBarCapsuleHeight, 52);
+      expect(size.height, greaterThanOrEqualTo(kBottomBarKeyHeight));
+      expect(kBottomBarKeyHeight, 52);
     });
 
     testWidgets('无悬浮阴影：胶囊 elevation 为 0、圆角 26', (tester) async {
@@ -416,7 +422,7 @@ void main() {
   });
 
   group('几何常量与网格留白口径', () {
-    test('三态留白：关栏 16 / 标签栏 64 / 胶囊 52', () {
+    test('三态留白：关栏 16 / 标签栏 64 / 胶囊占位式 0', () {
       // 关栏：16（沿用 2.1.3）
       expect(
         bottomBarGridBottomInset(
@@ -441,14 +447,18 @@ void main() {
         kBottomBarTabHeight,
       );
       expect(kBottomBarTabHeight, HomeTabBar.height);
-      // 胶囊贴底：52 = 胶囊高
+      // 胶囊占位式：0（WB_SPEC_218 第 ① 节）——胶囊改成主布局底部一整条
+      // 专属槽位，槽位自己占布局高度，网格滚动视口截断在槽位上方，
+      // 不再按胶囊高度留白
       expect(
         bottomBarGridBottomInset(
           showBottomBar: true,
           style: BottomBarStyle.capsule,
         ),
-        kBottomBarCapsuleHeight,
+        0,
       );
+      expect(kCapsuleSlotHeight, 64,
+          reason: '槽位最小高 64 = 胶囊 52 + 上下各 6 间隙（字体放大时随内容长高）');
     });
 
     test('叠加底部安全区：安全区只加一次，不重复计算', () {
@@ -460,13 +470,14 @@ void main() {
         ),
         34 + kBottomBarTabHeight,
       );
+      // 胶囊占位式：槽位已吃掉安全区，网格不叠加，返回 0（不重复留白）
       expect(
         bottomBarGridBottomPadding(
           34,
           showBottomBar: true,
           style: BottomBarStyle.capsule,
         ),
-        34 + kBottomBarCapsuleHeight,
+        0,
       );
       expect(
         bottomBarGridBottomPadding(
@@ -509,4 +520,20 @@ double _contrastRatio(Color a, Color b) {
   final hi = la > lb ? la : lb;
   final lo = la > lb ? lb : la;
   return (hi + 0.05) / (lo + 0.05);
+}
+
+/// 把半透明前景色 [fg] 叠加到不透明背景色 [bg] 上，得到有效色。
+///
+/// 2.1.7 起滑块改成半透明金黄，对比度不能拿「不透明端点色」直接算——
+/// 要先叠加到栏底/页面底色上求有效色，再与前景色比。
+Color _over(Color fg, Color bg) {
+  final a = fg.a;
+  int blend(double f, double b) =>
+      ((f * a + b * (1 - a)) * 255).round().clamp(0, 255);
+  return Color.fromARGB(
+    255,
+    blend(fg.r, bg.r),
+    blend(fg.g, bg.g),
+    blend(fg.b, bg.b),
+  );
 }

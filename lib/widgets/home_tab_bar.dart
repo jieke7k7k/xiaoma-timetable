@@ -13,8 +13,8 @@ import 'home_capsule.dart' show HomeShellTab;
 ///
 /// 液态化的四件事（按 Argon 方案，与样品 `.phone-bar` 对齐）：
 /// - **毛玻璃层独立**：[Stack] 里单独一层 [_LiquidGlass]（`RepaintBoundary`
-///   + [BackdropFilter]，模糊 sigma 15），与按键动画层彻底分离——切换时
-///   玻璃层零重算，按键动画不会带着整条栏一起重绘；
+///   + [BackdropFilter]，模糊 sigma 浅色 3.5 / 深色 4.0），与按键动画层
+///   彻底分离——切换时玻璃层零重算，按键动画不会带着整条栏一起重绘；
 /// - **选中态由滑动指示器承载**：一块 50% 宽的金黄渐变滑块（[AnimatedAlign]
 ///   + 380ms 弹簧曲线）只动位置，不再「选中时把整格背景切成渐变」——渐变插值
 ///   在 Flutter 里天生生硬，改走位移后纯 GPU；
@@ -78,9 +78,9 @@ class _HomeTabBarState extends State<HomeTabBar> {
     final scheme = Theme.of(context).colorScheme;
 
     // 贴底不悬浮：elevation 恒 0、无 shadowColor，色块一直铺到屏幕最底部。
-    // 底色改半透明（主题 surface 的 72%），模糊由下面独立的玻璃层提供。
+    // 底色改高透染色玻璃（浅色白 58% / 深色 #18181C 64%），模糊由独立的玻璃层提供。
     return Material(
-      color: scheme.surface.withValues(alpha: kLiquidGlassSurfaceOpacity),
+      color: liquidGlassSurfaceColor(scheme.brightness),
       elevation: 0,
       shadowColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
@@ -88,14 +88,16 @@ class _HomeTabBarState extends State<HomeTabBar> {
         top: false,
         child: DecoratedBox(
           key: kHomeTabBarDividerKey,
-          // 顶部一条 1 逻辑像素细分割线：用 DecoratedBox 画在栏体内部
+          // 顶部一条细分割线：用 DecoratedBox 画在栏体内部
           // （装饰不参与布局，不额外占高，栏体实测高度仍是 64），
-          // 颜色取主题 outline 的低透明度版本，深浅色都能看见又不抢眼。
+          // 粗细按 WB_SPEC_218 第 ② 节的「栏体描边」：浅色 0.8dp 内高光、
+          // 深色 0.6dp 微白边，不再用主题 outline，也不再统一锁死 1.0dp
+          //（2.1.7 复查 Bug 2：1.0dp 与规格原文不符）。
           decoration: BoxDecoration(
             border: Border(
               top: BorderSide(
-                width: kBottomBarDividerWidth,
-                color: scheme.outline.withValues(alpha: 0.35),
+                width: bottomBarDividerWidth(scheme.brightness),
+                color: liquidGlassEdgeColor(scheme.brightness),
               ),
             ),
           ),
@@ -189,11 +191,12 @@ class _HomeTabBarState extends State<HomeTabBar> {
                   colors: dark
                       ? kLiquidSliderGradientDark
                       : kLiquidSliderGradientLight,
-                  stops: const <double>[0, 0.55, 1],
+                  stops: const <double>[0, 1],
                 ),
                 border: Border.all(
-                  color: const Color(0xB3FFFFFF), // rgba(255,255,255,.7)
-                  width: 1,
+                  // 浅色白高光 / 深色金黄内发光（WB_SPEC_218 第 ② 节锁边界）
+                  color: dark ? kLiquidSliderBorderDark : kLiquidSliderBorderLight,
+                  width: dark ? 0.8 : 1,
                 ),
               ),
               // 顶部一抹高光：液态感的关键（样品 .liquid::before 的斜向光泽），
@@ -317,8 +320,8 @@ class _HomeTabBarState extends State<HomeTabBar> {
 /// 只做模糊、没有子节点参与布局，既不与按键动画互相牵连，也不会因为按键重绘
 /// 而反复重算模糊（低端机上这一步最贵）。
 ///
-/// 它不挂在栏本体上——栏本体 [Material] 只负责 72% 不透明度的底色，
-/// 玻璃层是 [Stack] 里平级的独立一层。
+/// 它不挂在栏本体上——栏本体 [Material] 只负责高透染色底色（浅色白 58% /
+/// 深色 #18181C 64%），玻璃层是 [Stack] 里平级的独立一层。
 class _LiquidGlass extends StatelessWidget {
   const _LiquidGlass();
 
@@ -328,7 +331,9 @@ class _LiquidGlass extends StatelessWidget {
       key: kHomeTabBarGlassKey,
       child: BackdropFilter(
         key: kHomeTabBarBlurKey,
-        filter: liquidGlassImageFilter(),
+        filter: liquidGlassImageFilter(
+          brightness: Theme.of(context).brightness,
+        ),
         child: const SizedBox.expand(),
       ),
     );

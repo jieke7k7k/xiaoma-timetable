@@ -194,7 +194,9 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('胶囊贴底：滚动到底最后一节完整露出，留白 == 胶囊高 + 安全区', (tester) async {
+  testWidgets('胶囊占位式：滚动到底最后一节完整露出，留白 0（槽位吃高度，零遮挡）', (
+    tester,
+  ) async {
     await pumpHome(tester, showBottomBar: true, style: BottomBarStyle.capsule);
     expect(find.byType(HomeCapsule), findsOneWidget);
 
@@ -202,12 +204,29 @@ void main() {
     await scrollToBottom(tester);
     final m = gridMetrics(tester);
     expect(m.bar, isNotNull);
-    expect(m.inset, kBottomBarCapsuleHeight);
+    // 胶囊占位式：网格底部留白 0（WB_SPEC_218 第 ① 节）——槽位自己占布局
+    // 高度，网格滚动视口截断在槽位上方，不再按胶囊高留白
+    expect(m.inset, 0);
+    expect(
+      m.inset,
+      bottomBarGridBottomPadding(
+        0,
+        showBottomBar: true,
+        style: BottomBarStyle.capsule,
+      ),
+    );
+    // 内容底边 = 网格视口底边（即槽位顶边）；胶囊本体在槽位内再低 6dp，
+    // 内容绝不滑到胶囊下面去（零遮挡）
     final contentBottom = m.viewport.bottom - m.inset;
-    expect(contentBottom, closeTo(m.bar!.top, 1.0));
+    expect(contentBottom, closeTo(m.viewport.bottom, 0.5));
+    expect(
+      m.bar!.top,
+      greaterThan(contentBottom),
+      reason: '胶囊在滚动视口之下，不遮挡滚动中的课表内容',
+    );
     final last = tester.getRect(find.text('$lastNo').first);
     expect(last.top, greaterThanOrEqualTo(0));
-    expect(last.bottom, lessThanOrEqualTo(m.bar!.top + 0.5));
+    expect(last.bottom, lessThanOrEqualTo(m.viewport.bottom + 0.5));
 
     await tester.pump(const Duration(seconds: 11));
     await tester.pumpWidget(const SizedBox());

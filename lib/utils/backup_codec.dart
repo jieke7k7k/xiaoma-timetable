@@ -61,13 +61,6 @@ class BackupCodec {
   /// 备份文件归属标记（信息性字段，version 才是格式判断依据）
   static const String appTag = 'simple_timetable';
 
-  /// 云同步水位键（须与 `SupabaseSyncService.lastSyncAtKey` 保持一致）。
-  ///
-  /// 它不属于机密键、正常进备份；但恢复时**强制归零**——见 [restore]，
-  /// 等价于恢复后下一次同步重新走「首次迁移」全量上传（upsert 幂等），
-  /// 避免沿用备份里的旧水位把恢复进来的课程/备注当成「已同步过」而漏传。
-  static const String syncWatermarkKey = 'supabase_last_sync_at';
-
   /// 单个字体文件进备份的体积上限（8MB）。
   ///
   /// 字体以 base64 写进 JSON，体积还要再膨胀约 1/3；超限的文件直接跳过，
@@ -316,7 +309,7 @@ class BackupCodec {
       for (final c in data.courses) {
         final map = c.toMap()..remove('id');
         map['semesterId'] = semesterIdMap[c.semesterId];
-        // P0-5：恢复的课程补 updatedAt=now，云同步能按新时间参与后续上传
+        // 恢复的课程补 updatedAt=now（最后修改时间，统一设为恢复时刻）
         map['updatedAt'] = nowMs;
         final newId = await txn.insert('courses', map);
         if (c.id != null) courseIdMap[c.id!] = newId;
@@ -330,16 +323,11 @@ class BackupCodec {
         await txn.insert('time_slots', t.toMap());
       }
       for (final e in data.appSettings.entries) {
-        // 云同步水位不进备份生效：恢复后强制归零（见下面），这里跳过备份值
-        if (e.key == syncWatermarkKey) continue;
         await txn.insert('app_settings', {'key': e.key, 'value': e.value});
       }
-      // P0-5：云同步水位归零——恢复后等价于重新首次迁移，下次同步全量上传，
-      // upsert 幂等、不会重复污染云端。
-      await txn.insert('app_settings', {'key': syncWatermarkKey, 'value': '0'});
       for (final n in data.notes) {
-        // 与其它表一致：去掉 id 让自增重新分配，不照抄备份里的 id
-        // P0-5：恢复的备注同样补 updatedAt=now，参与后续云同步上传
+        // 与其它表一致：去掉 id 让自增重新分配，不照抄备份里的 id；
+        // 补 updatedAt=now（最后修改时间，统一设为恢复时刻）
         await txn.insert('notes', n.toMap()..remove('id')..['updatedAt'] = nowMs);
       }
     });

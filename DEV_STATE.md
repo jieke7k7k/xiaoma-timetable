@@ -1,8 +1,74 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-11-03（2.1.6+31：WB_SPEC_217 底部栏液态玻璃化 + 切换动效丝滑化）
+> 更新时间：2026-11-04（2.1.7+32：WB_SPEC_218 胶囊零遮挡 + 玻璃轻透 + 删云同步 + 设置重组）
 
 ## 做到哪了
+
+## 2026-11-04（2.1.7+32：WB_SPEC_218 胶囊零遮挡 + 玻璃轻透 + 删云同步 + 设置重组）
+
+规格见任务内 WB_SPEC_218 全文。用户原话四条：「胶囊别挡课表（滚动时零遮挡）」→「玻璃太糊了，改轻透」→「云同步整条线删干净」→「设置页重新分组（3 大分组 + 顶部更多菜单）」。Argon 建议逐条照做：胶囊改占位式、玻璃改高透染色（浅色 sigma 3.5 / 深色 4.0，底色浅色白 58% / 深色 #18181C 64%）、删云同步整条线（服务 / 依赖 / 入口 / 水位键全清）、设置重组为「课表与学期 / 展示与桌面 / 数据与安全」三组 + AppBar ⋮ 菜单。沿用 Riverpod 手写 Notifier / Dao 单例 / 中文文案注释；未改周视图网格内容、周日弹窗逻辑，未恢复任何 AI 入口。
+
+### 交付形态
+- 本版**未推仓库、未建分支**：交付物是统一 diff（`diff -ruN`，路径为仓库相对路径；`.diff` 不支持时另给同名 `.txt`）+ 新增文件包 zip。
+- **本环境真跑通了**：在线拉 Flutter 3.47.9 / Dart 3.13.7（与 `environment.sdk: ^3.13.5` 对齐，走 `storage.flutter-io.cn` / `pub.flutter-io.cn` 镜像），`flutter pub get` → `flutter analyze`（**No issues found!**）→ `flutter test`（**393 例全绿**，见第 3 节）。
+- 唯一的环境性动作：仓库里 `assets/fonts/*.ttf` 按 `.gitignore` 不入库，本地按 `assets/fonts/README.md` 用 `gh-proxy.com` 镜像补齐四款真实字体后才能构建 asset bundle；这四个 ttf 不进 diff。
+
+### 第 1 节 胶囊零遮挡（占位式，外观与行为不变）
+- 新增 `lib/ui/bottom_bar_metrics.dart` 的 `kCapsuleSlotHeight = 64`（胶囊高 52 + 上下各 6 间隙）与 `kCapsuleSlotHeight` 相关口径。
+- `main.dart` 的 `HomeShell`：`_buildShell(BottomBarStyle)` 拆成两条分支——胶囊走 `Column [Expanded(view), _buildCapsuleSlot()]`，主布局底部切出一整条专属槽位（高 64 + 底部安全区、背景 `scheme.surface` 并入页面），胶囊在槽位内 `Center` 居中，距课表滚动区底边与手势栏顶边各 6dp；标签栏仍是 `Stack` + 悬浮 overlay（轻透玻璃需要底下有内容透出来）。
+- `bottomBarGridBottomInset` / `bottomBarGridBottomPadding` 对胶囊形态返回 0：网格滚动视口截断在槽位上方，不再按胶囊高留白；槽位自己吃掉底部安全区，网格不叠加。关栏 16、标签栏 64 不变。
+- 不变项：胶囊外形（圆角 26、宽度随内容自适应、贴底、无阴影、两键）、样式切换与关栏行为、`fromId` 兜底，一行未动。
+
+### 第 2 节 玻璃轻透（重模糊 → 高透染色玻璃）
+- `lib/ui/liquid_glass.dart` 常量整体换血：`kLiquidGlassBlurSigmaLight = 3.5` / `kLiquidGlassBlurSigmaDark = 4.0`（替换旧 `kLiquidGlassBlurSigma = 15`），新增 `liquidGlassBlurSigma(Brightness)`；栏底 `kLiquidGlassSurfaceColorLight = Color(0x94FFFFFF)`（白 58%）/ `kLiquidGlassSurfaceColorDark = Color(0xA318181C)`（#18181C 64%），替换旧 `0.72` 不透明度；新增描边 `kLiquidGlassEdgeColorLight = 0xBFFFFFFF` / `kLiquidGlassEdgeColorDark = 0x24FFFFFF`。
+- 滑块渐变换半透明染色：浅色 `kLiquidSliderGradientLight = [0xA6FFE066, 0x73F59F00]`（#FFE066 65% → #F59F00 45%）、深色 `kLiquidSliderGradientDark = [0x47F59F00, 0x2ED97706]`（#F59F00 28% → #D97706 18%）+ `kLiquidSliderBorderDark = 0x80FBBF24` 金色内发光描边。
+- 选中态前景色分档：`kTabBarActiveColorLight = Color(0xFF1C1917)`（深褐黑，压在半透明金黄上对比度 ≥ 4.5:1）、`kTabBarActiveColorDark = Color(0xFFFEF3C7)`（暖白，压在压暗滑块上 ≥ 4.5:1），替换 2.1.6 的深金黄 / 浅金黄。
+- `HomeTabBar` / `_LiquidGlass`：`Material.color` 改 `liquidGlassSurfaceColor(brightness)`、顶边描边改 `liquidGlassEdgeColor(brightness)`、`BackdropFilter` 改 `liquidGlassImageFilter(brightness:)`；**修复**滑块 `LinearGradient` 的 `stops` 数量与 2 个颜色不匹配的渲染崩溃（改 `[0, 1]`）。
+- 验收口径：栏后课表文字可读、对比度 ≥ 4.5:1（浅色深褐黑 vs 滑块最亮端 #FFE066、深色暖白 vs 滑块端点叠加 #18181C 后的有效色，均 ≥ 4.5）。
+
+### 第 3 节 删云同步（整条线删干净）
+- 删除 `lib/services/supabase_sync_service.dart`、`lib/utils/supabase_codec.dart`、`test/supabase_sync_test.dart`；`pubspec.yaml` 删除 `supabase_flutter` 依赖（连带 `supabase` / `gotrue` / `postgrest` / `realtime_client` / `storage_client` / `functions_client` 等传递依赖一并移除）。
+- `main.dart` 删除 `SupabaseSyncService` import、`attachToDao()`、`_silentSupabaseSync`、`_applyCloudChanges` 及启动任务里的同步调用；`dao.dart` 删除 `onLocalChange` 钩子与 `getAllCourseRows` / `getAllNoteRows` / `putCourseSynced` / `putNoteSynced`，`updatedAt` 恢复为纯「最后修改时间」。
+- `backup_codec.dart` 删除 `syncWatermarkKey` 与恢复时「强制把同步水位归零」的逻辑——旧备份文件里的同步键按普通惰性设置原样恢复；`db_helper.dart` 升级到 v7，新增 v6→v7 迁移一次性删除 `supabase_last_sync_at` / `supabase_last_sync_summary` 两个遗留键。
+- 门禁：`flutter analyze` 零 issue；全量测试含「v6 升 v7 清同步键」「备份不再强制归零水位」两个新增用例全绿。
+
+### 第 4 节 设置重组（3 大分组 + 顶部更多菜单，零路由重构）
+- `settings_page.dart` 全量重写为 `ConsumerWidget`：三组「课表与学期」（当前学期与周次 / 课表工具箱）、「展示与桌面」（外观与底栏 / 桌面小组件 / 上课提醒，提醒上方带权限自检条）、「数据与安全」（数据备份与换机）；动态副标题三处（当前学期与周次、主题·底栏、提醒状态）；AppBar ⋮ `PopupMenuButton` 收纳「权限自检」「关于小马课表」。
+- 「更多工具」分组、「菜单管理」「权限」「关于」独立入口行移除；「菜单管理」移入 `course_tools_page.dart` 底部（路由 `/menu-manage` 不变）；所有路由零重构，仅首页入口重排。
+- `settings_sections.dart` 的 `DataSettingsPage` 标题改「数据备份与换机」并新增纯本地存储提示条。
+
+### 第 5 节 版本 / 文档 / 测试
+- `pubspec.yaml` → `2.1.7+32`；`CHANGELOG.md` 新增 v2.1.7+32；`DEV_STATE.md`（本文件）、`ARCHITECTURE.md` 同步写明。
+- 测试（本次变更相关）：
+  - 改写 `test/liquid_bottom_bar_test.dart`：sigma 断言从「14~16」改为「浅色 3.5 / 深色 4.0（≤6 不糊笔画）」，`liquidGlassImageFilter` 改按 `brightness` 参数；底色从「surface 0.72」改为「浅色白 58% / 深色 #18181C 64%」并新增深色用例。
+  - 改写 `test/bottom_bar_style_test.dart`：选中态前景色从「金黄系」改为「浅色深褐黑 #1C1917 / 深色暖白 #FEF3C7 分档 + 对比度 ≥ 4.5:1」（新增 alpha 叠加 helper 求滑块有效色）；三态留白「胶囊 52 → 0」、叠加安全区「胶囊 34+52 → 0」。
+  - 改写 `test/home_grid_bottom_inset_test.dart`：胶囊用例从「留白 == 胶囊高」改为「留白 0、胶囊在滚动视口之下零遮挡」。
+- 复查小修（2026-11-05 小马本地亲手改，Kimi-K2.8-Preview 只读复审 P0=0/P1=0，5 低危＋2 建议全修）：权限自检条隐藏时不画两侧分隔线（可见时自带线）；描边按规格原文改浅色 0.8dp／深色 0.6dp（旧代码锁死 1.0dp 是偏差）；CI 删两个 SUPABASE dart-define、`sql/supabase_schema.sql` 删除、manifest 两处注释清云同步字样（INTERNET 权限保留）；三处旧注释按占位式／轻透改写；胶囊槽位由写死 64 改最小高 64＋上下各 6 padding；课表工具箱副标题改「搜索、空闲时段、考试倒计时」；删 `kBottomBarCapsuleHeight` 别名（测试改断言 `kBottomBarKeyHeight`）。测试 395→396（新增深色 0.6dp 分割线用例）。悬浮形态经用户确认：以零遮挡为准、放弃悬浮留缝，按占位式发版。打磨清单（Argon 参数）原文见本节开头与 WB_SPEC_218，已存档。
+  - 改写 `test/settings_page_test.dart`：从「9 分类行 + 更多工具平铺」改为「3 分组 + 6 入口 + ⋮ 菜单」，删除「更多工具平铺显隐」两例（该 UI 已删，显隐逻辑由 `menu_manage_page_test` 继续覆盖）。
+  - 新增 `test/course_tools_page_test.dart`（2 例）：六个功能入口齐全 + 菜单管理排最底。
+  - 新增 `test/db_migration_217_test.dart`（2 例）：v6→v7 清两个同步键、清理只在升到 7 那一次发生。
+  - 改写 `test/backup_codec_test.dart`：恢复不再强制把同步水位归零，改为「按普通设置原样恢复」。
+- 门禁：`flutter analyze` 零 issue；`flutter test` 393 例全绿。
+
+### 取舍与已知限制（明写，不藏）
+1. **玻璃「轻透」与「可读」的平衡点压在 sigma 6 以内**：sigma 一旦超过 6，12~14sp 汉字笔画会被糊成色块，栏后课表文字不可读；浅色取 3.5、深色取 4.0（深色透光更难做，略高仍远低于 6）。真机若觉得不够「玻璃」，只调 `liquidGlassBlurSigma` 一处即可。
+2. **滑块半透明化后的对比度**：浅色滑块降到 65%/45%、深色降到 28%/18%，前景色必须跟着换（深褐黑 / 暖白），否则「金黄压金黄」仍会糊。对比度按「滑块端点叠加栏底色后的有效色」算，不是拿不透明端点色直接算——测试里写了 alpha 叠加 helper 保持口径一致。
+3. **胶囊占位式吃掉了 64 高度**：胶囊形态下课表可视高度少了一截（槽位 64 是「专属位置」而非悬浮遮挡）。这是「零遮挡」的代价，规格明确要占位式；标签栏形态仍是悬浮 overlay（可视高度不缩水，但内容会滚到栏下）。
+4. **删云同步是不可逆的**：同步服务、依赖、水位键全删，旧备份里若还带着同步键会按普通设置恢复（无害的惰性数据），但不会再有任何联网同步能力。规格明确「整条线删干净」，不做半保留。
+
+### 常见 Bug 预查（逐条：适用 / 不适用）
+1. **配置损坏与原子写入 — 适用（未改、仍覆盖）**：`BottomBarStyle.fromId` / `UiSettings.fromEncoded` / `bottomBarGridBottomPadding` 的兜底逻辑未动，`ui_settings_test` 继续兜着。
+2. **升级残留（旧 `bar` / 旧同步键）— 适用（已测）**：`bar` 回落 tab（旧用例）；同步键由 v7 迁移一次性清掉（新增 `db_migration_217_test`），清理只在升到 7 那一次、不反复清。
+3. **胶囊遮挡滚动内容 — 适用（本轮修复点）**：占位式 + 网格留白 0，`home_grid_bottom_inset_test` 断言胶囊在滚动视口之下、最后一节完整可见。
+4. **玻璃糊笔画 / 对比度不足 — 适用（本轮修复点）**：sigma 压到 3.5/4.0、前景色分档、对比度 ≥ 4.5 两条主题各有断言。
+5. **滑块渐变 stops 与颜色数不匹配崩溃 — 适用（本轮修复点）**：`[0, 1]` 两 stops 匹配两颜色，全量测试跑通无渲染异常。
+6. **设置页入口丢失 / 路由破坏 — 适用（已查）**：六个工具路由（`/course-search` 等）在 `main.dart` 路由表里均在，「菜单管理」移到课表工具页底部（`course_tools_page_test` 断言），「权限自检 / 关于」移入 ⋮ 菜单（`settings_page_test` 断言），零路由重构。
+7. **AI 入口 / 周视图网格 / 周日弹窗被误改 — 不适用**：本次只动 `bottom_bar_metrics` / `liquid_glass` / `home_tab_bar` / `main.dart`（壳构建）/ `dao` / `backup_codec` / `db_helper` / `settings_page` / `settings_sections` / `course_tools_page` 与测试、文档；`week_view_page` / `sunday_dialog*` 一行未动，测试仍有「无 AI 键」「恒两键」断言。
+
+### 未覆盖 / 待人工确认
+- 真机目视：轻透玻璃的实际观感（sigma 3.5/4.0 下栏后课表透出程度）、胶囊占位式下主页观感（课表可视高度少 64 的取舍）。
+- 低端机帧率：轻透玻璃的 `BackdropFilter` 仍每帧读背景，需真机确认；若掉帧，只调 `liquidGlassBlurSigma`（甚至降为 0 关模糊）。
+- 云同步删除后的首次启动清理：v7 迁移在升级那一瞬跑一次，需真机用「带同步键的老库」验证一次。
 
 ## 2026-11-03（2.1.6+31：WB_SPEC_217 底部栏液态玻璃化 + 切换动效丝滑化）
 

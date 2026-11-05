@@ -2,20 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:xiaoma_timetable/database/dao.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/pages/settings_page.dart';
 
-/// 设置首页测试（2.0.5，WB_SPEC_205 第 1 节；2.0.6 第 1 节去重复小标题；
-/// 2.0.7 第 3 节分隔线；2.0.8 第 3 节删聊天入口；
-/// 2.1.0 WB_SPEC_212 第 3/4 节调整入口集合；2.1.3 WB_SPEC_214 第 1 节删除
-/// 页面底部那个「解锁后才出现」的入口行）
+/// 设置首页测试（2.1.7，WB_SPEC_218 第 ④ 节重组为三大分组）。
 ///
-/// 首页只留入口行（图标 + 名称 + 一行副标题 + ›），断言：
-/// 1. 入口行齐全（含「菜单管理」+「更多工具」分组）；
-/// 2. 首页**不存在** Switch / Slider（开关只在菜单管理子页，首页不放开关）；
-/// 3. 入口集合固定：行数、图标都与 2.1.3 定版一致，底部不会因任何开关多出一行；
-/// 4. 「更多工具」分组全量平铺六项，右侧灰字标注菜单显隐（与配置实时一致）。
+/// 2.1.7 起设置首页按 Argon 方案从「9 个分类行 + 更多工具平铺」收拢为
+/// 「3 大分组 + AppBar ⋮ 更多菜单」，断言：
+/// 1. 三个分组标题齐全（课表与学期 / 展示与桌面 / 数据与安全）；
+/// 2. 六个入口行齐全（当前学期与周次、课表工具箱、外观与底栏、桌面小组件、
+///    上课提醒、数据备份与换机）；
+/// 3. 首页**不存在** Switch / Slider（开关只在子页，首页不放开关）；
+/// 4. 入口集合固定：6 行入口，不再有「菜单管理」「权限」「关于」独立入口行，
+///    也没有「更多工具」平铺——它们分别并入课表工具箱 / ⋮ 更多菜单。
 void main() {
   setUpAll(() {
     sqfliteFfiInit();
@@ -55,77 +54,55 @@ void main() {
     }
   }
 
-  testWidgets('设置首页：入口行齐全 + 入口集合固定 + 无 Switch/Slider', (tester) async {
+  testWidgets('设置首页：三大分组 + 六入口齐全 + 无 Switch/Slider', (tester) async {
     await pumpPage(tester);
 
-    // 入口行标题（2.1.3 定版：9 个分类行 + 「更多工具」分组标题 + 6 个工具行）
+    // 三个分组标题（2.1.7 定版）
+    const groups = ['课表与学期', '展示与桌面', '数据与安全'];
+    for (final g in groups) {
+      expect(find.text(g), findsOneWidget, reason: '分组「$g」应出现在设置首页');
+    }
+
+    // 六个入口行标题
     const entries = [
-      '学期设置',
-      '外观',
-      '提醒',
-      '课表工具',
-      '菜单管理',
-      '更多工具',
-      '学期与数据',
-      '权限',
-      '关于小马课表',
+      '当前学期与周次',
+      '课表工具箱',
+      '外观与底栏',
       '桌面小组件',
+      '上课提醒',
+      '数据备份与换机',
     ];
     for (final e in entries) {
       expect(find.text(e), findsOneWidget, reason: '入口「$e」应出现在设置首页');
     }
 
-    // 2.1.3：入口集合固定——9 个分类行 + 云同步行 + 6 个工具行 = 16 行，
-    // 底部不会再多出第 17 行（此前那一行是解锁后才渲染的）
-    expect(find.byType(ListTile), findsNWidgets(16));
-    // 那一行专属的图标也不该出现（比找文案更抗改文案）
-    expect(find.byIcon(Icons.build_outlined), findsNothing);
+    // 2.1.7：入口集合固定——6 行入口（权限自检条在测试环境权限查询失败时隐藏，
+    // 不额外占一行；「菜单管理」「权限」「关于」独立入口行已移除）
+    expect(find.byType(ListTile), findsNWidgets(6));
 
-    // 各分类入口行的一行副标题（证明入口行存在）
-    expect(find.text('学期名称、开学日期、总周数'), findsOneWidget);
-    expect(find.text('主题、实时预览、格子外观、课程配色与显示字体'), findsOneWidget);
-    expect(find.text('导入课表、学期管理、备份恢复、导出 ICS、数据管理'), findsOneWidget);
-    expect(find.text('通知、精确闹钟、电池优化'), findsOneWidget);
-    expect(find.text('今日课程小组件的添加说明'), findsOneWidget);
-
-    // 首页不出现任何开关 / 滑杆（开关只在菜单管理子页）
+    // 首页不出现任何开关 / 滑杆（开关只在子页）
     expect(find.byType(Switch), findsNothing);
     expect(find.byType(SwitchListTile), findsNothing);
     expect(find.byType(Slider), findsNothing);
+
+    // 各入口行的固定副标题（证明入口行存在）
+    expect(find.text('搜索、空闲时段、考试倒计时'), findsOneWidget);
+    expect(find.text('今日课程小组件的添加说明'), findsOneWidget);
+    expect(find.text('本地导出、恢复与换机迁移（纯本地存储）'), findsOneWidget);
   });
 
-  testWidgets('更多工具：全量平铺六项，默认全部「已在菜单显示」', (tester) async {
+  testWidgets('设置首页：权限自检与关于移入 AppBar ⋮ 菜单（不再占列表行）', (tester) async {
     await pumpPage(tester);
 
-    const tools = [
-      '课程搜索',
-      '空闲时段',
-      '导出课表图片',
-      '学期管理',
-      '考试倒计时',
-      '导入课表',
-    ];
-    for (final t in tools) {
-      expect(find.text(t), findsOneWidget, reason: '更多工具应平铺「$t」');
-    }
-    // 默认六项全显示
-    expect(find.text('已在菜单显示'), findsNWidgets(6));
-    expect(find.text('已在菜单隐藏'), findsNothing);
-  });
+    // ⋮ 更多菜单存在，且未展开时列表里没有「权限自检」「关于小马课表」行
+    expect(find.byIcon(Icons.more_vert), findsOneWidget);
+    expect(find.text('权限自检'), findsNothing);
+    expect(find.text('关于小马课表'), findsNothing);
 
-  testWidgets('更多工具：某项在菜单隐藏后，兜底行标注「已在菜单隐藏」', (tester) async {
-    // 先种入「课程搜索」已隐藏的菜单配置，再渲染设置页
-    await tester.runAsync(() async {
-      await Dao.instance.setSetting(
-        'home_menu_config',
-        '[{"id":"course-search","visible":false,"order":0}]',
-      );
-    });
-    await pumpPage(tester);
-
-    expect(find.text('已在菜单隐藏'), findsOneWidget);
-    expect(find.text('已在菜单显示'), findsNWidgets(5));
-    // 课程搜索这一行仍在（兜底入口不因隐藏而消失）
-    expect(find.text('课程搜索'), findsOneWidget);
+    // 展开 ⋮ 菜单后，两项出现在 PopupMenu 里（路由不变，仅入口位置变化）
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    expect(find.text('权限自检'), findsOneWidget);
+    expect(find.text('关于小马课表'), findsOneWidget);
   });
 }

@@ -1,35 +1,26 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/menu_config.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
-import '../services/notification_service.dart';
-import '../services/supabase_sync_service.dart';
-import '../services/widget_service.dart';
+import '../services/permission_service.dart';
 import '../ui/app_styles.dart';
 import '../ui/bottom_bar_metrics.dart';
 
-/// 设置页（QQ 式分级）
+/// 设置页（QQ 式分级 → WB_SPEC_218 第 ④ 节重组为三大分组）
 ///
-/// 2.0.5（WB_SPEC_205 第 1 节）起首页只保留分组标题 + 每类一行入口行
-/// （图标 + 名称 + 一行副标题 + ›），**首页不出现任何开关 / 滑杆 / 选择器**；
-/// 点进每个分类才看到该组的全部设置项（见 settings_sections.dart）。
+/// 2.0.5（WB_SPEC_205 第 1 节）起首页只保留分组标题 + 每类一行入口行，
+/// 首页不出现任何开关 / 滑杆 / 选择器；2.0.6 去全部分组小标题；2.0.7 Taste 化；
+/// 2.1.0 加菜单管理入口与「更多工具」分组；2.1.3 删隐藏入口。
 ///
-/// 2.0.6（WB_SPEC_206 第 1 节）去掉全部分组小标题：小标题与入口行同名，
-/// 纯重复。首页现在只留入口行，组与组之间用比行内更大的 AppSpacing 间距分隔。
-///
-/// 2.0.7（WB_SPEC_208 第 1 节）Taste 化只动布局与层级；2.0.8（WB_SPEC_209
-/// 第 3 节）删掉底部栏的聊天入口。
-///
-/// 2.1.0（WB_SPEC_212 第 3/4 节）：新增「菜单管理」入口（进菜单管理子页）；
-/// 新增「更多工具」分组：全量平铺可自定义的六个菜单项，右侧灰字标注
-/// 菜单显隐状态（与菜单配置实时一致），是菜单全关时的兜底入口。
-///
-/// 2.1.3（WB_SPEC_214 第 1 节）：此前那个「解锁后才出现」的隐藏入口整体删除，
-/// 页面底部不会再多出第 17 行；本页入口集合自此固定，不随任何开关变化。
+/// 2.1.7（WB_SPEC_218 第 ④ 节）按 Argon 方案重组为「3 大分组 + 顶部更多菜单」：
+/// - 第一组「课表与学期」：当前学期与周次、课表工具箱（菜单管理并入课表工具页）；
+/// - 第二组「展示与桌面」：外观与底栏、桌面小组件、上课提醒（附权限自检条）；
+/// - 第三组「数据与安全」：数据备份与换机。
+/// - AppBar 右上角 ⋮ 更多菜单：权限自检、关于小马课表（原路由不动，仅触发按钮
+///   从列表移到 PopupMenuButton）。「更多工具」分组与「菜单管理」「权限」「关于」
+///   三个独立入口行随之移除——功能分别并入课表工具箱 / ⋮ 菜单，砍掉约 22% 冗余行。
+/// 同版第 ③ 节把「云同步」整条线删除，首页不再有云同步行。
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key, this.isEmbeddedInShell = false});
 
@@ -42,12 +33,31 @@ class SettingsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 菜单配置驱动「更多工具」分组右侧的显隐标注（实时一致，无需重启）
-    final menuConfig =
-        ref.watch(menuConfigProvider).value ?? MenuConfig.defaults();
     // 底部栏形态（WB_SPEC_216 第 1 节）：壳内列表底部留白要按形态算
-    // （标签栏 64 / 胶囊 52，口径同主页网格，见 ui/bottom_bar_metrics.dart）
+    // （标签栏 64 / 胶囊 0 占位式，口径同主页网格，见 ui/bottom_bar_metrics.dart）
     final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
+
+    // 动态副标题三处（WB_SPEC_218 第 ④ 节：状态外露、入口收拢）
+    final semester = ref.watch(currentSemesterProvider).value;
+    final todayWeek = ref.watch(todayWeekProvider);
+    final semesterSubtitle = semester == null
+        ? '学期名称、开学日期、总周数'
+        : '${semester.name} · 第 $todayWeek 周';
+
+    final themeMode =
+        ref.watch(themeSettingsProvider).value ?? ThemeMode.system;
+    final themeLabel = switch (themeMode) {
+      ThemeMode.light => '浅色',
+      ThemeMode.dark => '深色',
+      _ => '跟随系统',
+    };
+    final barLabel = ui.showBottomBar ? ui.bottomBarStyle.label : '底栏已关';
+    final appearanceSubtitle = '$themeLabel · $barLabel';
+
+    final reminder = ref.watch(reminderSettingsProvider).value;
+    final reminderSubtitle = reminder == null
+        ? '上课提醒、上课播报、今日课程常驻通知、提前提醒'
+        : '${reminder.enabled ? '已开启' : '未开启'} · 课前 ${reminder.advanceMinutes} 分钟通知';
 
     return Scaffold(
       appBar: AppBar(
@@ -55,9 +65,10 @@ class SettingsPage extends ConsumerWidget {
         centerTitle: true,
         // 壳内（一级视图）不显示返回箭头；独立 Push 路由显示
         automaticallyImplyLeading: !isEmbeddedInShell,
+        actions: [_buildMoreMenu(context)],
       ),
       body: ListView(
-        // 壳内一级视图底部留白：按当前底部栏形态算（标签栏 64 / 胶囊贴底 52，
+        // 壳内一级视图底部留白：按当前底部栏形态算（标签栏 64 / 胶囊 0 占位式，
         // 再加底部安全区），防止栏体遮挡列表末尾；独立 Push 路由维持常规留白。
         // 口径与主页网格同源，见 ui/bottom_bar_metrics.dart。
         padding: EdgeInsets.only(
@@ -71,89 +82,86 @@ class SettingsPage extends ConsumerWidget {
               : AppSpacing.m,
         ),
         children: [
-          // 2.1.0（WB_SPEC_211 第 2 节）：云同步行。显示上次同步时间 + 立即同步
-          // 按钮；未配置显示「未配置」；失败显示原因文案，不闪退。放在首页顶部，
-          // 其余入口行顺序/副标题/跳转一律不动。
-          const _CloudSyncTile(),
-          const SizedBox(height: AppSpacing.group),
-          const _EntryTile(
-            icon: Icons.badge_outlined,
-            title: '学期设置',
-            subtitle: '学期名称、开学日期、总周数',
-            route: '/settings-semester',
-          ),
-          const SizedBox(height: AppSpacing.group),
-          const _EntryTile(
-            icon: Icons.palette_outlined,
-            title: '外观',
-            subtitle: '主题、实时预览、格子外观、课程配色与显示字体',
-            route: '/settings-appearance',
-          ),
-          const SizedBox(height: AppSpacing.group),
-          const _EntryTile(
-            icon: Icons.notifications_active_outlined,
-            title: '提醒',
-            subtitle: '上课提醒、上课播报、今日课程常驻通知、提前提醒',
-            route: '/settings-reminders',
-          ),
-          const SizedBox(height: AppSpacing.group),
-          const _EntryTile(
-            icon: Icons.handyman_outlined,
-            title: '课表工具',
-            subtitle: '课程搜索、空闲时段、考试倒计时、导出课表图片、日期备注',
-            route: '/course-tools',
-          ),
-          const SizedBox(height: AppSpacing.group),
-          // 2.1.0（WB_SPEC_212 第 4 节）：新增菜单管理入口
-          const _EntryTile(
-            icon: Icons.tune_outlined,
-            title: '菜单管理',
-            subtitle: '右上角菜单里显示哪些功能、按什么顺序排',
-            route: '/menu-manage',
-          ),
-          const SizedBox(height: AppSpacing.group),
-          // 2.1.0（WB_SPEC_212 第 4 节）：「更多工具」兜底分组——菜单里关掉的
-          // 功能在设置页依然找得到；与「课表工具」「学期与数据」部分重复是故意的。
-          const _GroupHeader('更多工具'),
+          const _GroupHeader('课表与学期'),
           ..._divideRows([
-            for (final spec in kCustomMenuItems)
-              _ToolTile(
-                icon: spec.icon,
-                title: spec.title,
-                route: spec.route,
-                visible: menuConfig.byId(spec.id).visible,
-              ),
+            _EntryTile(
+              icon: Icons.badge_outlined,
+              title: '当前学期与周次',
+              subtitle: semesterSubtitle,
+              route: '/settings-semester',
+            ),
+            const _EntryTile(
+              icon: Icons.handyman_outlined,
+              title: '课表工具箱',
+              subtitle: '搜索、空闲时段、考试倒计时',
+              route: '/course-tools',
+            ),
           ]),
           const SizedBox(height: AppSpacing.group),
-          const _EntryTile(
-            icon: Icons.folder_outlined,
-            title: '学期与数据',
-            subtitle: '导入课表、学期管理、备份恢复、导出 ICS、数据管理',
-            route: '/settings-data',
-          ),
+          const _GroupHeader('展示与桌面'),
+          ..._divideRows([
+            _EntryTile(
+              icon: Icons.palette_outlined,
+              title: '外观与底栏',
+              subtitle: appearanceSubtitle,
+              route: '/settings-appearance',
+            ),
+            const _EntryTile(
+              icon: Icons.widgets_outlined,
+              title: '桌面小组件',
+              subtitle: '今日课程小组件的添加说明',
+              route: '/settings-widget',
+            ),
+            // 上课提醒入口顶部附权限自检条：权限异常时高亮「权限异常，点击修复」，
+            // 正常时隐藏（见 _PermissionAlertTile）。
+            const _PermissionAlertTile(),
+            _EntryTile(
+              icon: Icons.notifications_active_outlined,
+              title: '上课提醒',
+              subtitle: reminderSubtitle,
+              route: '/settings-reminders',
+            ),
+          ]),
           const SizedBox(height: AppSpacing.group),
-          const _EntryTile(
-            icon: Icons.shield_outlined,
-            title: '权限',
-            subtitle: '通知、精确闹钟、电池优化',
-            route: '/settings-permissions',
-          ),
-          const SizedBox(height: AppSpacing.group),
-          const _EntryTile(
-            icon: Icons.info_outline,
-            title: '关于小马课表',
-            subtitle: '版本、检查更新、公告、更新日志与开源许可',
-            route: '/about',
-          ),
-          const SizedBox(height: AppSpacing.group),
-          const _EntryTile(
-            icon: Icons.widgets_outlined,
-            title: '桌面小组件',
-            subtitle: '今日课程小组件的添加说明',
-            route: '/settings-widget',
-          ),
+          const _GroupHeader('数据与安全'),
+          ..._divideRows([
+            const _EntryTile(
+              icon: Icons.backup_outlined,
+              title: '数据备份与换机',
+              subtitle: '本地导出、恢复与换机迁移（纯本地存储）',
+              route: '/settings-data',
+            ),
+          ]),
         ],
       ),
+    );
+  }
+
+  /// AppBar 右上角 ⋮ 更多菜单（WB_SPEC_218 第 ④ 节）：
+  /// 权限自检、关于小马课表——原路由不动，仅触发按钮从 ListView 移到菜单。
+  Widget _buildMoreMenu(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: '更多',
+      icon: const Icon(Icons.more_vert),
+      onSelected: (route) => Navigator.pushNamed(context, route),
+      itemBuilder: (ctx) => const [
+        PopupMenuItem(
+          value: '/settings-permissions',
+          child: ListTile(
+            leading: Icon(Icons.shield_outlined),
+            title: Text('权限自检'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        PopupMenuItem(
+          value: '/about',
+          child: ListTile(
+            leading: Icon(Icons.info_outline),
+            title: Text('关于小马课表'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -185,10 +193,7 @@ class _EntryTile extends StatelessWidget {
   }
 }
 
-/// 「更多工具」分组的小标题（2.1.0 新增）。
-///
-/// 与 settings_sections.dart 的节标题同款（13 号、semibold、正文主色），
-/// 只做层级、不放大；组名与组内行名不重复，故保留标题不违反 2.0.6 去重原则。
+/// 分组小标题（2.0.7 起沿用 settings_sections 同款：13 号、semibold、正文主色）。
 class _GroupHeader extends StatelessWidget {
   const _GroupHeader(this.title);
 
@@ -214,117 +219,70 @@ class _GroupHeader extends StatelessWidget {
 List<Widget> _divideRows(List<Widget> rows) {
   return [
     for (var i = 0; i < rows.length; i++) ...[
-      if (i > 0) const Divider(height: 1, thickness: 1),
+      // 权限自检条（_PermissionAlertTile）自带两侧分隔线：它隐藏时不画，
+      // 可见时自己画——这里不替它画，否则隐藏时它前后两条线会叠成 2px
+      //（2.1.7 复查 Bug 1：大多数用户权限正常时「桌面小组件」与「上课提醒」
+      // 之间的线比别处粗一倍）。
+      if (i > 0 &&
+          rows[i] is! _PermissionAlertTile &&
+          rows[i - 1] is! _PermissionAlertTile)
+        const Divider(height: 1, thickness: 1),
       rows[i],
     ],
   ];
 }
 
-/// 「更多工具」分组里的一行：图标 + 名称 + 右侧灰字菜单显隐标注。
+/// 上课提醒入口顶部的权限自检条（WB_SPEC_218 第 ④ 节）。
 ///
-/// 点开直接进对应功能页；**不在本行放开关**（开关只在菜单管理页），
-/// 点开某功能也不改动其菜单显隐。
-class _ToolTile extends StatelessWidget {
-  const _ToolTile({
-    required this.icon,
-    required this.title,
-    required this.route,
-    required this.visible,
-  });
-
-  final IconData icon;
-  final String title;
-  final String route;
-  final bool visible;
+/// 读一次三项权限（通知 / 精确闹钟 / 电池优化）：有异常时渲染一条高亮的
+/// 「权限异常，点击修复」行，点进权限自检页；全部正常、读取中或查询失败时
+/// 渲染 [SizedBox.shrink]（隐藏，不占位、不打扰）。
+class _PermissionAlertTile extends ConsumerStatefulWidget {
+  const _PermissionAlertTile();
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return ListTile(
-      leading: Icon(icon),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-      // 灰色小字标注菜单显隐状态（与菜单配置实时一致）
-      trailing: Text(
-        visible ? '已在菜单显示' : '已在菜单隐藏',
-        style: TextStyle(fontSize: 12, color: scheme.outline),
-      ),
-      onTap: () => Navigator.pushNamed(context, route),
-    );
-  }
+  ConsumerState<_PermissionAlertTile> createState() => _PermissionAlertTileState();
 }
 
-/// 云同步行（2.1.0）：显示上次同步时间/状态 + 「立即同步」按钮。
-///
-/// 未配置（缺 dart-define）时副标题显示「未配置」、不提供按钮；配置后副标题为
-/// 上次同步摘要；同步失败时副标题是失败原因文案。任何异常都不闪退。
-class _CloudSyncTile extends ConsumerStatefulWidget {
-  const _CloudSyncTile();
-
-  @override
-  ConsumerState<_CloudSyncTile> createState() => _CloudSyncTileState();
-}
-
-class _CloudSyncTileState extends ConsumerState<_CloudSyncTile> {
-  String? _summary;
-  bool _syncing = false;
+class _PermissionAlertTileState extends ConsumerState<_PermissionAlertTile> {
+  bool _abnormal = false;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _check();
   }
 
-  Future<void> _load() async {
+  Future<void> _check() async {
     try {
-      final s = await SupabaseSyncService.instance.lastSyncSummary();
-      if (mounted) setState(() => _summary = s);
+      final s = await PermissionService.instance.status();
+      if (mounted && !s.allGranted) setState(() => _abnormal = true);
     } catch (_) {
-      // 读摘要失败（库异常）就保持现状，不让设置页崩
-    }
-  }
-
-  Future<void> _syncNow() async {
-    setState(() => _syncing = true);
-    try {
-      final outcome = await SupabaseSyncService.instance.syncNow();
-      if (!mounted) return;
-      if (outcome.changed) {
-        // 云同步下载改动了本地数据：失效相关 Provider 并联动通知/小组件
-        ref.invalidate(coursesProvider);
-        ref.invalidate(notesProvider);
-        unawaited(NotificationService.instance.rescheduleAll());
-        unawaited(WidgetService.instance.refreshWidgets());
-      }
-      await _load();
-    } catch (e) {
-      // 兜底：同步服务内部已捕获，这里再兜一层，绝不闪退
-      if (mounted) setState(() => _summary = '同步失败：$e');
-    } finally {
-      if (mounted) setState(() => _syncing = false);
+      // 查询失败（平台通道缺失/异常）按「无异常」处理，不打扰、不闪退
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final configured = SupabaseSyncService.instance.configured;
-    final String subtitle;
-    if (!configured) {
-      subtitle = '未配置（需要构建时注入 Supabase 连接）';
-    } else if (_syncing) {
-      subtitle = '正在同步…';
-    } else {
-      subtitle = _summary ?? '上次同步：—';
-    }
-    return ListTile(
-      leading: const Icon(Icons.cloud_outlined),
-      title: const Text('云同步', style: TextStyle(fontWeight: FontWeight.w500)),
-      subtitle: Text(subtitle),
-      trailing: !configured || _syncing
-          ? null
-          : TextButton(
-              onPressed: _syncNow,
-              child: const Text('立即同步'),
-            ),
+    if (!_abnormal) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    // 可见时自带上下两条分隔线（_divideRows 不替它画，见该函数注释）；
+    // 隐藏时整条消失、不留线。
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Divider(height: 1, thickness: 1),
+        ListTile(
+          leading: Icon(Icons.error_outline, color: scheme.error),
+          title: Text(
+            '权限异常，点击修复',
+            style: TextStyle(color: scheme.error, fontWeight: FontWeight.w600),
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.pushNamed(context, '/settings-permissions'),
+        ),
+        const Divider(height: 1, thickness: 1),
+      ],
     );
   }
 }

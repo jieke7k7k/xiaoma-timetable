@@ -362,7 +362,7 @@ void main() {
     });
   });
 
-  group('P0-5 恢复补 updatedAt + 云同步水位归零', () {
+  group('P0-5 恢复补 updatedAt（遗留同步键按普通设置原样恢复）', () {
     late Database db;
 
     setUp(() async {
@@ -377,8 +377,9 @@ void main() {
 
     tearDown(() => db.close());
 
-    test('恢复后 courses/notes 补 updatedAt，supabase_last_sync_at 归零', () async {
-      // 备份里故意带一个旧水位，验证恢复时不被沿用、而是强制归零
+    test('恢复后 courses/notes 补 updatedAt，遗留同步键不再强制归零', () async {
+      // 备份里故意带一个旧同步水位键，验证 2.1.7 起不再强制归零、
+      // 而是作为普通惰性设置原样恢复（云同步整线已删除）
       final json = BackupCodec.encode(
         semesters: const [
           Semester(
@@ -416,8 +417,8 @@ void main() {
       expect(note['updatedAt'], isA<int>());
 
       final watermark = await db.query('app_settings',
-          where: 'key = ?', whereArgs: [BackupCodec.syncWatermarkKey]);
-      expect(watermark.single['value'], '0');
+          where: 'key = ?', whereArgs: ['supabase_last_sync_at']);
+      expect(watermark.single['value'], '999999999');
     });
   });
 }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 /// 2.0.2（WB-202 第 2 项·A 方案）：课程搜索 / 空闲时段 / 考试倒计时 /
 /// 导出课表图片 / 日期备注这五样从设置页一级页面收进这里，一级页只留
 /// 一行入口。路由全部复用原有页面（一个都没丢），本页只做归拢。
+/// 2.1.7（WB_SPEC_218 第 ④ 节）：菜单管理从设置首页移入本页底部（路由不变）。
 class CourseToolsPage extends StatelessWidget {
   const CourseToolsPage({super.key});
 
@@ -49,6 +50,15 @@ class CourseToolsPage extends StatelessWidget {
             subtitle: const Text('按日期记录待办备忘，可在通知栏与桌面小部件显示'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.pushNamed(context, '/notes'),
+          ),
+          ListTile(
+            // 2.1.7（WB_SPEC_218 第 ④ 节）：菜单管理从设置首页移入课表工具页底部，
+            // 路由不变（/menu-manage），只在归拢层级、不再单独占首页一行。
+            leading: const Icon(Icons.tune_outlined),
+            title: const Text('菜单管理'),
+            subtitle: const Text('右上角菜单里显示哪些功能、按什么顺序排'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.pushNamed(context, '/menu-manage'),
           ),
         ],
       ),

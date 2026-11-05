@@ -10,9 +10,11 @@ import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 /// 标签栏液态玻璃化的渲染与动效断言（WB_SPEC_217 第 1 节）。
 ///
 /// 按 Argon 方案逐条落地并逐条断言：
-/// 1. 毛玻璃层独立（[RepaintBoundary] + [BackdropFilter]，sigma 14~16），
-///    与按键动画层分离——按键不在玻璃层里；
-/// 2. 底色不透明度 0.72、顶部 1 像素细分割线、贴底无阴影；
+/// 1. 毛玻璃层独立（[RepaintBoundary] + [BackdropFilter]，浅色 sigma 3.5／
+///    深色 sigma 4.0，2.1.7 WB_SPEC_218 第 ② 节轻透），与按键动画层分离——
+///    按键不在玻璃层里；
+/// 2. 底色不透明度浅色 0.58／深色 0.64、顶部细分割线（浅色 0.8dp／深色 0.6dp）、
+///    贴底无阴影；
 /// 3. 液态指示器：宽度 = 栏宽 50%、[AnimatedAlign] 对齐随选中项变化、
 ///    380ms 弹簧曲线、切换时是「滑过去」而不是重建；
 /// 4. 按压回弹：按下 0.92（90ms）、松手 1.0（350ms 弹簧）；
@@ -28,9 +30,11 @@ void main() {
   Future<void> pumpBar(
     WidgetTester tester, {
     HomeShellTab active = HomeShellTab.schedule,
+    Brightness brightness = Brightness.light,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: ThemeData(brightness: brightness),
         home: Scaffold(
           body: Stack(
             children: [
@@ -79,22 +83,30 @@ void main() {
       expect(glass.height, closeTo(bar.height, 0.5));
     });
 
-    testWidgets('模糊 sigma 在 14~16（取 15）', (tester) async {
+    testWidgets('模糊 sigma 轻透化：浅色 3.5、深色 4.0（不再 15 重模糊）', (
+      tester,
+    ) async {
       await pumpBar(tester);
 
       final blur = tester.widget<BackdropFilter>(find.byKey(kHomeTabBarBlurKey));
-      // 常量口径
-      expect(kLiquidGlassBlurSigma, inInclusiveRange(14, 16));
-      expect(kLiquidGlassBlurSigma, 15);
-      // 实际挂到 BackdropFilter 上的滤镜确实是 15（不是写死的 24）
-      expect(blur.filter.toString(), contains('ImageFilter.blur(15.0, 15.0'));
+      // 常量口径：轻透，sigma 不超过 6（否则 12~14sp 汉字糊成色块）
+      expect(kLiquidGlassBlurSigmaLight, inInclusiveRange(3, 6));
+      expect(kLiquidGlassBlurSigmaLight, 3.5);
+      expect(kLiquidGlassBlurSigmaDark, 4.0);
+      expect(liquidGlassBlurSigma(Brightness.light), 3.5);
+      expect(liquidGlassBlurSigma(Brightness.dark), 4.0);
+      // 默认浅色主题：实际挂到 BackdropFilter 上的滤镜确实是 3.5（不是写死的 15）
+      expect(blur.filter.toString(), contains('ImageFilter.blur(3.5, 3.5'));
       // 常量与实现同源：改了常量，滤镜跟着变
       expect(
-        liquidGlassImageFilter().toString(),
+        liquidGlassImageFilter(brightness: Brightness.light).toString(),
         blur.filter.toString(),
-        reason: '滤镜必须由 kLiquidGlassBlurSigma 生成',
+        reason: '滤镜必须由 liquidGlassImageFilter 按主题亮度生成',
       );
-      expect(liquidGlassImageFilter(), isA<ImageFilter>());
+      expect(
+        liquidGlassImageFilter(brightness: Brightness.light),
+        isA<ImageFilter>(),
+      );
     });
 
     testWidgets('玻璃层与按键层分离：按键不在 BackdropFilter 里面', (tester) async {
@@ -133,35 +145,60 @@ void main() {
     });
   });
 
-  group('栏体：0.72 底色 + 顶部细分割线 + 贴底无阴影', () {
-    testWidgets('底色 = 主题 surface 的 72% 不透明度', (tester) async {
+  group('栏体：高透染色底色 + 顶部细分割线 + 贴底无阴影', () {
+    testWidgets('底色 = 高透染色玻璃：浅色白 58%（不再 72% 重底色）', (tester) async {
       await pumpBar(tester);
 
       final material = barMaterial(tester);
-      final scheme = Theme.of(
-        tester.element(find.byType(HomeTabBar)),
-      ).colorScheme;
-      expect(kLiquidGlassSurfaceOpacity, closeTo(0.72, 0.0001));
-      expect(material.color!.a, closeTo(0.72, 0.0001));
-      // 色相仍是主题表面色（不是写死的白）
-      expect(material.color!.r, closeTo(scheme.surface.r, 0.0001));
-      expect(material.color!.g, closeTo(scheme.surface.g, 0.0001));
-      expect(material.color!.b, closeTo(scheme.surface.b, 0.0001));
+      expect(kLiquidGlassSurfaceColorLight, const Color(0x94FFFFFF));
+      expect(kLiquidGlassSurfaceColorDark, const Color(0xA318181C));
+      expect(material.color, liquidGlassSurfaceColor(Brightness.light));
+      // 白 58%：纯白 + 半透明
+      expect(material.color!.a, closeTo(0x94 / 255, 0.001));
+      expect(material.color!.r, 1.0);
+      expect(material.color!.g, 1.0);
+      expect(material.color!.b, 1.0);
+      // 高透：比 2.1.6 的 0.72 更透
+      expect(material.color!.a, lessThan(0.72));
     });
 
-    testWidgets('顶部 1 逻辑像素细分割线仍在，且只画顶边', (tester) async {
+    testWidgets('深色主题底色 = #18181C 64%', (tester) async {
+      await pumpBar(tester, brightness: Brightness.dark);
+
+      final material = barMaterial(tester);
+      expect(material.color, liquidGlassSurfaceColor(Brightness.dark));
+      expect(material.color!.a, closeTo(0xA3 / 255, 0.001));
+      expect(material.color!.r, closeTo(0x18 / 255, 0.001));
+      expect(material.color!.g, closeTo(0x18 / 255, 0.001));
+      expect(material.color!.b, closeTo(0x1C / 255, 0.001));
+    });
+
+    testWidgets('顶部细分割线仍在，且只画顶边（浅色 0.8dp）', (tester) async {
       await pumpBar(tester);
 
       final box = tester.widget<DecoratedBox>(find.byKey(kHomeTabBarDividerKey));
       final decoration = box.decoration as BoxDecoration;
       final border = decoration.border! as Border;
-      expect(border.top.width, kBottomBarDividerWidth);
-      expect(kBottomBarDividerWidth, 1);
+      expect(border.top.width, kBottomBarDividerWidthLight);
+      expect(bottomBarDividerWidth(Brightness.light), 0.8);
       expect(border.bottom, BorderSide.none);
       expect(border.left, BorderSide.none);
       expect(border.right, BorderSide.none);
       expect(border.top.color.a, greaterThan(0));
       expect(border.top.style, BorderStyle.solid);
+    });
+
+    testWidgets('顶部细分割线：深色 0.6dp', (tester) async {
+      await pumpBar(tester, brightness: Brightness.dark);
+
+      final box = tester.widget<DecoratedBox>(find.byKey(kHomeTabBarDividerKey));
+      final decoration = box.decoration as BoxDecoration;
+      final border = decoration.border! as Border;
+      expect(border.top.width, kBottomBarDividerWidthDark);
+      expect(bottomBarDividerWidth(Brightness.dark), 0.6);
+      expect(border.bottom, BorderSide.none);
+      expect(border.left, BorderSide.none);
+      expect(border.right, BorderSide.none);
     });
 
     testWidgets('贴底、整宽、无阴影（栏体不悬浮）', (tester) async {

@@ -19,10 +19,11 @@ class DbHelper {
   /// v3（2026-10-22）：新增 notes 备注表。
   /// v4（2026-10-24）：新增两张表（对话历史、操作记录）。
   /// v5（2.1.0）：courses 加 examEndTime/examPlace/updatedAt、notes 加 updatedAt
-  /// （云同步水位与冲突判断用）。升级路径见 [upgradeSchema]——老库只补列，数据零改动。
+  /// （当时为云同步水位与冲突判断用；2.1.7 删云同步后保留为「最后修改时间」）。
   /// v6（2.1.3）：上述 v4 的两张表整体移除（DROP），并一次性清掉十个遗留设置键。
-  /// 新装用户由 [createSchema] 直接建成 v6 结构，不含这两张表。
-  static const _dbVersion = 6;
+  /// v7（2.1.7）：清掉两个云同步遗留设置键（水位与同步摘要），功能已整体删除。
+  /// 新装用户由 [createSchema] 直接建成 v7 结构，不含这两张表。
+  static const _dbVersion = 7;
 
   /// v6 升级时一次性删除的遗留表（2.1.3 WB_SPEC_214 第 2 节）。
   ///
@@ -51,6 +52,17 @@ class DbHelper {
     'processed_command_ids',
     'bridge_pending',
     'last_bridge_sync',
+  ];
+
+  /// v7（2.1.7）升级时一次性清掉的云同步遗留设置键（WB_SPEC_218 第 ③ 节）。
+  ///
+  /// Supabase 云同步在 2.1.7 整条线删除，这两个键（上次同步水位 / 上次同步
+  /// 摘要）从此没有任何读写方。与 [retiredSettingKeys] 同一套做法：只在
+  /// 「升到 7」的这一次升级里被 DELETE，之后启动代码不再碰它们；旧备份里
+  /// 若带着这两个键，恢复时按普通设置键落库（惰性数据、无害）。
+  static const List<String> retiredSyncKeys = [
+    'supabase_last_sync_at',
+    'supabase_last_sync_summary',
   ];
 
   /// 应用设置键值表 SQL（阶段四：提醒开关/提前分钟等轻量偏好持久化）
@@ -193,6 +205,15 @@ class DbHelper {
         'app_settings',
         where: 'key IN ($placeholders)',
         whereArgs: retiredSettingKeys,
+      );
+    }
+    // v6 -> v7（2.1.7 WB_SPEC_218 第 ③ 节）：删云同步，清掉两个同步遗留键。
+    if (oldVersion < 7) {
+      final placeholders = List.filled(retiredSyncKeys.length, '?').join(', ');
+      await db.delete(
+        'app_settings',
+        where: 'key IN ($placeholders)',
+        whereArgs: retiredSyncKeys,
       );
     }
   }

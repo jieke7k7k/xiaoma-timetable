@@ -2,6 +2,34 @@
 
 > 每完成一个阶段更新本文件，防止上下文丢失。
 
+## 2.1.7 变更（2026-11-04，WB_SPEC_218 胶囊零遮挡 + 玻璃轻透 + 删云同步 + 设置重组）
+
+用户四条原话：「胶囊别挡课表（滚动时零遮挡）」→「玻璃太糊了，改轻透」→「云同步整条线删干净」→「设置页重新分组」。本版四件事：胶囊从悬浮改**占位式**（滚动零遮挡）、标签栏玻璃从重模糊改**高透染色**、Supabase 云同步**整条线删除**、设置页重组为**3 大分组 + 顶部 ⋮ 菜单**（零路由重构）。周视图网格内容、周日弹窗、AI 入口一律未动。
+
+| 文件 | 改动 |
+|---|---|
+| `lib/ui/bottom_bar_metrics.dart` | 新增 `kCapsuleSlotHeight = 64`（胶囊 52 + 上下各 6 间隙）；选中态前景色常量换血：`kTabBarActiveColorLight = Color(0xFF1C1917)`（深褐黑）/ `kTabBarActiveColorDark = Color(0xFFFEF3C7)`（暖白）；`bottomBarGridBottomInset` / `bottomBarGridBottomPadding` 对胶囊形态返回 0（占位式槽位吃高度） |
+| `lib/ui/liquid_glass.dart` | 轻透玻璃常量换血：`kLiquidGlassBlurSigmaLight = 3.5` / `kLiquidGlassBlurSigmaDark = 4.0`（替换 15）+ `liquidGlassBlurSigma(Brightness)`；底色 `kLiquidGlassSurfaceColorLight = 0x94FFFFFF`（白 58%）/ `kLiquidGlassSurfaceColorDark = 0xA318181C`（#18181C 64%）；描边 `kLiquidGlassEdgeColorLight/Dark`；滑块渐变 `kLiquidSliderGradientLight = [0xA6FFE066, 0x73F59F00]` / `kLiquidSliderGradientDark = [0x47F59F00, 0x2ED97706]` + `kLiquidSliderBorderDark = 0x80FBBF24`；`liquidGlassImageFilter` 改 `({required Brightness brightness})` |
+| `lib/widgets/home_tab_bar.dart` | `Material.color` 改 `liquidGlassSurfaceColor(brightness)`、顶边描边改 `liquidGlassEdgeColor(brightness)`、`_LiquidGlass` 改 `liquidGlassImageFilter(brightness:)`；滑块渐变 stops 改 `[0, 1]`（修复与 2 色不匹配的渲染崩溃）；`activeColorFor(scheme)` 指向新前景色常量 |
+| `lib/main.dart` | `HomeShell._buildShell(BottomBarStyle)` 拆两条分支：胶囊走 `Column [Expanded(view), _buildCapsuleSlot()]`（槽位高 64 + 安全区、背景 `scheme.surface`、胶囊居中）；标签栏仍是 `Stack` 悬浮 overlay。删除 `SupabaseSyncService` import、`attachToDao()`、`_silentSupabaseSync`、`_applyCloudChanges` 与启动同步任务 |
+| `lib/database/dao.dart` | 删除 `onLocalChange` 钩子与 `getAllCourseRows` / `getAllNoteRows` / `putCourseSynced` / `putNoteSynced`；`updatedAt` 恢复纯「最后修改时间」 |
+| `lib/database/db_helper.dart` | `_dbVersion` 升 7；新增 `retiredSyncKeys = ['supabase_last_sync_at', 'supabase_last_sync_summary']` 与 v6→v7 迁移分支，一次性删除两个云同步遗留键 |
+| `lib/utils/backup_codec.dart` | 删除 `syncWatermarkKey` 与「恢复时强制同步水位归零」逻辑；旧备份里的同步键按普通惰性设置原样恢复 |
+| `lib/services/supabase_sync_service.dart` / `lib/utils/supabase_codec.dart` | **删除**（云同步整条线） |
+| `lib/pages/settings_page.dart` | 全量重写为 `ConsumerWidget`：三组「课表与学期 / 展示与桌面 / 数据与安全」+ AppBar ⋮ `PopupMenuButton`（权限自检、关于）；动态副标题三处；`_PermissionAlertTile` 权限自检条；移除「更多工具」「菜单管理」「权限」「关于」独立入口行 |
+| `lib/pages/course_tools_page.dart` | 底部新增「菜单管理」入口（路由 `/menu-manage` 不变） |
+| `lib/pages/settings_sections.dart` | `DataSettingsPage` 标题改「数据备份与换机」+ 纯本地存储提示条 |
+| `pubspec.yaml` | 版本 2.1.7+32；删除 `supabase_flutter` 依赖（连带 supabase / gotrue / postgrest / realtime_client / storage_client 等一并移除） |
+| 测试 | 改写 `liquid_bottom_bar_test`（sigma 3.5/4.0、新底色、`brightness` 参数）、`bottom_bar_style_test`（前景色分档 + 对比度、胶囊留白 0）、`home_grid_bottom_inset_test`（胶囊占位式零遮挡）、`settings_page_test`（3 分组 + 6 入口 + ⋮ 菜单）、`backup_codec_test`（水位不再归零）；新增 `course_tools_page_test`（2 例）、`db_migration_217_test`（2 例：v6→v7 清键、清理只一次）；删除 `supabase_sync_test` |
+
+### 关键设计决策
+
+- **胶囊零遮挡靠「占位」而不是「调留白」**：悬浮胶囊无论把网格留白调多大，滚动视口仍延伸到胶囊下方，胶囊永远浮在内容上。改成主布局 `Column [Expanded(view), slot]` 后，网格滚动视口被物理截断在槽位上方，内容想滚到胶囊下面都滚不进去——零遮挡是结构保证，不是数值逼近。槽位高 64（胶囊 52 + 上下各 6 间隙），背景并入页面底色，视觉上「槽位 = 页面底边」，不是一块悬浮遮挡。
+- **玻璃「轻透」的边界是 sigma ≤ 6**：sigma 一旦超过 6，12~14sp 汉字笔画就被糊成色块。浅色 3.5 / 深色 4.0（深色透光更难做，略高仍远低于 6），配合高透底色（白 58% / #18181C 64%）把「可读性」放在「玻璃感」之前。
+- **滑块半透明后，前景色必须跟着换**：浅色滑块降到 65%/45%、深色降到 28%/18%，原来的金黄前景会「金黄压金黄」糊成一片。改成浅色深褐黑 `#1C1917` / 深色暖白 `#FEF3C7`，对比度按「滑块端点叠加栏底色后的有效色」算（不是不透明端点色），两条主题各有 ≥ 4.5:1 断言。
+- **删云同步要删干净，但老库要能自愈**：服务、依赖、`dao` 的同步钩子、`main` 的启动同步全删；老库升级走 v6→v7 一次性清掉两个同步水位键，清理只在升到 7 那一次（不反复清，避免把用户后来恢复的旧备份数据每隔一次启动就删掉）。旧备份文件格式不变，同步键按普通设置原样恢复。
+- **设置重组是「入口收拢」，不是「路由重构」**：六个工具路由（`/course-search` 等）在 `main.dart` 路由表里一个没动，「菜单管理」只是从设置首页挪到课表工具页底部、「权限 / 关于」从列表行挪到 AppBar ⋮ 菜单——所有 `Navigator.pushNamed` 目标不变，零路由改动，纯入口重排。
+
 ## 2.1.6 变更（2026-11-03，WB_SPEC_217 底部栏液态玻璃化 + 切换动效丝滑化）
 
 用户先要「按钮做成液态给我看看样本」，再问「切换动效不够丝滑，你问问 argon 怎么办」，样品（网页版，已按 Argon 方案优化）确认「可以」后落到 App。本版两件事：标签栏形态（默认）改成**液态玻璃 + 滑动指示器 + 弹簧曲线 + 按压回弹**（布局与功能一律不变），壳内两个一级视图的切换改成**淡入 + 微缩放**。Argon 五条要点（滑动指示器承载渐变、禁全量过渡、380ms 弹簧 / 260~280ms 减速、按压分两段、毛玻璃层分离）逐条照做，未用「选中态直接切渐变」的老办法。

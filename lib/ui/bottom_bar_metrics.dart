@@ -2,10 +2,12 @@
 ///
 /// 2.1.5 起底部栏有两种形态，**都贴底、都不悬浮**（无悬浮间距、无悬浮阴影）：
 /// - [BottomBarStyle.tab]（图标+文字标签栏，默认）：栏体撑满整宽、贴住屏幕底边，
-///   顶部一条 1 逻辑像素细分割线，两格等宽——图标在上、文字在下，
+///   顶部一条细分割线（浅色 0.8dp／深色 0.6dp），两格等宽——图标在上、文字在下，
 ///   选中态图标与文字同为琥珀黄（[kTabBarActiveColor]）；
-/// - [BottomBarStyle.capsule]（胶囊贴底）：栏体本身是胶囊（圆角 26、宽度随内容自适应），
-///   贴底，只保留底部安全区内边距。
+/// - [BottomBarStyle.capsule]（胶囊占位式，WB_SPEC_218 第 ① 节）：胶囊外形
+///   不变（圆角 26、宽度随内容自适应），但改为主布局底部一整条专属槽位
+///   （高 64 + 底部安全区、背景与页面底色一致），胶囊在槽位内居中，课表
+///   网格滚动视口截断在槽位上方，内容永远不滑到胶囊下面去。
 ///
 /// 2.1.4 的「通栏贴底」（id `bar`）已整体删除，旧库里残留的 `bar` 由
 /// `BottomBarStyle.fromId` 回落到 [BottomBarStyle.tab]。
@@ -25,18 +27,36 @@ const double kBottomBarKeyHeight = 52;
 /// 键体与胶囊栏体的圆角半径（半圆胶囊）
 const double kBottomBarRadius = 26;
 
-/// 标签栏顶部细分割线的粗细（1 逻辑像素，画在栏体内部，不额外占高）
-const double kBottomBarDividerWidth = 1;
+/// 标签栏顶部细分割线的粗细（WB_SPEC_218 第 ② 节「栏体描边」：浅色 0.8dp 内高光、
+/// 深色 0.6dp 微白边；画在栏体内部，不额外占高）。
+/// 2.1.7 之前曾统一锁死 1.0dp，与规格原文不符，复查揪出后按规格分亮度改回。
+const double kBottomBarDividerWidthLight = 0.8;
+
+/// 标签栏顶部细分割线粗细（深色主题，见 [kBottomBarDividerWidthLight]）。
+const double kBottomBarDividerWidthDark = 0.6;
+
+/// 按当前主题亮度取标签栏顶部细分割线的粗细。
+double bottomBarDividerWidth(Brightness brightness) =>
+    brightness == Brightness.dark
+        ? kBottomBarDividerWidthDark
+        : kBottomBarDividerWidthLight;
 
 /// 标签栏栏体高度（**不含**底部安全区）：该 widget 的实测高度 64
 /// （图标 24 + 间距 4 + 文字行 ≈17，上下自动留白，合计固定 64；
-/// 顶部 1 像素分割线用 DecoratedBox 画在栏体内部，不参与布局、不额外增高）。
+/// 顶部细分割线用 DecoratedBox 画在栏体内部，不参与布局、不额外增高）。
 ///
 /// 与 `HomeTabBar.height` 同源：改栏体结构时两边一起改，测试会实测对比。
 const double kBottomBarTabHeight = 64;
 
-/// 胶囊形态栏体高度（**不含**底部安全区）：就是胶囊自身的最小高 52
-const double kBottomBarCapsuleHeight = kBottomBarKeyHeight;
+/// 胶囊占位式专属槽位**最小**高度（**不含**底部安全区，WB_SPEC_218 第 ① 节；
+/// 2.1.7 复查 Bug 5 后由固定高改为最小高）。
+///
+/// 常规字体下 64 = 胶囊高 52 + 上下各 6 空隙：胶囊在槽位内垂直居中，距课表
+/// 滚动区底边与系统手势栏顶边各留 6dp。系统字体放大时胶囊纵向伸展，槽位
+/// 用 padding 式布局随内容长高（见 main.dart _buildCapsuleSlot），不顶破、
+/// 不溢出黄条。槽位是主布局底部一整条不滚动区域（背景与页面底色一致），
+/// 课表网格滚动视口截断在槽位上方，内容永远不滑到胶囊下面。
+const double kCapsuleSlotHeight = 64;
 
 /// 关闭底部栏时的网格底部留白（沿用 2.1.3 的 16）
 const double kBottomBarHiddenInset = 16;
@@ -53,39 +73,51 @@ const double kBottomBarHiddenInset = 16;
 ///   滑块本身已经是金黄底，浅色主题下再用这个亮黄会看不清（对比度不足）。
 const Color kTabBarActiveColor = Color(0xFFFFB300);
 
-/// 浅色主题下的选中态前景色：深金黄（压在金黄滑块上仍清楚）。
+/// 浅色主题下的选中态前景色：深褐黑（压在金黄滑块上仍清楚）。
 ///
-/// 与 [kTabBarActiveColor] 同色系（HSV 色相约 36°），只是压暗到与金黄底
-/// 的对比度 ≥ 4.5:1，避免「黄底黄字」看不清。
-const Color kTabBarActiveColorLight = Color(0xFF7C4A00);
+/// 2.1.7（WB_SPEC_218 第 ② 节）按 Argon 轻透参数改：滑块从「满不透明亮金」
+/// 降为「#FFE066 65% → #F59F00 45%」的半透明染色，压在它上面的文字改用
+/// 深褐黑 #1C1917，对比度 ≥ 4.5:1（实测约 13:1）。
+const Color kTabBarActiveColorLight = Color(0xFF1C1917);
 
-/// 深色主题下的选中态前景色：浅金黄（压在深底上够亮）。
-const Color kTabBarActiveColorDark = Color(0xFFFFD54F);
+/// 深色主题下的选中态前景色：高亮暖白（压在压暗的金黄滑块上仍清楚）。
+///
+/// 2.1.7（WB_SPEC_218 第 ② 节）改为 #FEF3C7（高亮暖白），取代 2.1.6 的
+/// 浅金黄 #FFD54F——滑块本身降到 28%→18% 低不透明，暖白压在暗金上对比度
+/// ≥ 4.5:1。
+const Color kTabBarActiveColorDark = Color(0xFFFEF3C7);
 
 /// 网格滚动视图底部留白（**不含**底部安全区）。
 ///
 /// - 关栏：16；
-/// - 标签栏：栏体实测高 64；
-/// - 胶囊贴底：胶囊高 52。
+/// - 标签栏：栏体实测高 64（玻璃标签栏仍是悬浮 overlay，网格视口延伸到底，
+///   需要留足栏高避免最后一节被栏压住）；
+/// - 胶囊占位式：0（WB_SPEC_218 第 ① 节）——胶囊改成主布局底部一整条专属
+///   槽位，槽位自己占布局高度，网格滚动视口截断在槽位上方，不再需要按
+///   胶囊高度留白。
 ///
 /// 调用方再各自叠加 `MediaQuery.paddingOf(context).bottom`，
-/// 因为两形态都把安全区留在栏体之外（栏体自己吃 SafeArea），不能重复计算。
+/// 因为标签栏形态把安全区留在栏体之外（栏体自己吃 SafeArea），不能重复计算；
+/// 胶囊占位式则由槽位吃掉安全区，网格完全不叠加。
 double bottomBarGridBottomInset({
   required bool showBottomBar,
   required BottomBarStyle style,
 }) {
   if (!showBottomBar) return kBottomBarHiddenInset;
-  return style == BottomBarStyle.capsule
-      ? kBottomBarCapsuleHeight
-      : kBottomBarTabHeight;
+  if (style == BottomBarStyle.capsule) return 0;
+  return kBottomBarTabHeight;
 }
 
 /// 叠加底部安全区后的完整留白，供 `padding: EdgeInsets.only(bottom: ...)` 直接用。
+///
+/// 胶囊占位式（WB_SPEC_218 第 ① 节）返回 0：槽位已把底部安全区一并吃掉，
+/// 网格不再叠加，否则会与槽位的 SafeArea 重复留白、下面空一截。
 double bottomBarGridBottomPadding(
   double safeAreaBottom, {
   required bool showBottomBar,
   required BottomBarStyle style,
 }) {
+  if (showBottomBar && style == BottomBarStyle.capsule) return 0;
   final safe = safeAreaBottom.isFinite && safeAreaBottom > 0
       ? safeAreaBottom
       : 0.0;

@@ -16,18 +16,49 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/widgets.dart';
 
-/// 毛玻璃模糊半径（逻辑像素）。
+/// 毛玻璃模糊半径（逻辑像素，浅色主题）。
 ///
-/// Argon 方案要求降到 14~16（样品里 blur 从 24 降到 16），Flutter 侧取 15：
-/// 再高在低端机上掉帧，再低就看不出玻璃感。底色不透明度由
-/// [kLiquidGlassSurfaceOpacity] 补到 0.72，模糊降下来后不会显得发灰。
-const double kLiquidGlassBlurSigma = 15;
+/// WB_SPEC_218 第 ② 节：从 2.1.6 的 15 重模糊改成 3.5 轻透——sigma 一旦超过
+/// 6，12~14sp 汉字笔画就会被糊成色块，栏后课表文字不可读。低端机可降为 0。
+const double kLiquidGlassBlurSigmaLight = 3.5;
 
-/// 栏体底色的不透明度（主题 surface 色的 alpha）。
+/// 毛玻璃模糊半径（逻辑像素，深色主题）。
 ///
-/// 模糊半径降到 15 后透光变多，底色必须补厚一点才压得住课表内容，取 0.72
-/// （与样品 `.phone-bar` 的 rgba(255,255,255,.72) 一致）。
-const double kLiquidGlassSurfaceOpacity = 0.72;
+/// 深色下透光感更难做，取 4.0 略高于浅色，仍远低于「糊笔画」的 6 阈值。
+const double kLiquidGlassBlurSigmaDark = 4.0;
+
+/// 按主题亮度取模糊半径：浅色 3.5、深色 4.0。
+double liquidGlassBlurSigma(Brightness brightness) =>
+    brightness == Brightness.dark
+        ? kLiquidGlassBlurSigmaDark
+        : kLiquidGlassBlurSigmaLight;
+
+/// 栏体底色（浅色主题）：白色 58%（`0x94FFFFFF`）。
+///
+/// 放弃 2.1.6 的 72% 重底色（`surface.withValues(alpha: 0.72)`），改高透染色
+/// 玻璃——固定纯白 + 58% 不透明，让底色透出来、栏后课表内容本身仍可读。
+const Color kLiquidGlassSurfaceColorLight = Color(0x94FFFFFF);
+
+/// 栏体底色（深色主题）：`#18181C` 64%（`0xA318181C`）。
+const Color kLiquidGlassSurfaceColorDark = Color(0xA318181C);
+
+/// 按主题亮度取栏体底色。
+Color liquidGlassSurfaceColor(Brightness brightness) =>
+    brightness == Brightness.dark
+        ? kLiquidGlassSurfaceColorDark
+        : kLiquidGlassSurfaceColorLight;
+
+/// 栏体顶部描边（浅色主题）：白色 75% 的内高光。
+const Color kLiquidGlassEdgeColorLight = Color(0xBFFFFFFF);
+
+/// 栏体顶部描边（深色主题）：白色 14% 的微白边。
+const Color kLiquidGlassEdgeColorDark = Color(0x24FFFFFF);
+
+/// 按主题亮度取栏体顶部描边颜色。
+Color liquidGlassEdgeColor(Brightness brightness) =>
+    brightness == Brightness.dark
+        ? kLiquidGlassEdgeColorDark
+        : kLiquidGlassEdgeColorLight;
 
 /// 液态滑动指示器的宽度占栏宽的比例：一块 50% 宽的滑块，两格各占一半。
 const double kLiquidIndicatorWidthFactor = 0.5;
@@ -35,25 +66,26 @@ const double kLiquidIndicatorWidthFactor = 0.5;
 /// 液态滑动指示器的高度（栏体 64，上下各留 4）。
 const double kLiquidIndicatorHeight = 56;
 
-/// 液态滑块的金黄渐变（浅色主题）：与样品 `.indicator` 逐色对齐——
-/// `rgba(255,196,0,.8)` → `rgba(255,170,0,.4) 55%` → `rgba(255,196,0,.65)`。
-/// 色相取自 2.1.5 的琥珀黄 [kTabBarActiveColor]（#FFB300）同系。
+/// 液态滑块的金黄渐变（浅色主题，WB_SPEC_218 第 ② 节）：
+/// `#FFE066 65%` → `#F59F00 45%`（半透明染色，非 2.1.6 的满不透明亮金）。
 const List<Color> kLiquidSliderGradientLight = <Color>[
-  Color(0xCCFFC400),
-  Color(0x66FFAA00),
-  Color(0xA6FFC400),
+  Color(0xA6FFE066),
+  Color(0x73F59F00),
 ];
 
-/// 液态滑块的金黄渐变（深色主题）：同一组金黄、整体压暗（alpha 约 0.55 倍）。
-///
-/// 深色主题下选中态前景色要换成浅金黄（[kTabBarActiveColorDark]），浅金黄压在
-/// 满不透明度的亮金上会糊成一片（对比度仅约 1.2:1）；把滑块压暗后它混合深色
-/// 底呈暗金，浅金黄压上去仍有 4.7:1，看得清。色相没变，仍是金黄渐变。
+/// 液态滑块的金黄渐变（深色主题，WB_SPEC_218 第 ② 节）：
+/// `#F59F00 28%` → `#D97706 18%`（低不透明透光），再叠加金色内发光描边
+/// （[kLiquidSliderBorderDark]）锁边界，杜绝深色下的「泥浆黄」。
 const List<Color> kLiquidSliderGradientDark = <Color>[
-  Color(0x70FFC400),
-  Color(0x38FFAA00),
-  Color(0x5BFFC400),
+  Color(0x47F59F00),
+  Color(0x2ED97706),
 ];
+
+/// 深色主题滑块的描边：`#80FBBF24`（金黄 50% 透明）金色内发光。
+const Color kLiquidSliderBorderDark = Color(0x80FBBF24);
+
+/// 浅色主题滑块的描边：白色 70% 高光（沿用 2.1.6 的 `0xB3FFFFFF`）。
+const Color kLiquidSliderBorderLight = Color(0xB3FFFFFF);
 
 /// 滑块顶部那一抹高光（浅色主题）。
 const List<Color> kLiquidSliderGlossLight = <Color>[
@@ -143,10 +175,12 @@ Widget liquidShellTransition(Widget child, Animation<double> animation) {
 }
 
 /// 毛玻璃层的模糊滤镜：只模糊、不染色（saturate 由引擎侧不支持，改由底色补）。
-ImageFilter liquidGlassImageFilter() => ImageFilter.blur(
-  sigmaX: kLiquidGlassBlurSigma,
-  sigmaY: kLiquidGlassBlurSigma,
-);
+///
+/// WB_SPEC_218 第 ② 节起按主题亮度取半径：浅色 3.5、深色 4.0。
+ImageFilter liquidGlassImageFilter({required Brightness brightness}) {
+  final sigma = liquidGlassBlurSigma(brightness);
+  return ImageFilter.blur(sigmaX: sigma, sigmaY: sigma);
+}
 
 // ---------------------------------------------------------------------------
 // 颜色 / 位移分开过渡的两个小组件（Argon 方案第 2 条）

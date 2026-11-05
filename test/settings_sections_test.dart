@@ -354,7 +354,7 @@ void main() {
     expect(find.byKey(kPreviewTodayHighlightKey), findsNothing);
   });
 
-  testWidgets('学期与数据子页：同一节内连续行之间有分隔线', (tester) async {
+  testWidgets('数据备份与换机子页：标题 + 纯本地提示条 + 连续行分隔线', (tester) async {
     // 6 行入口 → 5 条 1px 分隔线；本页 build 不 watch 任何 provider，无需读库
     await tester.pumpWidget(
       const ProviderScope(
@@ -362,6 +362,12 @@ void main() {
       ),
     );
     await tester.pump();
+
+    // 2.1.7（WB_SPEC_218 第 ③/④ 节）：页标题改为「数据备份与换机」，
+    // 顶部常驻纯本地存储提示条（删云同步后，换机靠手动备份恢复）
+    expect(find.text('数据备份与换机'), findsOneWidget);
+    expect(find.textContaining('纯本地隐私存储'), findsOneWidget);
+    expect(find.textContaining('不包含云端同步'), findsOneWidget);
 
     expect(find.text('导入课表'), findsOneWidget);
     expect(find.text('数据管理'), findsOneWidget);
