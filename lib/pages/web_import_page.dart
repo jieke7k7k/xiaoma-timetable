@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../ui/app_styles.dart';
 import '../utils/web_schedule_parser.dart';
 
 /// 教务网页导入页（1.3.0）
@@ -224,7 +225,7 @@ class _WebImportPageState extends State<WebImportPage> {
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.errorContainer,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppRadii.chip),
               ),
               child: Text(_hint!, style: const TextStyle(fontSize: 13)),
             ),

@@ -3,6 +3,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/channel_service.dart';
+import '../ui/app_styles.dart';
 
 /// 关于页（1.2.4）：版本号、检查更新、公告入口、更新日志、开源许可、
 /// 使用帮助、问题反馈与开发者信息——完整应用该有的收尾都在这一页。
@@ -167,7 +168,7 @@ class _AboutPageState extends State<AboutPage> {
               height: 72,
               decoration: BoxDecoration(
                 color: scheme.primaryContainer,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(AppRadii.logo),
               ),
               child: Icon(
                 Icons.calendar_month,

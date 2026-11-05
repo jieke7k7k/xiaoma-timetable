@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../ui/app_styles.dart';
+
 /// 首次启动引导（1.2.4）：三页图文——导入课表、桌面小部件、数据备份。
 /// 只在第一次打开时出现（标记存 app_settings.onboarding_done），可跳过。
 class OnboardingPage extends StatefulWidget {
@@ -72,7 +74,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
                           height: 110,
                           decoration: BoxDecoration(
                             color: scheme.primaryContainer,
-                            borderRadius: BorderRadius.circular(28),
+                            borderRadius: BorderRadius.circular(
+                              AppRadii.logo,
+                            ),
                           ),
                           child: Icon(
                             icon,

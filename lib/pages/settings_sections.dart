@@ -1384,7 +1384,7 @@ class _ThemeChip extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppRadii.chip),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
@@ -1392,7 +1392,7 @@ class _ThemeChip extends StatelessWidget {
             color: selected ? scheme.primary : scheme.outlineVariant,
             width: selected ? 2 : 1,
           ),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadii.chip),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1440,7 +1440,7 @@ class _HsvPickerDialogState extends State<_HsvPickerDialog> {
             width: double.infinity,
             decoration: BoxDecoration(
               color: color,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(AppRadii.chip),
             ),
             alignment: Alignment.center,
             child: Text(
@@ -1579,7 +1579,7 @@ class Preview extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           border: Border.all(color: scheme.outlineVariant),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadii.card),
           color: scheme.surface,
         ),
         clipBehavior: Clip.antiAlias,
@@ -1734,7 +1734,9 @@ class Preview extends StatelessWidget {
                                         color: scheme.primary,
                                         width: 1.5,
                                       ),
-                                      borderRadius: BorderRadius.circular(6),
+                                      borderRadius: BorderRadius.circular(
+                                        AppRadii.chip,
+                                      ),
                                     ),
                                   ),
                                 ),

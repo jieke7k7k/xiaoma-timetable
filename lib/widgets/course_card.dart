@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/course.dart';
+import '../ui/app_styles.dart';
 import '../utils/color_schemes.dart';
 import '../utils/morandi_palette.dart';
 
@@ -184,7 +185,7 @@ class CourseCard extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: badgeBg,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(AppRadii.chip),
                     ),
                     child: Text(
                       badgeText!,

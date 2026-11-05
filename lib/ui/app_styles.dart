@@ -6,21 +6,22 @@
 class AppRadii {
   AppRadii._();
 
-  /// 卡片圆角（列表卡片、课程格子、图标底座等统一 12px）
-  static const double card = 12;
+  /// 卡片圆角（列表卡片、图标底座等统一 14px；课程格子用用户可调的
+  /// ui.cornerRadius，不走这个 token）
+  static const double card = 14;
 
   /// 弹层圆角（BottomSheet 顶部圆角）
-  static const double sheet = 16;
+  static const double sheet = 20;
 
  /// 小元素圆角（周次跳转块、快捷按钮等 chip 级元素）
-  static const double chip = 8;
+  static const double chip = 10;
 
   /// 启动页 Logo 等大块圆角
-  static const double logo = 24;
+  static const double logo = 28;
 
   /// 弹窗圆角（WB-202 第 4 项：全 App 统一弹窗组件 AppDialog 专用，
   /// 信息弹窗与确认弹窗都走这一个值，不要再在各页面手搓 AlertDialog）
-  static const double dialog = 20;
+  static const double dialog = 24;
 }
 
 class AppSpacing {

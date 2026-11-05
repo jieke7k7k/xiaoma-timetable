@@ -802,9 +802,9 @@ class _BackToWeekRail extends StatelessWidget {
     return Material(
       color: scheme.secondaryContainer,
       // 圆角只在左侧（贴屏幕右缘，右侧不圆角）
-      borderRadius: const BorderRadius.only(
-        topLeft: Radius.circular(14),
-        bottomLeft: Radius.circular(14),
+      borderRadius: BorderRadius.only(
+        topLeft: Radius.circular(AppRadii.card),
+        bottomLeft: Radius.circular(AppRadii.card),
       ),
       elevation: 2,
       child: InkWell(
@@ -934,31 +934,32 @@ class _DayCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final hasExam = examCourses != null && examCourses!.isNotEmpty;
-    final cell = Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          // 表头只显示一~日，不带「周」字（用户要求）
-          _weekNames[date.weekday - 1],
-          style: TextStyle(
-            fontSize: 10,
-            color: isToday ? colorScheme.primary : colorScheme.outline,
+    // 方案 B（独立软磁贴）：每天一格独立小卡；今天整卡实心主题色反白，
+    // 其余天浅底。日期不再套实心圆豆，直接写在卡上。
+    final tile = Container(
+      margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+      decoration: BoxDecoration(
+        color: isToday
+            ? colorScheme.primary
+            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            // 表头只显示一~日，不带「周」字（用户要求）
+            _weekNames[date.weekday - 1],
+            style: TextStyle(
+              fontSize: 10,
+              color: isToday ? colorScheme.onPrimary : colorScheme.outline,
+            ),
           ),
-        ),
-        const SizedBox(height: 2),
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              width: 22,
-              height: 22,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: isToday ? colorScheme.primary : Colors.transparent,
-                // 今天日期小圆点是正圆（半径=宽高一半），不属于 AppRadii 圆角体系
-                borderRadius: BorderRadius.circular(11),
-              ),
-              child: Text(
+          const SizedBox(height: 2),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Text(
                 '${date.day}',
                 style: TextStyle(
                   fontSize: 12,
@@ -968,28 +969,32 @@ class _DayCell extends StatelessWidget {
                       : colorScheme.onSurfaceVariant,
                 ),
               ),
-            ),
-            // 考试红点（1.2.0）：贴在日期圆右上角，不占表头高度
-            if (hasExam)
-              Positioned(
-                right: -2,
-                top: -2,
-                child: Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    color: colorScheme.error,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: colorScheme.surface, width: 1),
+              // 考试红点（1.2.0）：贴在日期右上角，不占表头高度
+              if (hasExam)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: colorScheme.error,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: colorScheme.surface, width: 1),
+                    ),
                   ),
                 ),
-              ),
-          ],
-        ),
-      ],
+            ],
+          ),
+        ],
+      ),
     );
-    if (!hasExam || onTap == null) return cell;
-    return InkWell(onTap: () => onTap!(examCourses!), child: cell);
+    if (!hasExam || onTap == null) return tile;
+    return InkWell(
+      onTap: () => onTap!(examCourses!),
+      borderRadius: BorderRadius.circular(10),
+      child: tile,
+    );
   }
 }
 
@@ -1350,7 +1355,16 @@ class _TimeAxis extends StatelessWidget {
           for (var i = 0; i < slots.length; i++) ...[
             SizedBox(
               height: rowHeight,
+              // 方案 B（独立软磁贴）：每节一个 9dp 圆角磁贴；上下各留 1px，
+              // 总高仍是 rowHeight，网格对齐不变。
               child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.45,
+                  ),
+                  borderRadius: BorderRadius.circular(9),
+                ),
                 alignment: Alignment.center,
                 // 底边横线由全宽线网层统一绘制（1.2.3），单元格不再自带边框
                 child: Column(
@@ -1735,7 +1749,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     border: Border.all(color: scheme.primary, width: 1.5),
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(AppRadii.chip),
                   ),
                 ),
               ),
