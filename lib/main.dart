@@ -189,15 +189,32 @@ class SimpleTimetableApp extends ConsumerWidget {
     // provider 加载完成前（首帧）先按跟随系统渲染，读库完成后立即切到持久化值
     final themeMode =
         ref.watch(themeSettingsProvider).value ?? ThemeMode.system;
-    // 主题种子色与显示字体由「外观」设置驱动（1.1.1）：种子色默认雾绿 0xFF6B8E7B，
+    // 主题种子色与显示字体由「外观」设置驱动（1.1.1）：种子色默认雾绿 0xFF3E7B67，
     // 用户可在外观设置里换预置或自定义；provider 未加载完时用默认值渲染首帧
     final uiSettings =
         ref.watch(uiSettingsProvider).value ?? const UiSettings();
     final seed = Color(uiSettings.themeSeedValue);
-    final colorScheme = ColorScheme.fromSeed(seedColor: seed);
+    // fidelity 保真（Argon 方案 Q2）：低饱和种子色经 tonalSpot 二次降饱和会
+    // 发灰发脏，fidelity 让 primary 等关键色更贴近种子色；surface 再 copyWith
+    // 固定为中性纸白/暗夜黑（只留 4% 主题倾向），避免整屏染色。
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: seed,
+      dynamicSchemeVariant: DynamicSchemeVariant.fidelity,
+    ).copyWith(
+      surface: Color.alphaBlend(
+        seed.withValues(alpha: 0.04),
+        const Color(0xFFFAFAF8),
+      ),
+    );
     final darkColorScheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: Brightness.dark,
+      dynamicSchemeVariant: DynamicSchemeVariant.fidelity,
+    ).copyWith(
+      surface: Color.alphaBlend(
+        seed.withValues(alpha: 0.04),
+        const Color(0xFF121214),
+      ),
     );
     final fontFamily = FontsService.resolveFamily(uiSettings);
     // 全局统一圆角/弹层形状（阶段五·视觉打磨）：卡片 12px、BottomSheet 顶部 16px，
@@ -520,7 +537,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   /// （见 [bottomBarGridBottomInset]），最后一节不会被栏压住。
   ///
   /// 视图区切换动效三选一（2026-11-05 用户定：三种都做，做成开关让用户自己选，
-  /// 默认错峰淡入）：见 [ShellTransitionView]——旧 AnimatedSwitcher（260ms
+  /// 默认柔和）：见 [ShellTransitionView]——旧 AnimatedSwitcher（260ms
   /// 淡入＋0.985 微缩放）已删除，它每次切换都同步销毁重建整棵 Widget 树
   /// （设置页首次 build/layout 掉帧），且两页交叉淡入淡出、中段各占 50%
   /// 透明度叠出重影（Argon 诊断）。

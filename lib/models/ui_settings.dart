@@ -4,18 +4,18 @@ import '../utils/color_schemes.dart';
 
 /// 壳内一级视图切换动效（2026-11-05 用户定：三种都做，做成开关让用户自己选）。
 ///
-/// - [fadeThroughParallax] 错峰淡入＋微位移（默认，Argon 首选）：双页常驻保活，
+/// - [fadeThroughParallax] 灵动＋微位移：双页常驻保活，
 ///   旧页先淡出、新页后淡入（不重叠），16px 水平微位移，240ms；
-/// - [fadeThroughOfficial] 官方淡入（animations 包的 FadeThrough）：220ms，
+/// - [fadeThroughOfficial] 柔和（animations 包的 FadeThrough，默认）：220ms，
 ///   旧页会卸载、滚动位置不保留；
-/// - [quickFade] 极速淡入：双页常驻保活、纯透明度 140ms。
+/// - [quickFade] 疾速：双页常驻保活、纯透明度 140ms。
 ///
 /// 存库只存 [id]，读取用 [fromId] 兜底——旧数据没有这个字段、或值被改坏时
-/// 一律回默认 [fadeThroughParallax]。
+/// 一律回默认 [fadeThroughOfficial]。
 enum ShellTransitionStyle {
-  fadeThroughParallax('fade-parallax', '错峰淡入'),
-  fadeThroughOfficial('fade-through', '官方淡入'),
-  quickFade('quick-fade', '极速淡入');
+  fadeThroughParallax('fade-parallax', '灵动'),
+  fadeThroughOfficial('fade-through', '柔和'),
+  quickFade('quick-fade', '疾速');
 
   const ShellTransitionStyle(this.id, this.label);
 
@@ -25,12 +25,12 @@ enum ShellTransitionStyle {
   /// 设置页显示的中文名
   final String label;
 
-  /// 字符串 → 枚举；未知值/空值一律回默认 [ShellTransitionStyle.fadeThroughParallax]
+  /// 字符串 → 枚举；未知值/空值一律回默认 [ShellTransitionStyle.fadeThroughOfficial]
   static ShellTransitionStyle fromId(String? raw) {
     for (final s in ShellTransitionStyle.values) {
       if (s.id == raw) return s;
     }
-    return ShellTransitionStyle.fadeThroughParallax;
+    return ShellTransitionStyle.fadeThroughOfficial;
   }
 }
 
@@ -63,7 +63,7 @@ class UiSettings {
     this.autoFitHeight = true,
     this.highlightTodayColumn = false,
     this.showBottomBar = true,
-    this.shellTransitionStyle = ShellTransitionStyle.fadeThroughParallax,
+    this.shellTransitionStyle = ShellTransitionStyle.fadeThroughOfficial,
   });
 
   /// 课程格子高度（逻辑像素 px），范围 44~96；默认 46 与旧版按屏均分的手感接近
@@ -152,7 +152,7 @@ class UiSettings {
   final bool showBottomBar;
 
   /// 壳内一级视图切换动效（2026-11-05）：三种都做，做成开关让用户自己选，
-  /// 默认错峰淡入。旧数据无此字段、值为 null、值为未知字符串时一律按默认兜底。
+  /// 默认柔和（官方淡入）。旧数据无此字段、值为 null、值为未知字符串时一律按默认兜底。
   final ShellTransitionStyle shellTransitionStyle;
 
   /// 实际生效的主题种子色（ARGB）
@@ -297,9 +297,9 @@ class UiSettings {
         highlightTodayColumn: bl('highlightTodayColumn', false),
         // 反序列化容错：旧数据无此字段或字段为 null 时一律按默认开兜底（true）
         showBottomBar: bl('showBottomBar', true),
-        // 动效容错：缺失/null/未知值一律回默认「错峰淡入」
+        // 动效容错：缺失/null/未知值一律回默认「柔和」
         shellTransitionStyle: ShellTransitionStyle.fromId(
-          st('shellTransitionStyle', 'fade-parallax'),
+          st('shellTransitionStyle', 'fade-through'),
         ),
       );
     } catch (_) {

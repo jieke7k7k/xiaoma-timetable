@@ -1170,21 +1170,10 @@ class _GridArea extends ConsumerWidget {
               height: contentHeight,
               child: Stack(
                 children: [
-                  // 最下层：单条通栏分隔带（1.2.2 通栏化，1.2.3 沉底——
-                  // 跨带长卡要完整压住带子，见 A2）
-                  for (final b in activeBands)
-                    Positioned(
-                      top:
-                          b.after * rowHeight +
-                          activeBands.where((o) => o.after < b.after).length *
-                              kBandHeight,
-                      left: 0,
-                      right: 0,
-                      height: kBandHeight,
-                      child: IgnorePointer(
-                        child: _FullBand(band: b, axisWidth: timeAxisWidth),
-                      ),
-                    ),
+                  // 分隔带已不在这里画：旧实现在 PageView 外层 Stack 画单条通栏，
+                  // 滑屏切周时带子静止不动、与网格脱节（Argon 方案 Q5）。
+                  // 现在带子画在 PageView 每一页内部（见 _WeekGrid），随页一起滑动；
+                  // 时间轴侧只留同色底 + 名称占位（见 _TimeAxis）。
                   // 中层：全宽横线（1.2.3 统一绘制，见 _FullWidthLinesPainter；
                   // 1.2.5 起受「显示网格线」开关控制，关掉后横线一起消失）
                   if (ui.showGridLines)
@@ -1281,20 +1270,24 @@ class _FullBand extends StatelessWidget {
       color: bg,
       child: Row(
         children: [
-          SizedBox(
-            width: axisWidth,
-            child: Center(
-              child: Text(
-                band.label,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: scheme.outline.withValues(alpha: 0.9),
+          // 页内带子（axisWidth == 0）不画时间轴段：名称由时间轴占位自己画，
+          // 这里只留居中的名称 + 时间段。
+          if (axisWidth > 0) ...[
+            SizedBox(
+              width: axisWidth,
+              child: Center(
+                child: Text(
+                  band.label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.outline.withValues(alpha: 0.9),
+                  ),
                 ),
               ),
             ),
-          ),
-          Container(width: 1, color: divider),
+            Container(width: 1, color: divider),
+          ],
           Expanded(
             child: Center(
               child: Row(
@@ -1391,11 +1384,25 @@ class _TimeAxis extends StatelessWidget {
                 ),
               ),
             ),
-            // 分隔带占位（高度与网格一致即可）：带子本体由 _GridArea 顶层
-            // 以「单条通栏」绘制（1.2.2）——左右各画一半会在接缝处错位
+            // 分隔带占位（高度与网格一致即可）：带子本体在 PageView 每一页内
+            // 随页滑动（Argon 方案 Q5），时间轴侧只留同色底 + 名称，不随页动。
             for (final b in activeBands)
               if (b.after == slots[i].section)
-                const SizedBox(height: kBandHeight),
+                Container(
+                  height: kBandHeight,
+                  color: colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.6,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    b.label,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.outline.withValues(alpha: 0.9),
+                    ),
+                  ),
+                ),
           ],
         ],
       ),
@@ -1640,6 +1647,23 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
               columnCount: displayDays.length,
               activeBands: activeBands,
               totalHeight: totalHeight,
+            ),
+          // 分隔带（午休/晚休）：画在每一页内部，随页一起滑动（Argon 方案 Q5）。
+          // 旧实现在 PageView 外层画单条通栏，滑屏切周时带子静止不动、与网格
+          // 脱节。坐标与旧公式一致：b.after 节后 + 之前带子的高度。跨带长卡
+          // 仍完整压住带子（卡片在 Stack 里画在带子之后，见 A2）。
+          for (final b in activeBands)
+            Positioned(
+              top:
+                  b.after * rowHeight +
+                  activeBands.where((o) => o.after < b.after).length *
+                      kBandHeight,
+              left: 0,
+              right: 0,
+              height: kBandHeight,
+              child: IgnorePointer(
+                child: _FullBand(band: b, axisWidth: 0),
+              ),
             ),
           // 长按高亮选区：主题色描边 + 浅填充 + 中央加号（再次单击进新建页）
           if (_highlight != null && displayDays.contains(_highlight!.day))

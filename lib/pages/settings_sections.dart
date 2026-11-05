@@ -247,7 +247,7 @@ class AppearanceSettingsPage extends StatelessWidget {
             },
           ),
           // 切换动效三选一（2026-11-05 用户定：三种都做，做成开关让用户自己选，
-          // 默认错峰淡入）。紧跟在「底部栏显示」开关下方，切换即时生效并持久化。
+          // 默认柔和）。紧跟在「底部栏显示」开关下方，切换即时生效并持久化。
           Consumer(
             builder: (ctx, ref, _) {
               final ui =
@@ -261,7 +261,7 @@ class AppearanceSettingsPage extends StatelessWidget {
                       '切换动效',
                       style: TextStyle(fontWeight: FontWeight.w500),
                     ),
-                    subtitle: Text('课表与设置之间切换时的动效，默认错峰淡入'),
+                    subtitle: Text('课表与设置之间切换时的动效，默认柔和'),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(56, 0, 16, 12),

@@ -173,13 +173,15 @@ class ThemePreset {
 }
 
 const List<ThemePreset> kThemePresets = [
-  ThemePreset(id: 'forest', name: '雾绿', seed: 0xFF6B8E7B),
-  ThemePreset(id: 'ocean', name: '海盐蓝', seed: 0xFF5B84AE),
-  ThemePreset(id: 'grape', name: '葡萄紫', seed: 0xFF7E6BA8),
-  ThemePreset(id: 'sunset', name: '落日橙', seed: 0xFFCE7A4E),
-  ThemePreset(id: 'rose', name: '玫瑰粉', seed: 0xFFBE6E88),
-  ThemePreset(id: 'cocoa', name: '可可棕', seed: 0xFF8A6A52),
-  ThemePreset(id: 'graphite', name: '曜石灰', seed: 0xFF5A6270),
+  // 2026-11-05 Argon 方案 Q2：种子色换高饱和版（原低饱和莫兰迪色经
+  // ColorScheme.fromSeed 的 tonalSpot 二次降饱和会发灰发脏）。
+  ThemePreset(id: 'forest', name: '雾绿', seed: 0xFF3E7B67),
+  ThemePreset(id: 'ocean', name: '海盐蓝', seed: 0xFF3B6E9C),
+  ThemePreset(id: 'grape', name: '葡萄紫', seed: 0xFF6B5B95),
+  ThemePreset(id: 'sunset', name: '落日橙', seed: 0xFFD96B43),
+  ThemePreset(id: 'rose', name: '玫瑰粉', seed: 0xFFC85A7C),
+  ThemePreset(id: 'cocoa', name: '可可棕', seed: 0xFF8C6246),
+  ThemePreset(id: 'graphite', name: '曜石灰', seed: 0xFF475569),
 ];
 
 /// 按 id 取主题预置；找不到回退第一套（雾绿，即原默认）

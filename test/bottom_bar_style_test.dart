@@ -2,15 +2,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xiaoma_timetable/ui/bottom_bar_metrics.dart';
-import 'package:xiaoma_timetable/ui/liquid_glass.dart';
 import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 
 /// 底部栏（只有新标签栏一种形态）的渲染断言（WB_SPEC_215 第 2/3 节；WB_SPEC_216 第 1 节）。
 ///
 /// 标签栏 [HomeTabBar]（默认、唯一形态）：整宽、贴屏幕底边、无悬浮阴影、
-/// 顶部一条细分割线（浅色 0.8dp／深色 0.6dp，2.1.7 WB_SPEC_218 第 ② 节），
+/// 顶部一条细分割线（0.5dp，outlineVariant 浅 0.45／深 0.25），
 /// 两格等宽（图标在上、文字在下），
-/// 选中态图标与文字同为琥珀黄，未选中态同为灰。
+/// 选中态图标与文字同为主题 primary，未选中态同为灰。
 ///
 /// 2.1.7 同版本修复：胶囊形态整体删除（用户定：只要新标签栏），本文件不再有
 /// 它的用例；毛玻璃层整体删除（`BackdropFilter` 真机整屏漫溢），栏体只留
@@ -82,7 +81,7 @@ void main() {
       );
     });
 
-    testWidgets('顶部一条细分割线（浅色 0.8dp）', (tester) async {
+    testWidgets('顶部一条细分割线（0.5dp，outlineVariant 浅 0.45）', (tester) async {
       await pumpBar(tester, tabBarAtBottom());
 
       final box = tester.widget<DecoratedBox>(
@@ -93,10 +92,13 @@ void main() {
       expect(border, isA<Border>());
       expect(
         border.top.width,
-        kBottomBarDividerWidthLight,
-        reason: '标签栏顶部细分割线：浅色 0.8dp（WB_SPEC_218 第 ② 节）',
+        0.5,
+        reason: '标签栏顶部细分割线：0.5dp（Argon 方案 Q2）',
       );
-      expect(bottomBarDividerWidth(Brightness.light), 0.8);
+      final scheme = Theme.of(
+        tester.element(find.byType(HomeTabBar)),
+      ).colorScheme;
+      expect(border.top.color, scheme.outlineVariant.withValues(alpha: 0.45));
       // 只有顶边有线，其余三边没有
       final sides = border as Border;
       expect(sides.bottom, BorderSide.none);
@@ -145,8 +147,8 @@ void main() {
       }
     });
 
-    testWidgets('选中态前景色按主题分档：浅色深褐黑、未选中态灰', (tester) async {
-      // 选「设置」：设置格深褐黑、课表格灰
+    testWidgets('选中态前景色 = 主题 primary，未选中态 onSurfaceVariant 0.60', (tester) async {
+      // 选「设置」：设置格主题色、课表格灰
       await pumpBar(tester, tabBarAtBottom(active: HomeShellTab.settings));
       final scheme = Theme.of(
         tester.element(find.byType(HomeTabBar)),
@@ -178,31 +180,31 @@ void main() {
         ),
       );
 
-      // 金黄基色仍是 2.1.5 的琥珀黄（液态滑块渐变用它），前景色与滑块分家；
-      // 不用主题 primary（本项目默认种子色是雾绿 / 可可棕一类）。
-      expect(HomeTabBar.activeColor, const Color(0xFFFFB300));
-      expect(HomeTabBar.activeColor, Colors.amber[600]);
-      expect(settingsIcon.color, isNot(scheme.primary));
-      // 2.1.7（WB_SPEC_218 第 ② 节）：滑块降到半透明金黄后，浅色主题前景色
-      // 改用深褐黑 #1C1917（压在金黄上对比度 ≥ 4.5:1），不再沿用金黄系。
-      expect(kTabBarActiveColorLight, const Color(0xFF1C1917));
-      expect(settingsIcon.color, HomeTabBar.activeColorFor(scheme));
-      expect(settingsIcon.color, kTabBarActiveColorLight);
-      expect(settingsText.style?.color, kTabBarActiveColorLight);
-      // 深褐黑压在滑块最亮端 #FFE066 上仍看得清
+      // 选中态 = 主题 primary（跟主题走，不再固定金黄）
+      expect(settingsIcon.color, scheme.primary);
+      expect(settingsText.style?.color, scheme.primary);
+      // 选中图标实心、未选中线框（双态图标，Argon 方案 Q1）
+      expect(settingsIcon.icon, Icons.settings);
+      expect(scheduleIcon.icon, Icons.calendar_today_outlined);
+      // 主题色压在栏底 surface 上要看得清
       expect(
-        _contrastRatio(settingsIcon.color!, const Color(0xFFFFE066)),
-        greaterThanOrEqualTo(4.5),
-        reason: '深褐黑压在金黄滑块上对比度要够',
+        _contrastRatio(settingsIcon.color!, scheme.surface),
+        greaterThanOrEqualTo(3.0),
+        reason: '主题色压在栏底上对比度要够',
       );
-      // 未选中：图标与文字同为 onSurfaceVariant 灰
-      expect(scheduleIcon.color, scheme.onSurfaceVariant);
-      expect(scheduleText.style?.color, scheme.onSurfaceVariant);
-      expect(scheduleIcon.color, isNot(HomeTabBar.activeColorFor(scheme)));
-      expect(_isGolden(scheduleIcon.color!), isFalse, reason: '未选中态是灰，不是金黄');
+      // 未选中：图标与文字同为 onSurfaceVariant 0.60
+      expect(
+        scheduleIcon.color,
+        scheme.onSurfaceVariant.withValues(alpha: 0.60),
+      );
+      expect(
+        scheduleText.style?.color,
+        scheme.onSurfaceVariant.withValues(alpha: 0.60),
+      );
+      expect(scheduleIcon.color, isNot(scheme.primary));
     });
 
-    testWidgets('深色主题：选中态换暖白（与浅色主题的深褐黑分档）', (tester) async {
+    testWidgets('深色主题：选中态同样是主题 primary，未选中 0.55', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
@@ -232,30 +234,27 @@ void main() {
           matching: find.byType(Icon),
         ),
       );
-      // 2.1.7（WB_SPEC_218 第 ② 节）：深色主题前景色改为暖白 #FEF3C7，
-      // 压在压暗的金黄滑块上对比度 ≥ 4.5:1，不再是 2.1.6 的浅金黄。
-      expect(kTabBarActiveColorDark, const Color(0xFFFEF3C7));
-      expect(HomeTabBar.activeColorFor(scheme), kTabBarActiveColorDark);
-      expect(settingsIcon.color, kTabBarActiveColorDark);
-      // 深色滑块是 28%→18% 低不透明金黄叠加在 #18181C 栏底上，有效色很暗，
-      // 暖白压上去仍有对比度（按最亮端 #F59F00 28% 叠加算，最保守）
-      final effectiveSlider = _over(
-        kLiquidSliderGradientDark.first,
-        kLiquidGlassSurfaceColorDark,
-      );
+      // 深色主题选中态同样是主题 primary（跟主题走，不再固定暖白）
+      expect(settingsIcon.color, scheme.primary);
+      expect(settingsIcon.icon, Icons.settings);
+      // 主题色压在深色栏底 surfaceContainerLow 上要看得清
       expect(
-        _contrastRatio(settingsIcon.color!, effectiveSlider),
-        greaterThanOrEqualTo(4.5),
-        reason: '暖白压在压暗后的滑块上要看得清',
+        _contrastRatio(settingsIcon.color!, scheme.surfaceContainerLow),
+        greaterThanOrEqualTo(3.0),
+        reason: '主题色压在深色栏底上对比度要够',
       );
-      // 未选中态仍是灰
+      // 未选中态仍是灰（深色 0.55）
       final scheduleIcon = tester.widget<Icon>(
         find.descendant(
           of: find.byKey(kHomeTabBarScheduleKey),
           matching: find.byType(Icon),
         ),
       );
-      expect(scheduleIcon.color, scheme.onSurfaceVariant);
+      expect(
+        scheduleIcon.color,
+        scheme.onSurfaceVariant.withValues(alpha: 0.55),
+      );
+      expect(scheduleIcon.icon, Icons.calendar_today_outlined);
     });
 
     testWidgets('两格文案仍是「课表」「设置」，键数恒为 2', (tester) async {
@@ -393,37 +392,11 @@ void main() {
 void _noop(HomeShellTab _) {}
 void _noopVoid() {}
 
-/// 是否「金黄系」：HSV 色相落在 25°~60°（琥珀黄 #FFB300 是 42°）且不是灰。
-///
-/// 2.1.6 起选中态不再写死 == #FFB300（浅色主题压暗、深色主题提亮），
-/// 所以断言改成「色相仍是金黄」而不是「等于某个固定 RGB」——
-/// 这样既能分档保证对比度，又不会让选中色跑成蓝的绿的。
-bool _isGolden(Color color) {
-  final hsv = HSVColor.fromColor(color);
-  return hsv.hue >= 25 && hsv.hue <= 60 && hsv.saturation >= 0.5;
-}
-
-/// WCAG 对比度（用于断言「深金黄压在金黄滑块上」看得清，不靠肉眼）。
+/// WCAG 对比度（用于断言「主题色压在栏底上」看得清，不靠肉眼）。
 double _contrastRatio(Color a, Color b) {
   final la = a.computeLuminance();
   final lb = b.computeLuminance();
   final hi = la > lb ? la : lb;
   final lo = la > lb ? lb : la;
   return (hi + 0.05) / (lo + 0.05);
-}
-
-/// 把半透明前景色 [fg] 叠加到不透明背景色 [bg] 上，得到有效色。
-///
-/// 2.1.7 起滑块改成半透明金黄，对比度不能拿「不透明端点色」直接算——
-/// 要先叠加到栏底/页面底色上求有效色，再与前景色比。
-Color _over(Color fg, Color bg) {
-  final a = fg.a;
-  int blend(double f, double b) =>
-      ((f * a + b * (1 - a)) * 255).round().clamp(0, 255);
-  return Color.fromARGB(
-    255,
-    blend(fg.r, bg.r),
-    blend(fg.g, bg.g),
-    blend(fg.b, bg.b),
-  );
 }

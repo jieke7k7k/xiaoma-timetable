@@ -82,22 +82,22 @@ void main() {
       expect(UiSettings.fromEncoded('{"showBottomBar": true}').showBottomBar, isTrue);
     });
 
-    test('shellTransitionStyle 反序列化容错：缺失/null/未知值一律回默认错峰淡入', () {
-      // 2026-11-05：三种切换动效做成开关，默认错峰淡入；旧数据没有这个字段、
+    test('shellTransitionStyle 反序列化容错：缺失/null/未知值一律回默认柔和', () {
+      // 2026-11-05：三种切换动效做成开关，默认柔和（官方淡入）；旧数据没有这个字段、
       // 值为 null、或值被改坏时一律回默认，绝不崩。
       expect(
         UiSettings.fromEncoded('{}').shellTransitionStyle,
-        ShellTransitionStyle.fadeThroughParallax,
+        ShellTransitionStyle.fadeThroughOfficial,
       );
       expect(
         UiSettings.fromEncoded('{"shellTransitionStyle": null}')
             .shellTransitionStyle,
-        ShellTransitionStyle.fadeThroughParallax,
+        ShellTransitionStyle.fadeThroughOfficial,
       );
       expect(
         UiSettings.fromEncoded('{"shellTransitionStyle": "unknown"}')
             .shellTransitionStyle,
-        ShellTransitionStyle.fadeThroughParallax,
+        ShellTransitionStyle.fadeThroughOfficial,
       );
       expect(
         UiSettings.fromEncoded('{"shellTransitionStyle": "fade-through"}')
@@ -108,6 +108,11 @@ void main() {
         UiSettings.fromEncoded('{"shellTransitionStyle": "quick-fade"}')
             .shellTransitionStyle,
         ShellTransitionStyle.quickFade,
+      );
+      expect(
+        UiSettings.fromEncoded('{"shellTransitionStyle": "fade-parallax"}')
+            .shellTransitionStyle,
+        ShellTransitionStyle.fadeThroughParallax,
       );
     });
 
@@ -194,7 +199,7 @@ void main() {
       const preset = UiSettings(themePresetId: 'ocean');
       expect(preset.themeSeedValue, themePresetById('ocean').seed);
       const bad = UiSettings(themePresetId: '不存在的id');
-      expect(bad.themeSeedValue, 0xFF6B8E7B);
+      expect(bad.themeSeedValue, 0xFF3E7B67);
     });
 
     test('copyWith 清除自定义主题色', () {
@@ -202,7 +207,7 @@ void main() {
       final cleared = ui.copyWith(clearThemeCustomColor: true);
       expect(cleared.themeCustomColor, isNull);
       // 1.2.5 起默认预置改为可可棕，清除后回落到可可棕种子色
-      expect(cleared.themeSeedValue, 0xFF8A6A52);
+      expect(cleared.themeSeedValue, 0xFF8C6246);
     });
   });
 }

@@ -90,7 +90,7 @@ void main() {
   group('themePresetById', () {
     test('未知 id 回退第一套（雾绿）', () {
       expect(themePresetById('nope').id, 'forest');
-      expect(themePresetById('ocean').seed, 0xFF5B84AE);
+      expect(themePresetById('ocean').seed, 0xFF3B6E9C);
     });
   });
 }

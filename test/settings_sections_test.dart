@@ -110,7 +110,7 @@ void main() {
     expect(tester.widget<SwitchListTile>(tile).value, isFalse);
   });
 
-  testWidgets('外观子页：切换动效三选项存在、默认错峰淡入、点击切换即时生效（2026-11-05）', (tester) async {
+  testWidgets('外观子页：切换动效三选项存在、默认柔和、点击切换即时生效（2026-11-05）', (tester) async {
     await tester.runAsync(() async {
       await tester.pumpWidget(
         const ProviderScope(
@@ -123,7 +123,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
-    // 三种动效都做，做成开关让用户自己选；默认错峰淡入
+    // 三种动效都做，做成开关让用户自己选；默认柔和（官方淡入）
     expect(find.text('切换动效'), findsOneWidget);
     expect(find.byType(ChoiceChip), findsNWidgets(3));
     for (final style in ShellTransitionStyle.values) {
@@ -134,14 +134,14 @@ void main() {
       tester
           .widget<ChoiceChip>(
             find.byKey(
-              shellTransitionChipKey(ShellTransitionStyle.fadeThroughParallax),
+              shellTransitionChipKey(ShellTransitionStyle.fadeThroughOfficial),
             ),
           )
           .selected,
       isTrue,
     );
 
-    // 点「极速淡入」→ 即时切换并持久化（apply 走真实 FFI 异步落库）
+    // 点「疾速」→ 即时切换并持久化（apply 走真实 FFI 异步落库）
     await tester.tap(
       find.byKey(shellTransitionChipKey(ShellTransitionStyle.quickFade)),
     );
@@ -165,7 +165,7 @@ void main() {
       tester
           .widget<ChoiceChip>(
             find.byKey(
-              shellTransitionChipKey(ShellTransitionStyle.fadeThroughParallax),
+              shellTransitionChipKey(ShellTransitionStyle.fadeThroughOfficial),
             ),
           )
           .selected,
@@ -198,7 +198,7 @@ void main() {
     // 2.1.7 同版本修复：胶囊形态删除，底部栏只有新标签栏一种，
     // 外观页不再有「底部栏样式」二选一；底部栏开关本身仍在。
     // 注意：页面上仍有 ChoiceChip——那是 2026-11-05 新增的「切换动效」
-    // 三选项（错峰淡入/官方淡入/极速淡入），不是底部栏样式。
+    // 三选项（灵动/柔和/疾速），不是底部栏样式。
     expect(find.text('底部栏样式'), findsNothing);
     expect(find.text('新标签栏'), findsNothing);
     expect(find.text('胶囊贴底'), findsNothing);

@@ -4,12 +4,12 @@
 /// 重建整棵 Widget 树（设置页首次 build/layout 掉帧），且两页交叉淡入淡出、
 /// 中段各占 50% 透明度叠出重影。
 ///
-/// 三种实现（[ShellTransitionStyle] 三选一，默认错峰淡入）：
-/// - **A 错峰淡入＋微位移**（[ParallaxShellBody]，Argon 首选）：双页常驻保活，
+/// 三种实现（[ShellTransitionStyle] 三选一，默认柔和）：
+/// - **A 灵动＋微位移**（[ParallaxShellBody]）：双页常驻保活，
 ///   旧页先淡出、新页后淡入（不重叠），16px 水平微位移，240ms；
-/// - **B 官方淡入**（[PageTransitionSwitcher] + [FadeThroughTransition]，
-///   animations 包）：220ms，旧页会卸载、滚动位置不保留；
-/// - **C 极速淡入**（[QuickFadeShellBody]）：双页常驻保活、纯透明度 140ms。
+/// - **B 柔和**（[PageTransitionSwitcher] + [FadeThroughTransition]，
+///   animations 包，默认）：220ms，旧页会卸载、滚动位置不保留；
+/// - **C 疾速**（[QuickFadeShellBody]）：双页常驻保活、纯透明度 140ms。
 library;
 
 import 'package:animations/animations.dart';
@@ -66,7 +66,7 @@ class ShellTransitionView extends StatelessWidget {
   }
 }
 
-/// A：错峰淡入＋微位移（Argon 方案 A，首选）。
+/// A：灵动＋微位移（Argon 方案 A）。
 ///
 /// 两页常驻内存（`Visibility maintainSize/maintainState`＋[RepaintBoundary] 缓存
 /// 为 GPU 纹理），切换时 0 重建、0 Layout。透明度错峰：课表页在 t 0.0→0.45
@@ -201,7 +201,7 @@ class _ParallaxShellBodyState extends State<ParallaxShellBody>
   }
 }
 
-/// C：极速微淡入（Argon 方案 C，最稳健、零花哨）。
+/// C：疾速微淡入（Argon 方案 C，最稳健、零花哨）。
 ///
 /// 两页常驻内存，外包 140ms 纯透明度过渡（不做缩放——缩放会让密集网格的
 /// 文字边缘产生重采样锯齿感）。点底栏是为了最快改配置，不是为了看动画。

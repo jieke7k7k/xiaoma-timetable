@@ -4,21 +4,21 @@ import 'package:xiaoma_timetable/ui/bottom_bar_metrics.dart';
 import 'package:xiaoma_timetable/ui/liquid_glass.dart';
 import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 
-/// 标签栏液态滑块与动效断言（WB_SPEC_217 第 1 节）。
+/// 标签栏无框选中态与动效断言（WB_SPEC_217 第 1 节；2026-11-05 按 Argon Q1
+/// 方案改为无框选中态：金黄滑块已删）。
 ///
 /// 按 Argon 方案逐条落地并逐条断言：
 /// 1. **栏内没有任何模糊滤镜**：2.1.7 同版本修复——毛玻璃层（[RepaintBoundary]
 ///    + [BackdropFilter]）整体删除，它在真机上整屏漫溢、整片课表蒙雾；
-///    栏体只留半透明底色；
-/// 2. 底色不透明度浅色 0.58／深色 0.64、顶部细分割线（浅色 0.8dp／深色 0.6dp）、
-///    贴底无阴影；
-/// 3. 液态指示器：宽度 = 栏宽 50%、[AnimatedAlign] 对齐随选中项变化、
-///    380ms 弹簧曲线、切换时是「滑过去」而不是重建；
+/// 2. 底色跟主题走（浅色 surface／深色 surfaceContainerLow）、顶部细分割线
+///    0.5dp（outlineVariant 浅 0.45／深 0.25）、贴底无阴影；
+/// 3. 选中指示小短条：20×3dp、距栏底 5dp、容器宽 = 栏宽 50%、[AnimatedAlign]
+///    对齐随选中项变化、320ms 减速曲线、切换时是「滑过去」而不是重建；
 /// 4. 按压回弹：按下 0.92（90ms）、松手 1.0（350ms 弹簧）；
-/// 5. 选中态图标上浮放大，颜色 / 位移 / 缩放三条过渡各自分开。
+/// 5. 选中态图标上浮放大（实心）、颜色 / 位移 / 缩放三条过渡各自分开。
 ///
 /// 与 `bottom_bar_style_test.dart` 的分工：那边管「布局与功能不变」（整宽、
-/// 贴底、两格等宽、文案、回调、留白口径），这边管「液态与动效」。
+/// 贴底、两格等宽、文案、回调、留白口径），这边管「选中态与动效」。
 void main() {
   /// 屏幕尺寸（测试默认 800×600）
   const double screenW = 800;
@@ -84,57 +84,50 @@ void main() {
     });
   });
 
-  group('栏体：高透染色底色 + 顶部细分割线 + 贴底无阴影', () {
-    testWidgets('底色 = 半透明染色：浅色白 58%（不再 72% 重底色）', (tester) async {
+  group('栏体：主题底色 + 顶部细分割线 + 贴底无阴影', () {
+    testWidgets('底色跟主题走：浅色 surface（不再半透白 58%）', (tester) async {
       await pumpBar(tester);
 
       final material = barMaterial(tester);
-      expect(kLiquidGlassSurfaceColorLight, const Color(0x94FFFFFF));
-      expect(kLiquidGlassSurfaceColorDark, const Color(0xA318181C));
-      expect(material.color, liquidGlassSurfaceColor(Brightness.light));
-      // 白 58%：纯白 + 半透明
-      expect(material.color!.a, closeTo(0x94 / 255, 0.001));
-      expect(material.color!.r, 1.0);
-      expect(material.color!.g, 1.0);
-      expect(material.color!.b, 1.0);
-      // 高透：比 2.1.6 的 0.72 更透
-      expect(material.color!.a, lessThan(0.72));
+      final scheme = ThemeData(brightness: Brightness.light).colorScheme;
+      expect(material.color, scheme.surface);
+      // 不透明：跟主题 surface 一致，不再是半透明染色
+      expect(material.color!.a, 1.0);
     });
 
-    testWidgets('深色主题底色 = #18181C 64%', (tester) async {
+    testWidgets('深色主题底色 = surfaceContainerLow', (tester) async {
       await pumpBar(tester, brightness: Brightness.dark);
 
       final material = barMaterial(tester);
-      expect(material.color, liquidGlassSurfaceColor(Brightness.dark));
-      expect(material.color!.a, closeTo(0xA3 / 255, 0.001));
-      expect(material.color!.r, closeTo(0x18 / 255, 0.001));
-      expect(material.color!.g, closeTo(0x18 / 255, 0.001));
-      expect(material.color!.b, closeTo(0x1C / 255, 0.001));
+      final scheme = ThemeData(brightness: Brightness.dark).colorScheme;
+      expect(material.color, scheme.surfaceContainerLow);
+      expect(material.color!.a, 1.0);
     });
 
-    testWidgets('顶部细分割线仍在，且只画顶边（浅色 0.8dp）', (tester) async {
+    testWidgets('顶部细分割线仍在，且只画顶边（0.5dp，outlineVariant 浅 0.45）', (tester) async {
       await pumpBar(tester);
 
       final box = tester.widget<DecoratedBox>(find.byKey(kHomeTabBarDividerKey));
       final decoration = box.decoration as BoxDecoration;
       final border = decoration.border! as Border;
-      expect(border.top.width, kBottomBarDividerWidthLight);
-      expect(bottomBarDividerWidth(Brightness.light), 0.8);
+      final scheme = ThemeData(brightness: Brightness.light).colorScheme;
+      expect(border.top.width, 0.5);
+      expect(border.top.color, scheme.outlineVariant.withValues(alpha: 0.45));
       expect(border.bottom, BorderSide.none);
       expect(border.left, BorderSide.none);
       expect(border.right, BorderSide.none);
-      expect(border.top.color.a, greaterThan(0));
       expect(border.top.style, BorderStyle.solid);
     });
 
-    testWidgets('顶部细分割线：深色 0.6dp', (tester) async {
+    testWidgets('顶部细分割线：深色 0.5dp，outlineVariant 0.25', (tester) async {
       await pumpBar(tester, brightness: Brightness.dark);
 
       final box = tester.widget<DecoratedBox>(find.byKey(kHomeTabBarDividerKey));
       final decoration = box.decoration as BoxDecoration;
       final border = decoration.border! as Border;
-      expect(border.top.width, kBottomBarDividerWidthDark);
-      expect(bottomBarDividerWidth(Brightness.dark), 0.6);
+      final scheme = ThemeData(brightness: Brightness.dark).colorScheme;
+      expect(border.top.width, 0.5);
+      expect(border.top.color, scheme.outlineVariant.withValues(alpha: 0.25));
       expect(border.bottom, BorderSide.none);
       expect(border.left, BorderSide.none);
       expect(border.right, BorderSide.none);
@@ -160,54 +153,56 @@ void main() {
     });
   });
 
-  group('液态滑动指示器（Argon 方案第 1 条：只动位置，不切渐变）', () {
-    testWidgets('宽度 = 栏宽 50%', (tester) async {
+  group('选中指示小短条（Argon 方案 Q1：无框选中态）', () {
+    testWidgets('容器宽度 = 栏宽 50%，短条本体 20×3dp、距栏底 5dp', (tester) async {
       await pumpBar(tester);
 
       final barWidth = tester.getSize(find.byType(HomeTabBar)).width;
       final box = tester.getSize(find.byKey(kHomeTabBarIndicatorBoxKey));
       expect(kLiquidIndicatorWidthFactor, 0.5);
       expect(box.width, closeTo(barWidth * 0.5, 0.5));
-      // 滑块容器占满栏高 64，视觉滑块本体高 56（上下各留 4）
+      // 容器占满栏高 64（Align 取最大高），短条本体 20×3 贴在容器底部
       final rect = tester.getRect(find.byKey(kHomeTabBarIndicatorBoxKey));
       expect(rect.height, kBottomBarTabHeight);
-      final slider = tester.getRect(
-        find
-            .descendant(
-              of: find.byKey(kHomeTabBarIndicatorBoxKey),
-              matching: find.byType(DecoratedBox),
-            )
-            .first,
+      final pillFinder = find.descendant(
+        of: find.byKey(kHomeTabBarIndicatorBoxKey),
+        matching: find.byType(DecoratedBox),
       );
-      expect(slider.height, kLiquidIndicatorHeight);
-      expect(kLiquidIndicatorHeight, 56);
-      expect(slider.width, closeTo(barWidth * 0.5, 0.5));
+      final pill = tester.getRect(pillFinder.first);
+      expect(kSelectionPillWidth, 20);
+      expect(kSelectionPillHeight, 3);
+      expect(pill.width, closeTo(20, 0.5));
+      expect(pill.height, closeTo(3, 0.5));
+      // 短条水平居中在容器里、距栏底 5dp
+      expect(pill.center.dx, closeTo(rect.center.dx, 0.5));
+      expect(rect.bottom - pill.bottom, closeTo(kSelectionPillBottomGap, 0.5));
+      expect(kSelectionPillBottomGap, 5);
+      // 短条颜色 = 主题 primary（不再是金黄渐变）
+      final pillBox = tester.widget<DecoratedBox>(pillFinder.first);
+      final decoration = pillBox.decoration as BoxDecoration;
+      final scheme = ThemeData(brightness: Brightness.light).colorScheme;
+      expect(decoration.color, scheme.primary);
     });
 
-    testWidgets('380ms 弹簧曲线，对齐随选中项变化（-1 / +1）', (tester) async {
+    testWidgets('320ms 减速曲线，对齐随选中项变化（-1 / +1，贴底）', (tester) async {
       await pumpBar(tester, active: HomeShellTab.schedule);
 
       var align = tester.widget<AnimatedAlign>(find.byKey(kHomeTabBarIndicatorKey));
-      expect(align.alignment, const Alignment(-1, 0), reason: '课表格：贴左半');
-      expect(align.duration, kLiquidSlideDuration);
-      expect(align.duration, const Duration(milliseconds: 380));
-      expect(align.curve, kLiquidSpringCurve);
-      // 弹簧曲线的四个控制点（Web 侧 cubic-bezier(0.34, 1.56, 0.64, 1)）
-      final cubic = align.curve as Cubic;
-      expect(cubic.a, closeTo(0.34, 1e-9));
-      expect(cubic.b, closeTo(1.56, 1e-9));
-      expect(cubic.c, closeTo(0.64, 1e-9));
-      expect(cubic.d, closeTo(1.0, 1e-9));
+      expect(align.alignment, const Alignment(-1, 1), reason: '课表格：贴左半、贴底');
+      expect(align.duration, kSelectionPillDuration);
+      expect(align.duration, const Duration(milliseconds: 320));
+      expect(align.curve, kSelectionPillCurve);
+      expect(align.curve, Curves.easeOutCubic);
 
       // 切到设置格：对齐翻到贴右半
       await pumpBar(tester, active: HomeShellTab.settings);
       align = tester.widget<AnimatedAlign>(find.byKey(kHomeTabBarIndicatorKey));
-      expect(align.alignment, const Alignment(1, 0), reason: '设置格：贴右半');
-      expect(align.duration, const Duration(milliseconds: 380));
-      expect(align.curve, kLiquidSpringCurve);
+      expect(align.alignment, const Alignment(1, 1), reason: '设置格：贴右半、贴底');
+      expect(align.duration, const Duration(milliseconds: 320));
+      expect(align.curve, kSelectionPillCurve);
     });
 
-    testWidgets('切换后滑块位置与选中项一致，且是滑过去而不是瞬移', (tester) async {
+    testWidgets('切换后短条位置与选中项一致，且是滑过去而不是瞬移', (tester) async {
       await pumpBar(tester, active: HomeShellTab.schedule);
 
       final scheduleRect = tester.getRect(find.byKey(kHomeTabBarScheduleKey));
@@ -215,38 +210,38 @@ void main() {
       expect(
         indicator.center.dx,
         closeTo(scheduleRect.center.dx, 1.0),
-        reason: '选中课表时滑块对齐课表格',
+        reason: '选中课表时短条对齐课表格',
       );
 
-      // 切到设置：先只推进 1ms——滑块应该还停在左边（说明是动画）
+      // 切到设置：先只推进 1ms——短条应该还停在左边（说明是动画）
       await pumpBar(tester, active: HomeShellTab.settings);
       await tester.pump(const Duration(milliseconds: 1));
       indicator = tester.getRect(find.byKey(kHomeTabBarIndicatorBoxKey));
       expect(
         indicator.center.dx,
         lessThan(tester.getSize(find.byType(HomeTabBar)).width / 2),
-        reason: '切换瞬间滑块还没跳到右边，是滑过去的',
+        reason: '切换瞬间短条还没跳到右边，是滑过去的',
       );
 
-      // 380ms 后到位：与设置格对齐
-      await tester.pump(const Duration(milliseconds: 380));
+      // 320ms 后到位：与设置格对齐
+      await tester.pump(const Duration(milliseconds: 320));
       final settingsRect = tester.getRect(find.byKey(kHomeTabBarSettingsKey));
       indicator = tester.getRect(find.byKey(kHomeTabBarIndicatorBoxKey));
       expect(
         indicator.center.dx,
         closeTo(settingsRect.center.dx, 1.0),
-        reason: '动画结束后滑块对齐设置格',
+        reason: '动画结束后短条对齐设置格',
       );
     });
 
-    testWidgets('滑块是独立层：不占按键布局，两格仍各占整宽一半', (tester) async {
+    testWidgets('短条是独立层：不占按键布局，两格仍各占整宽一半', (tester) async {
       await pumpBar(tester);
 
       final scheduleSize = tester.getSize(find.byKey(kHomeTabBarScheduleKey));
       final settingsSize = tester.getSize(find.byKey(kHomeTabBarSettingsKey));
       expect(scheduleSize.width, closeTo(settingsSize.width, 0.5));
       expect(scheduleSize.width + settingsSize.width, closeTo(screenW, 0.5));
-      // 滑块不拦点击：它不吃指针事件（pointer-events: none 的 Flutter 对应）
+      // 短条不拦点击：它不吃指针事件（pointer-events: none 的 Flutter 对应）
       expect(
         find.descendant(
           of: find.byKey(kHomeTabBarIndicatorKey),
@@ -398,13 +393,14 @@ void main() {
           matching: find.byType(LiquidLabel),
         ),
       );
-      expect(label.duration, const Duration(milliseconds: 280));
+      expect(label.duration, kLiquidLabelDuration);
+      expect(label.duration, const Duration(milliseconds: 180));
       expect(label.curve, Curves.easeOutCubic);
       expect(label.style.color, isNotNull);
     });
   });
 
-  group('液态化不改功能', () {
+  group('无框选中态不改功能', () {
     testWidgets('两格回调不变：课表格 onTapSchedule、设置格 onSelectTab', (
       tester,
     ) async {
@@ -440,7 +436,7 @@ void main() {
       expect(scheduleTaps, 1);
     });
 
-    testWidgets('液态栏不引入第三个键，也没有 AI 入口', (tester) async {
+    testWidgets('底栏不引入第三个键，也没有 AI 入口', (tester) async {
       await pumpBar(tester);
       expect(
         tester

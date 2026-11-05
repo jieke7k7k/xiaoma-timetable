@@ -15,7 +15,8 @@ import '../ui/bottom_bar_metrics.dart';
 ///
 /// 2.1.7（WB_SPEC_218 第 ④ 节）按 Argon 方案重组为「3 大分组 + 顶部更多菜单」：
 /// - 第一组「课表与学期」：当前学期与周次、课表工具箱（菜单管理并入课表工具页）；
-/// - 第二组「展示与桌面」：外观与底栏、桌面小组件、上课提醒（附权限自检条）；
+/// - 第二组「展示与桌面」：外观与底栏、桌面小组件、上课提醒（提醒开了但缺
+///   权限时，行尾挂柔和琥珀色「待完善」徽标；提醒没开时不检查不显示）。
 /// - 第三组「数据与安全」：数据备份与换机。
 /// - AppBar 右上角 ⋮ 更多菜单：权限自检、关于小马课表（原路由不动，仅触发按钮
 ///   从列表移到 PopupMenuButton）。「更多工具」分组与「菜单管理」「权限」「关于」
@@ -111,15 +112,9 @@ class SettingsPage extends ConsumerWidget {
               subtitle: '今日课程小组件的添加说明',
               route: '/settings-widget',
             ),
-            // 上课提醒入口顶部附权限自检条：权限异常时高亮「权限异常，点击修复」，
-            // 正常时隐藏（见 _PermissionAlertTile）。
-            const _PermissionAlertTile(),
-            _EntryTile(
-              icon: Icons.notifications_active_outlined,
-              title: '上课提醒',
-              subtitle: reminderSubtitle,
-              route: '/settings-reminders',
-            ),
+            // 上课提醒入口行：提醒没开时不检查权限、不显示任何提示；提醒开了
+            // 但缺权限时，行尾挂柔和琥珀色「待完善」徽标（见 _ReminderEntryTile）。
+            _ReminderEntryTile(subtitle: reminderSubtitle),
           ]),
           const SizedBox(height: AppSpacing.group),
           const _GroupHeader('数据与安全'),
@@ -138,10 +133,22 @@ class SettingsPage extends ConsumerWidget {
 
   /// AppBar 右上角 ⋮ 更多菜单（WB_SPEC_218 第 ④ 节）：
   /// 权限自检、关于小马课表——原路由不动，仅触发按钮从 ListView 移到菜单。
+  ///
+  /// 位置与圆角（Argon 方案 Q7）：offset 下沉 10dp、左移 8dp，菜单悬浮在
+  /// ⋮ 正下方、打开后仍能看到顶栏；圆角 16dp；背景浅色 surfaceContainerHigh／
+  /// 深色 surfaceContainer，阴影浅 6／深 8。
   Widget _buildMoreMenu(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final dark = scheme.brightness == Brightness.dark;
     return PopupMenuButton<String>(
       tooltip: '更多',
       icon: const Icon(Icons.more_vert),
+      offset: const Offset(-8, 10),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      color: dark ? scheme.surfaceContainer : scheme.surfaceContainerHigh,
+      elevation: dark ? 8 : 6,
       onSelected: (route) => Navigator.pushNamed(context, route),
       itemBuilder: (ctx) => const [
         PopupMenuItem(
@@ -218,44 +225,37 @@ class _GroupHeader extends StatelessWidget {
 List<Widget> _divideRows(List<Widget> rows) {
   return [
     for (var i = 0; i < rows.length; i++) ...[
-      // 权限自检条（_PermissionAlertTile）自带两侧分隔线：它隐藏时不画，
-      // 可见时自己画——这里不替它画，否则隐藏时它前后两条线会叠成 2px
-      //（2.1.7 复查 Bug 1：大多数用户权限正常时「桌面小组件」与「上课提醒」
-      // 之间的线比别处粗一倍）。
-      if (i > 0 &&
-          rows[i] is! _PermissionAlertTile &&
-          rows[i - 1] is! _PermissionAlertTile)
-        const Divider(height: 1, thickness: 1),
+      if (i > 0) const Divider(height: 1, thickness: 1),
       rows[i],
     ],
   ];
 }
 
-/// 上课提醒入口顶部的权限自检条（WB_SPEC_218 第 ④ 节）。
+/// 上课提醒入口行（Argon 方案 Q3）。
 ///
-/// 读一次三项权限（通知 / 精确闹钟 / 电池优化）：有异常时渲染一条高亮的
-/// 「权限异常，点击修复」行，点进权限自检页；全部正常、读取中或查询失败时
-/// 渲染 [SizedBox.shrink]（隐藏，不占位、不打扰）。
-class _PermissionAlertTile extends ConsumerStatefulWidget {
-  const _PermissionAlertTile();
+/// 提醒没开时不检查权限、不显示任何提示；提醒开了但缺权限时，只在行尾挂
+/// 一个柔和琥珀色胶囊小徽标「待完善」，点行进提醒设置页修复。旧的顶部
+/// 独立权限异常红条已删（太突兀）。
+class _ReminderEntryTile extends ConsumerStatefulWidget {
+  const _ReminderEntryTile({required this.subtitle});
+
+  final String subtitle;
 
   @override
-  ConsumerState<_PermissionAlertTile> createState() => _PermissionAlertTileState();
+  ConsumerState<_ReminderEntryTile> createState() => _ReminderEntryTileState();
 }
 
-class _PermissionAlertTileState extends ConsumerState<_PermissionAlertTile> {
-  bool _abnormal = false;
+class _ReminderEntryTileState extends ConsumerState<_ReminderEntryTile> {
+  /// 是否已发起过权限查询（只查一次；提醒没开时不查）。
+  bool _checked = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _check();
-  }
+  /// 提醒开了且权限有缺失时为 true，行尾挂「待完善」徽标。
+  bool _needsAttention = false;
 
   Future<void> _check() async {
     try {
       final s = await PermissionService.instance.status();
-      if (mounted && !s.allGranted) setState(() => _abnormal = true);
+      if (mounted && !s.allGranted) setState(() => _needsAttention = true);
     } catch (_) {
       // 查询失败（平台通道缺失/异常）按「无异常」处理，不打扰、不闪退
     }
@@ -263,25 +263,46 @@ class _PermissionAlertTileState extends ConsumerState<_PermissionAlertTile> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_abnormal) return const SizedBox.shrink();
+    final reminder = ref.watch(reminderSettingsProvider).value;
+    final enabled = reminder?.enabled ?? false;
+    // 提醒开了才查权限（只查一次）；提醒没开时完全不检查、不显示。
+    if (enabled && !_checked) {
+      _checked = true;
+      _check();
+    }
+    final showBadge = enabled && _needsAttention;
     final scheme = Theme.of(context).colorScheme;
-    // 可见时自带上下两条分隔线（_divideRows 不替它画，见该函数注释）；
-    // 隐藏时整条消失、不留线。
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Divider(height: 1, thickness: 1),
-        ListTile(
-          leading: Icon(Icons.error_outline, color: scheme.error),
-          title: Text(
-            '权限异常，点击修复',
-            style: TextStyle(color: scheme.error, fontWeight: FontWeight.w600),
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.pushNamed(context, '/settings-permissions'),
-        ),
-        const Divider(height: 1, thickness: 1),
-      ],
+    return ListTile(
+      leading: const Icon(Icons.notifications_active_outlined),
+      // 2.0.7 Taste 化：标题字重 medium，副标题沿用主题次要颜色与字号
+      title: const Text('上课提醒', style: TextStyle(fontWeight: FontWeight.w500)),
+      subtitle: Text(widget.subtitle),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showBadge)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '待完善',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.brightness == Brightness.dark
+                      ? const Color(0xFFFFD54F)
+                      : const Color(0xFF8D6E00),
+                ),
+              ),
+            ),
+          if (showBadge) const SizedBox(width: 6),
+          const Icon(Icons.chevron_right),
+        ],
+      ),
+      onTap: () => Navigator.pushNamed(context, '/settings-reminders'),
     );
   }
 }

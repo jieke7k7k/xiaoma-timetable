@@ -199,8 +199,8 @@ void main() {
     expect(find.byType(SettingsPage), findsOneWidget);
     // 壳内一级视图：设置根页不显示左上角返回箭头
     expect(find.byType(BackButton), findsNothing);
-    // 设置在「设置」视图时，栏上设置格为选中态：金黄系
-    // （2.1.6 起按主题亮度分档——浅色主题深金黄，不再写死 == #FFB300）
+    // 设置在「设置」视图时，栏上设置格为选中态：主题 primary
+    // （2026-11-05 按 Argon Q1/Q2 方案改为无框选中态：选中色跟主题走）
     final scheme = Theme.of(
       tester.element(find.byType(HomeTabBar)),
     ).colorScheme;
@@ -210,7 +210,7 @@ void main() {
         matching: find.byType(Icon),
       ),
     );
-    expect(settingsIcon.color, HomeTabBar.activeColorFor(scheme));
+    expect(settingsIcon.color, scheme.primary);
 
     // 设置页挂载触发的两次数据库查询各带一个 10 秒锁警告定时器（假时钟），
     // 测完前把假时钟拨过 10 秒让它们触发释放，否则 teardown 报 Timer pending。
@@ -303,10 +303,42 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('切换动效默认＝错峰淡入：双页常驻，点设置切页、点课表切回', (tester) async {
+  testWidgets('切换动效默认＝柔和（官方 FadeThrough），点设置切页、点课表切回', (tester) async {
     await pumpHome(tester);
 
-    // 默认动效是 A：ParallaxShellBody 挂载，且两页都在树里（常驻保活，
+    // 默认动效是 B：PageTransitionSwitcher 挂载（旧页会卸载、不常驻保活）
+    expect(find.byType(PageTransitionSwitcher), findsOneWidget);
+    expect(find.byType(ParallaxShellBody), findsNothing);
+    expect(find.byType(QuickFadeShellBody), findsNothing);
+    expect(find.byType(WeekViewPage), findsOneWidget);
+
+    // 课表 → 设置：220ms 内完成
+    await tester.tap(find.byKey(kHomeTabBarSettingsKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(SettingsPage), findsOneWidget);
+    // 设置 → 课表：反向同样 220ms（泵 300ms 必然已完成）
+    await tester.tap(find.byKey(kHomeTabBarScheduleKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(WeekViewPage), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('切换动效 A：灵动，双页常驻、切页正常', (tester) async {
+    await tester.runAsync(
+      () => Dao.instance.setSetting(
+        'ui_settings',
+        const UiSettings(
+          shellTransitionStyle: ShellTransitionStyle.fadeThroughParallax,
+        ).encode(),
+      ),
+    );
+    await pumpHome(tester);
+
+    // 动效 A：ParallaxShellBody 挂载，且两页都在树里（常驻保活，
     // 透明度 0 的那页也在，只是不显示——切页时 0 重建）
     expect(find.byType(ParallaxShellBody), findsOneWidget);
     expect(find.byType(WeekViewPage), findsOneWidget);
@@ -329,7 +361,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('切换动效 B：官方 FadeThrough，切页正常', (tester) async {
+  testWidgets('切换动效 B：柔和（官方 FadeThrough），切页正常', (tester) async {
     await tester.runAsync(
       () => Dao.instance.setSetting(
         'ui_settings',
@@ -354,7 +386,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('切换动效 C：极速淡入，双页常驻、切页正常', (tester) async {
+  testWidgets('切换动效 C：疾速，双页常驻、切页正常', (tester) async {
     await tester.runAsync(
       () => Dao.instance.setSetting(
         'ui_settings',

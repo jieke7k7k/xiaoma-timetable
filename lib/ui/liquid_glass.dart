@@ -1,87 +1,47 @@
-/// 液态滑块与丝滑动效常量（WB_SPEC_217 第 1 节）。
+/// 底部栏选中态与丝滑动效常量（WB_SPEC_217 第 1 节；2026-11-05 用户反馈后
+/// 按 Argon Q1 方案改为「无框」选中态）。
 ///
-/// 这一版把「液态滑块 + 丝滑切换」的所有数字集中在这里，栏体、指示器、按压
+/// 这一版把「选中指示 + 丝滑切换」的所有数字集中在这里，栏体、指示器、按压
 /// 回弹各取各的，不在页面里散落硬编码——改手感只改本文件，测试也只
 /// 断言本文件的常量，避免「代码写 380、测试写 300」这种两边分叉。
 ///
 /// 曲线与时长全部按 Argon 方案落地：
-/// - **位移**（指示器滑动）380ms 弹簧曲线，只动位置不动渐变；
-/// - **颜色**（图标 / 文字选中态）280ms 减速曲线，与位移彻底分开；
+/// - **选中指示**（底部 20×3 小短条）320ms 减速曲线，只动位置不动颜色；
+/// - **图标位移 / 缩放** 380ms 弹簧曲线，与指示器分开；
+/// - **颜色**（图标选中态）280ms 减速曲线，与位移彻底分开；
+/// - **文字**（字重 / 颜色）180ms 微过渡；
 /// - **按压**分两段：按下 90ms 极快缩到 0.92，松手 350ms 弹簧回弹。
 /// 三条各管各的，绝不用「一条过渡管所有属性」的老办法（渐变插值天然生硬）。
 ///
 /// 2.1.7 同版本修复：毛玻璃层已整体删除（`BackdropFilter` 在真机上整屏漫溢，
-/// 整片课表蒙雾），本文件不再有任何模糊半径与滤镜；栏体只留半透明底色。
+/// 整片课表蒙雾），本文件不再有任何模糊半径与滤镜；金黄滑块也已删除
+/// （2026-11-05 用户反馈「选中框」——任何包住图标/文字的色块都不要，
+/// 选中态只剩实心图标 + 微放大 + 主题色文字 + 底部小短条）。
 /// 壳切换动效（旧 260ms 淡入＋0.985 微缩放）也已删除，见
 /// `lib/ui/shell_transition.dart`（三种动效开关）。
 library;
 
 import 'package:flutter/widgets.dart';
 
-/// 栏体底色（浅色主题）：白色 58%（`0x94FFFFFF`）。
-///
-/// 2.1.7 同版本修复后栏体不再有毛玻璃层，只有这层半透明底色。
-const Color kLiquidGlassSurfaceColorLight = Color(0x94FFFFFF);
+/// 选中指示小短条的宽度：20dp（Argon 方案 Q1：无框选中态的唯一指示器，
+/// 颜色取主题 primary，不再是固定金黄）。
+const double kSelectionPillWidth = 20;
 
-/// 栏体底色（深色主题）：`#18181C` 64%（`0xA318181C`）。
-const Color kLiquidGlassSurfaceColorDark = Color(0xA318181C);
+/// 选中指示小短条的高度：3dp，两端半圆（半径 1.5dp）。
+const double kSelectionPillHeight = 3;
 
-/// 按主题亮度取栏体底色。
-Color liquidGlassSurfaceColor(Brightness brightness) =>
-    brightness == Brightness.dark
-        ? kLiquidGlassSurfaceColorDark
-        : kLiquidGlassSurfaceColorLight;
+/// 选中指示小短条距栏底的距离：5dp。
+const double kSelectionPillBottomGap = 5;
 
-/// 栏体顶部描边（浅色主题）：白色 75% 的内高光。
-const Color kLiquidGlassEdgeColorLight = Color(0xBFFFFFFF);
+/// 选中指示小短条滑动时长：320ms（Argon 方案 Q1）。
+const Duration kSelectionPillDuration = Duration(milliseconds: 320);
 
-/// 栏体顶部描边（深色主题）：白色 14% 的微白边。
-const Color kLiquidGlassEdgeColorDark = Color(0x24FFFFFF);
+/// 选中指示小短条滑动曲线：减速曲线（Argon 方案 Q1）。
+const Cubic kSelectionPillCurve = Curves.easeOutCubic;
 
-/// 按主题亮度取栏体顶部描边颜色。
-Color liquidGlassEdgeColor(Brightness brightness) =>
-    brightness == Brightness.dark
-        ? kLiquidGlassEdgeColorDark
-        : kLiquidGlassEdgeColorLight;
-
-/// 液态滑动指示器的宽度占栏宽的比例：一块 50% 宽的滑块，两格各占一半。
+/// 选中指示器容器宽度占栏宽的比例：小短条放在 50% 宽的容器里水平居中，
+/// 容器随选中项在左右两格之间滑动（AnimatedAlign -1/+1），短条本身不贴边。
 const double kLiquidIndicatorWidthFactor = 0.5;
-
-/// 液态滑动指示器的高度（栏体 64，上下各留 4）。
-const double kLiquidIndicatorHeight = 56;
-
-/// 液态滑块的金黄渐变（浅色主题，WB_SPEC_218 第 ② 节）：
-/// `#FFE066 65%` → `#F59F00 45%`（半透明染色，非 2.1.6 的满不透明亮金）。
-const List<Color> kLiquidSliderGradientLight = <Color>[
-  Color(0xA6FFE066),
-  Color(0x73F59F00),
-];
-
-/// 液态滑块的金黄渐变（深色主题，WB_SPEC_218 第 ② 节）：
-/// `#F59F00 28%` → `#D97706 18%`（低不透明透光），再叠加金色内发光描边
-/// （[kLiquidSliderBorderDark]）锁边界，杜绝深色下的「泥浆黄」。
-const List<Color> kLiquidSliderGradientDark = <Color>[
-  Color(0x47F59F00),
-  Color(0x2ED97706),
-];
-
-/// 深色主题滑块的描边：`#80FBBF24`（金黄 50% 透明）金色内发光。
-const Color kLiquidSliderBorderDark = Color(0x80FBBF24);
-
-/// 浅色主题滑块的描边：白色 70% 高光（沿用 2.1.6 的 `0xB3FFFFFF`）。
-const Color kLiquidSliderBorderLight = Color(0xB3FFFFFF);
-
-/// 滑块顶部那一抹高光（浅色主题）。
-const List<Color> kLiquidSliderGlossLight = <Color>[
-  Color(0x59FFFFFF),
-  Color(0x00FFFFFF),
-];
-
-/// 滑块顶部高光（深色主题）：压到两成，否则深色底上会显得发白。
-const List<Color> kLiquidSliderGlossDark = <Color>[
-  Color(0x30FFFFFF),
-  Color(0x00FFFFFF),
-];
 
 /// 指示器滑动时长：380ms（Argon 方案）。
 const Duration kLiquidSlideDuration = Duration(milliseconds: 380);
@@ -114,8 +74,11 @@ const double kLiquidActiveIconScale = 1.08;
 /// 选中态图标的上浮距离（逻辑像素，负值向上）。
 const double kLiquidActiveIconLift = -1.5;
 
-/// 标签栏图标尺寸（与 2.1.5 一致的 24）。
-const double kLiquidTabIconSize = 24;
+/// 标签栏图标尺寸：23dp（Argon 方案 Q1）。
+const double kLiquidTabIconSize = 23;
+
+/// 文字过渡时长：180ms 微过渡（Argon 方案 Q1：字重 / 颜色一起过渡）。
+const Duration kLiquidLabelDuration = Duration(milliseconds: 180);
 
 // ---------------------------------------------------------------------------
 // 颜色 / 位移分开过渡的两个小组件（Argon 方案第 2 条）
@@ -184,7 +147,7 @@ class LiquidLabel extends ImplicitlyAnimatedWidget {
     required this.style,
     this.maxLines,
     this.overflow,
-    Duration duration = kLiquidColorDuration,
+    Duration duration = kLiquidLabelDuration,
     Curve curve = kLiquidColorCurve,
   }) : super(duration: duration, curve: curve);
 
