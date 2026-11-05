@@ -15,19 +15,18 @@ import 'package:xiaoma_timetable/pages/settings_page.dart';
 import 'package:xiaoma_timetable/pages/week_view_page.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
 import 'package:xiaoma_timetable/providers/providers.dart';
-import 'package:xiaoma_timetable/widgets/home_capsule.dart';
 import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 
-/// 底部栏两形态的壳层测试（WB_SPEC_215 第 2/3 节；WB_SPEC_216 第 1 节改形态）。
+/// 底部栏（只有新标签栏一种形态）的壳层测试（WB_SPEC_215 第 2/3 节；WB_SPEC_216 第 1 节）。
 ///
-/// 2.1.5 起默认形态是「图标+文字标签栏」[HomeTabBar]（2.1.4 的「通栏贴底」已删除），
-/// 另一种仍是「胶囊贴底」[HomeCapsule]，由 `UiSettings.bottomBarStyle` 切换：
+/// 2.1.7 同版本修复：胶囊形态整体删除，底部栏只有「图标+文字标签栏」
+/// [HomeTabBar]；旧库里的 `bottomBarStyle` 字段整体忽略：
 /// 1. 默认渲染：WeekViewPage + 标签栏（HomeTabBar），恒两键［课表｜设置］；
 /// 2. 点「设置」键切到壳内设置根页，且无左上角返回箭头；
-/// 3. 样式切换即时生效（改 provider 后立刻换成胶囊形态），并已持久化；
-/// 4. 关栏→再开栏恢复上次形态（关栏不清 bottomBarStyle）；
-/// 5. 旧库里残留的旧值 `bar` 读取后回落成标签栏，不会无栏、不会崩；
-/// 6. 关栏（showBottomBar=false）时不出栏，右上角菜单仍能进设置（带返回箭头）。
+/// 3. 关栏→再开栏恢复标签栏；
+/// 4. 旧库里残留的 `bottomBarStyle`（`capsule` / `bar`）读取后直接忽略，
+///    仍出标签栏，不会无栏、不会崩；
+/// 5. 关栏（showBottomBar=false）时不出栏，右上角菜单仍能进设置（带返回箭头）。
 ///
 /// HomeShell 的启动联动 / WeekViewPage 的公告检查会走平台通道与网络，这里用
 /// PackageInfo 打桩 + HttpOverrides 阻断网络，并把首帧放进 runAsync 里让真实
@@ -137,8 +136,6 @@ void main() {
     // 课表一级视图 + 标签栏都存在
     expect(find.byType(WeekViewPage), findsOneWidget);
     expect(find.byType(HomeTabBar), findsOneWidget);
-    // 默认不是胶囊形态；2.1.4 的通栏栏已不存在
-    expect(find.byType(HomeCapsule), findsNothing);
     // 三页签结构已删除（栏是自绘组件，不是系统底栏）
     expect(find.byType(IndexedStack), findsNothing);
     expect(find.byType(BottomNavigationBar), findsNothing);
@@ -207,58 +204,21 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('切换形态即时生效：改成胶囊贴底后立刻换形态，并已持久化', (tester) async {
-    await pumpHome(tester);
-    expect(find.byType(HomeTabBar), findsOneWidget);
-
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(HomeShell)),
-    );
-    // 走设置页同一个入口（UiSettingsNotifier.apply），模拟在外观页点「胶囊贴底」
-    await tester.runAsync(
-      () => container
-          .read(uiSettingsProvider.notifier)
-          .updateWith((s) => s.copyWith(bottomBarStyle: BottomBarStyle.capsule)),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    // 即时生效：不需要重启，直接换成胶囊形态
-    expect(find.byType(HomeCapsule), findsOneWidget);
-    expect(find.byType(HomeTabBar), findsNothing);
-    // 两键功能不变
-    expect(find.text('课表'), findsOneWidget);
-    expect(find.text('设置'), findsOneWidget);
-
-    // 持久化：库里存的是 capsule（杀进程重进保持同一形态）
-    final raw = await tester.runAsync(
-      () => Dao.instance.getSetting('ui_settings'),
-    );
-    expect(UiSettings.fromEncoded(raw).bottomBarStyle, BottomBarStyle.capsule);
-
-    await tester.pump(const Duration(seconds: 11));
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('关栏→再开栏：恢复上次形态（关栏不清样式字段）', (tester) async {
-    // 先切成胶囊并关栏（模拟用户在外观页选了胶囊、又关掉底部栏）
+  testWidgets('关栏→再开栏：恢复标签栏', (tester) async {
+    // 先关栏（模拟用户在外观页关掉底部栏）
     await tester.runAsync(
       () => Dao.instance.setSetting(
         'ui_settings',
-        const UiSettings(
-          bottomBarStyle: BottomBarStyle.capsule,
-          showBottomBar: false,
-        ).encode(),
+        const UiSettings(showBottomBar: false).encode(),
       ),
     );
     await pumpHome(tester);
-    expect(find.byType(HomeCapsule), findsNothing, reason: '关栏时不出任何栏');
-    expect(find.byType(HomeTabBar), findsNothing);
+    expect(find.byType(HomeTabBar), findsNothing, reason: '关栏时不出任何栏');
 
     final container = ProviderScope.containerOf(
       tester.element(find.byType(HomeShell)),
     );
-    // 只把开关打开：不指定样式 → 应恢复上次的「胶囊贴底」，而不是默认标签栏
+    // 只把开关打开：应恢复标签栏
     await tester.runAsync(
       () => container
           .read(uiSettingsProvider.notifier)
@@ -267,58 +227,32 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.byType(HomeCapsule), findsOneWidget);
-    expect(find.byType(HomeTabBar), findsNothing);
-
-    // 再切回标签栏 + 关栏 + 开栏：同样恢复标签栏
-    await tester.runAsync(
-      () => container
-          .read(uiSettingsProvider.notifier)
-          .updateWith(
-            (s) => s.copyWith(
-              bottomBarStyle: BottomBarStyle.tab,
-              showBottomBar: false,
-            ),
-          ),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byType(HomeTabBar), findsNothing);
-    await tester.runAsync(
-      () => container
-          .read(uiSettingsProvider.notifier)
-          .updateWith((s) => s.copyWith(showBottomBar: true)),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(HomeTabBar), findsOneWidget);
-    expect(find.byType(HomeCapsule), findsNothing);
 
     await tester.pump(const Duration(seconds: 11));
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('旧值 bar 读取后回落到标签栏（升级残留不无栏、不崩）', (tester) async {
-    // 模拟 2.1.4 老用户升级：库里存着已删除的旧样式 id "bar"
+  testWidgets('旧 bottomBarStyle 字段整体忽略：有栏且是标签栏（升级残留不无栏、不崩）', (tester) async {
+    // 模拟老用户升级：库里存着已删除的旧样式 id "capsule" / "bar"
     await tester.runAsync(
       () => Dao.instance.setSetting(
         'ui_settings',
-        '{"showBottomBar": true, "bottomBarStyle": "bar"}',
+        '{"showBottomBar": true, "bottomBarStyle": "capsule"}',
       ),
     );
     final raw = await tester.runAsync(
       () => Dao.instance.getSetting('ui_settings'),
     );
     expect(
-      UiSettings.fromEncoded(raw).bottomBarStyle,
-      BottomBarStyle.tab,
-      reason: '旧值 bar 必须回落到新标签栏',
+      UiSettings.fromEncoded(raw).showBottomBar,
+      isTrue,
+      reason: '旧样式字段忽略后，其它字段仍照常解码',
     );
 
     await pumpHome(tester);
-    // 有栏（不是「未知样式 → 无栏」），且是标签栏
+    // 有栏，且是标签栏（不是「未知样式 → 无栏」）
     expect(find.byType(HomeTabBar), findsOneWidget);
-    expect(find.byType(HomeCapsule), findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.pump(const Duration(seconds: 11));
@@ -337,7 +271,6 @@ void main() {
 
     expect(find.byType(WeekViewPage), findsOneWidget);
     expect(find.byType(HomeTabBar), findsNothing);
-    expect(find.byType(HomeCapsule), findsNothing);
 
     // 右上角「更多」菜单里的「设置」项（关栏时恢复显示）→ Push 设置页，有返回箭头
     await tester.tap(find.byIcon(Icons.more_vert));

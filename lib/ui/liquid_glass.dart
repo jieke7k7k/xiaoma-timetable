@@ -1,6 +1,6 @@
-/// 液态玻璃与丝滑动效常量（WB_SPEC_217 第 1 / 第 2 节）。
+/// 液态滑块与丝滑动效常量（WB_SPEC_217 第 1 / 第 2 节）。
 ///
-/// 这一版把「液态玻璃 + 丝滑切换」的所有数字集中在这里，栏体、指示器、按压
+/// 这一版把「液态滑块 + 丝滑切换」的所有数字集中在这里，栏体、指示器、按压
 /// 回弹、壳切换各取各的，不在页面里散落硬编码——改手感只改本文件，测试也只
 /// 断言本文件的常量，避免「代码写 380、测试写 300」这种两边分叉。
 ///
@@ -10,33 +10,16 @@
 /// - **按压**分两段：按下 90ms 极快缩到 0.92，松手 350ms 弹簧回弹；
 /// - **壳切换**260ms（反向 200ms），进入减速、退出加速，叠 0.985→1.0 微缩放。
 /// 四条各管各的，绝不用「一条过渡管所有属性」的老办法（渐变插值天然生硬）。
+///
+/// 2.1.7 同版本修复：毛玻璃层已整体删除（`BackdropFilter` 在真机上整屏漫溢，
+/// 整片课表蒙雾），本文件不再有任何模糊半径与滤镜；栏体只留半透明底色。
 library;
-
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/widgets.dart';
 
-/// 毛玻璃模糊半径（逻辑像素，浅色主题）。
-///
-/// WB_SPEC_218 第 ② 节：从 2.1.6 的 15 重模糊改成 3.5 轻透——sigma 一旦超过
-/// 6，12~14sp 汉字笔画就会被糊成色块，栏后课表文字不可读。低端机可降为 0。
-const double kLiquidGlassBlurSigmaLight = 3.5;
-
-/// 毛玻璃模糊半径（逻辑像素，深色主题）。
-///
-/// 深色下透光感更难做，取 4.0 略高于浅色，仍远低于「糊笔画」的 6 阈值。
-const double kLiquidGlassBlurSigmaDark = 4.0;
-
-/// 按主题亮度取模糊半径：浅色 3.5、深色 4.0。
-double liquidGlassBlurSigma(Brightness brightness) =>
-    brightness == Brightness.dark
-        ? kLiquidGlassBlurSigmaDark
-        : kLiquidGlassBlurSigmaLight;
-
 /// 栏体底色（浅色主题）：白色 58%（`0x94FFFFFF`）。
 ///
-/// 放弃 2.1.6 的 72% 重底色（`surface.withValues(alpha: 0.72)`），改高透染色
-/// 玻璃——固定纯白 + 58% 不透明，让底色透出来、栏后课表内容本身仍可读。
+/// 2.1.7 同版本修复后栏体不再有毛玻璃层，只有这层半透明底色。
 const Color kLiquidGlassSurfaceColorLight = Color(0x94FFFFFF);
 
 /// 栏体底色（深色主题）：`#18181C` 64%（`0xA318181C`）。
@@ -172,14 +155,6 @@ Widget liquidShellTransition(Widget child, Animation<double> animation) {
       child: child,
     ),
   );
-}
-
-/// 毛玻璃层的模糊滤镜：只模糊、不染色（saturate 由引擎侧不支持，改由底色补）。
-///
-/// WB_SPEC_218 第 ② 节起按主题亮度取半径：浅色 3.5、深色 4.0。
-ImageFilter liquidGlassImageFilter({required Brightness brightness}) {
-  final sigma = liquidGlassBlurSigma(brightness);
-  return ImageFilter.blur(sigmaX: sigma, sigmaY: sigma);
 }
 
 // ---------------------------------------------------------------------------

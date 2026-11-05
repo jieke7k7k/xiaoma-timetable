@@ -2,19 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../ui/bottom_bar_metrics.dart';
 import '../ui/liquid_glass.dart';
-import 'home_capsule.dart' show HomeShellTab;
 
-/// 液态玻璃标签栏底部栏（WB_SPEC_216 第 1 节·新默认形态，id `tab`；
-/// WB_SPEC_217 第 1 节·液态玻璃化）。
+/// 壳内一级视图的两键：课表 / 设置（原在 home_capsule.dart，胶囊删除后迁入此处）。
+enum HomeShellTab { schedule, settings }
+
+/// 标签栏底部栏（WB_SPEC_216 第 1 节·新默认形态；
+/// WB_SPEC_217 第 1 节·液态滑块与丝滑切换）。
 ///
-/// 2.1.6 只改**渲染与动效**，布局与功能一律不变：整宽贴底、不悬浮、无阴影、
-/// 两格等宽、图标在上文字在下、文案「课表 / 设置」不变、点「课表」回课表视图
-/// （已在课表则回本周）、点「设置」进壳内设置根页。
+/// 布局与功能：整宽贴底、不悬浮、无阴影、两格等宽、图标在上文字在下、
+/// 文案「课表 / 设置」不变、点「课表」回课表视图（已在课表则回本周）、
+/// 点「设置」进壳内设置根页。
 ///
-/// 液态化的四件事（按 Argon 方案，与样品 `.phone-bar` 对齐）：
-/// - **毛玻璃层独立**：[Stack] 里单独一层 [_LiquidGlass]（`RepaintBoundary`
-///   + [BackdropFilter]，模糊 sigma 浅色 3.5 / 深色 4.0），与按键动画层
-///   彻底分离——切换时玻璃层零重算，按键动画不会带着整条栏一起重绘；
+/// 液态化的三件事（按 Argon 方案，与样品 `.phone-bar` 对齐）：
 /// - **选中态由滑动指示器承载**：一块 50% 宽的金黄渐变滑块（[AnimatedAlign]
 ///   + 380ms 弹簧曲线）只动位置，不再「选中时把整格背景切成渐变」——渐变插值
 ///   在 Flutter 里天生生硬，改走位移后纯 GPU；
@@ -23,9 +22,11 @@ import 'home_capsule.dart' show HomeShellTab;
 ///   绝不用「一条过渡管所有属性」的老办法；
 /// - **按压分两段**：按下 90ms 缩到 0.92，松手 350ms 弹簧回弹（[AnimatedScale]）。
 ///
-/// 与 [HomeCapsule] 的分工不变：本组件是「标签栏」形态，[HomeCapsule] 是
-/// 「胶囊」形态，两者功能完全一致（同一套回调、同一套选中语义），只是外形
-/// 不同，由 `UiSettings.bottomBarStyle` 二选一，见 main.dart 的 HomeShell。
+/// 2.1.7 同版本修复：**毛玻璃层已整体删除**——2.1.6 起的 [_LiquidGlass]
+/// （`RepaintBoundary` + [BackdropFilter]）在真机上整屏漫溢，整片课表
+/// 像蒙了雾、只有底栏本身清晰；sigma 从 15 降到 3.5 也没用，根子在滤镜
+/// 层本身不在数值。栏体只留半透明底色（浅色白 58%／深色 #18181C 64%），
+/// 栏内从此没有任何模糊滤镜，课表永不蒙雾。
 ///
 /// 组件保持纯 UI、不依赖 Riverpod，方便直接构造做 widget 测试
 /// （2.1.6 起因按压态需要 State，改为 [StatefulWidget]，对外构造签名不变）。
@@ -78,7 +79,8 @@ class _HomeTabBarState extends State<HomeTabBar> {
     final scheme = Theme.of(context).colorScheme;
 
     // 贴底不悬浮：elevation 恒 0、无 shadowColor，色块一直铺到屏幕最底部。
-    // 底色改高透染色玻璃（浅色白 58% / 深色 #18181C 64%），模糊由独立的玻璃层提供。
+    // 底色是半透明染色（浅色白 58% / 深色 #18181C 64%），栏内没有任何模糊
+    // 滤镜（2.1.7 同版本修复：毛玻璃层整屏漫溢已删，见本文件头注释）。
     return Material(
       color: liquidGlassSurfaceColor(scheme.brightness),
       elevation: 0,
@@ -107,14 +109,12 @@ class _HomeTabBarState extends State<HomeTabBar> {
             // 字体放大时由 _tab 内部的 Column 居中，不会纵向溢出。
             height: HomeTabBar.height,
             child: Stack(
-              // 三层从下到上：玻璃层（独立层）→ 液态滑块 → 两格按键
+              // 两层从下到上：液态滑块 → 两格按键（玻璃层已删，见本文件头注释）
               fit: StackFit.expand,
               children: [
-                // ① 毛玻璃层：独立一层，只做模糊，不参与任何按键动画
-                const Positioned.fill(child: _LiquidGlass()),
-                // ② 液态滑动指示器：50% 宽，随选中项在左右两格之间滑动
+                // ① 液态滑动指示器：50% 宽，随选中项在左右两格之间滑动
                 _liquidIndicator(),
-                // ③ 两格按键：仍 Expanded 等宽平铺，宽度与 2.1.5 一致
+                // ② 两格按键：仍 Expanded 等宽平铺，宽度与 2.1.5 一致
                 Row(
                   children: [
                     _tab(
@@ -316,38 +316,8 @@ class _HomeTabBarState extends State<HomeTabBar> {
   }
 }
 
-/// 独立的毛玻璃层（Argon 方案第 5 条）：[RepaintBoundary] + [BackdropFilter]，
-/// 只做模糊、没有子节点参与布局，既不与按键动画互相牵连，也不会因为按键重绘
-/// 而反复重算模糊（低端机上这一步最贵）。
-///
-/// 它不挂在栏本体上——栏本体 [Material] 只负责高透染色底色（浅色白 58% /
-/// 深色 #18181C 64%），玻璃层是 [Stack] 里平级的独立一层。
-class _LiquidGlass extends StatelessWidget {
-  const _LiquidGlass();
-
-  @override
-  Widget build(BuildContext context) {
-    return RepaintBoundary(
-      key: kHomeTabBarGlassKey,
-      child: BackdropFilter(
-        key: kHomeTabBarBlurKey,
-        filter: liquidGlassImageFilter(
-          brightness: Theme.of(context).brightness,
-        ),
-        child: const SizedBox.expand(),
-      ),
-    );
-  }
-}
-
-/// 标签栏顶部细分割线的 Key（测试据此断言这条 1 像素线的有无与粗细）
+/// 标签栏顶部细分割线的 Key（测试据此断言这条线有无与粗细）
 const Key kHomeTabBarDividerKey = ValueKey('home_tab_bar_divider');
-
-/// 独立毛玻璃层的 Key（测试据此断言玻璃层与按键层分离）
-const Key kHomeTabBarGlassKey = ValueKey('home_tab_bar_glass');
-
-/// 毛玻璃 BackdropFilter 自身的 Key（测试据此断言模糊 sigma）
-const Key kHomeTabBarBlurKey = ValueKey('home_tab_bar_blur');
 
 /// 液态滑动指示器的 Key（[AnimatedAlign]：测试据此断言对齐、时长、曲线）
 const Key kHomeTabBarIndicatorKey = ValueKey('home_tab_bar_indicator');

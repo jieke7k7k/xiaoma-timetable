@@ -51,7 +51,7 @@ class SettingsPage extends ConsumerWidget {
       ThemeMode.dark => '深色',
       _ => '跟随系统',
     };
-    final barLabel = ui.showBottomBar ? ui.bottomBarStyle.label : '底栏已关';
+    final barLabel = ui.showBottomBar ? '标签栏' : '底栏已关';
     final appearanceSubtitle = '$themeLabel · $barLabel';
 
     final reminder = ref.watch(reminderSettingsProvider).value;
@@ -68,8 +68,8 @@ class SettingsPage extends ConsumerWidget {
         actions: [_buildMoreMenu(context)],
       ),
       body: ListView(
-        // 壳内一级视图底部留白：按当前底部栏形态算（标签栏 64 / 胶囊 0 占位式，
-        // 再加底部安全区），防止栏体遮挡列表末尾；独立 Push 路由维持常规留白。
+        // 壳内一级视图底部留白：按栏高算（标签栏 64，再加底部安全区），
+        // 防止栏体遮挡列表末尾；独立 Push 路由维持常规留白。
         // 口径与主页网格同源，见 ui/bottom_bar_metrics.dart。
         padding: EdgeInsets.only(
           top: AppSpacing.m,
@@ -77,7 +77,6 @@ class SettingsPage extends ConsumerWidget {
               ? bottomBarGridBottomPadding(
                   MediaQuery.paddingOf(context).bottom,
                   showBottomBar: ui.showBottomBar,
-                  style: ui.bottomBarStyle,
                 )
               : AppSpacing.m,
         ),

@@ -12,7 +12,6 @@ import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
 import 'package:xiaoma_timetable/ui/bottom_bar_metrics.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
-import 'package:xiaoma_timetable/widgets/home_capsule.dart';
 import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 
 /// 进主页整页课表能显示完全（WB_SPEC_216 第 2 节）。
@@ -22,11 +21,12 @@ import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 /// - 内容底边必须 **恰好等于栏顶**（留白 == 栏高 + 安全区，既不被压住也不空一大截）；
 /// - 最后一节（最晚一节）的节次文字必须完整落在栏顶之上、且在视口内。
 ///
-/// 三种栏状态各跑一遍：标签栏（默认）/ 胶囊贴底 / 关栏；底部有 34 安全区时再跑
+/// 两种栏状态各跑一遍：标签栏（默认）/ 关栏；底部有 34 安全区时再跑
 /// 一遍标签栏，验证安全区只加一次、口径仍是「栏高 + 安全区」。
 ///
-/// 为让网格真的可滚动，预置 `autoFitHeight: false` + `cellHeight: 96`（上限），
-/// 13 节 × 96 + 两条带子 ≈ 1296，远超一屏。
+/// 另有一组「自适应一屏」断言：开启 autoFitHeight 时整周恰好一屏，
+/// 纵向滚动体的 maxScrollExtent 必须为 0（2.1.7 同版本修复：以前按整高均分
+/// 再加 64 留白，最后一行总要滚一下才看得到）。
 void main() {
   setUpAll(() {
     sqfliteFfiInit();
@@ -76,7 +76,8 @@ void main() {
   Future<void> pumpHome(
     WidgetTester tester, {
     required bool showBottomBar,
-    required BottomBarStyle style,
+    bool autoFitHeight = false,
+    double cellHeight = 96,
     double safeAreaBottom = 0,
   }) async {
     tester.view.physicalSize = const Size(1170, 2532);
@@ -90,15 +91,16 @@ void main() {
       addTearDown(tester.view.resetPadding);
     }
 
-    // 预置界面设置：关掉「行高自适应一屏」并把格高拉到上限，保证网格可滚
+    // 预置界面设置：滚动组关掉「行高自适应一屏」并把格高拉到上限，
+    // 保证网格可滚（13 节 × 96 + 两条带子 ≈ 1296，远超一屏）；
+    // 一屏组反过来开自适应，断言整周恰好一屏
     await tester.runAsync(
       () => Dao.instance.setSetting(
         'ui_settings',
         UiSettings(
-          autoFitHeight: false,
-          cellHeight: 96,
+          autoFitHeight: autoFitHeight,
+          cellHeight: cellHeight,
           showBottomBar: showBottomBar,
-          bottomBarStyle: style,
         ).encode(),
       ),
     );
@@ -144,10 +146,8 @@ void main() {
     final sv = tester.widget<SingleChildScrollView>(viewportFinder);
     final padding = sv.padding! as EdgeInsets;
     final tabBar = find.byType(HomeTabBar);
-    final capsule = find.byType(HomeCapsule);
     Rect? bar;
     if (tabBar.evaluate().isNotEmpty) bar = tester.getRect(tabBar);
-    if (capsule.evaluate().isNotEmpty) bar = tester.getRect(capsule);
     return (viewport: viewport, inset: padding.bottom, bar: bar);
   }
 
@@ -166,7 +166,7 @@ void main() {
   testWidgets('标签栏（默认）：滚动到底最后一节完整露出，留白 == 栏高 + 安全区', (
     tester,
   ) async {
-    await pumpHome(tester, showBottomBar: true, style: BottomBarStyle.tab);
+    await pumpHome(tester, showBottomBar: true);
     expect(find.byType(HomeTabBar), findsOneWidget);
 
     final lastNo = await lastSection(tester);
@@ -175,11 +175,7 @@ void main() {
     expect(m.bar, isNotNull);
     // 留白口径：64（栏高） + 0（无安全区）
     expect(m.inset, kBottomBarTabHeight);
-    expect(m.inset, bottomBarGridBottomPadding(
-      0,
-      showBottomBar: true,
-      style: BottomBarStyle.tab,
-    ));
+    expect(m.inset, bottomBarGridBottomPadding(0, showBottomBar: true));
     // 内容底边恰好落在栏顶：不遮半行、也不空一截
     final contentBottom = m.viewport.bottom - m.inset;
     expect(contentBottom, closeTo(m.bar!.top, 1.0));
@@ -194,48 +190,9 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('胶囊占位式：滚动到底最后一节完整露出，留白 0（槽位吃高度，零遮挡）', (
-    tester,
-  ) async {
-    await pumpHome(tester, showBottomBar: true, style: BottomBarStyle.capsule);
-    expect(find.byType(HomeCapsule), findsOneWidget);
-
-    final lastNo = await lastSection(tester);
-    await scrollToBottom(tester);
-    final m = gridMetrics(tester);
-    expect(m.bar, isNotNull);
-    // 胶囊占位式：网格底部留白 0（WB_SPEC_218 第 ① 节）——槽位自己占布局
-    // 高度，网格滚动视口截断在槽位上方，不再按胶囊高留白
-    expect(m.inset, 0);
-    expect(
-      m.inset,
-      bottomBarGridBottomPadding(
-        0,
-        showBottomBar: true,
-        style: BottomBarStyle.capsule,
-      ),
-    );
-    // 内容底边 = 网格视口底边（即槽位顶边）；胶囊本体在槽位内再低 6dp，
-    // 内容绝不滑到胶囊下面去（零遮挡）
-    final contentBottom = m.viewport.bottom - m.inset;
-    expect(contentBottom, closeTo(m.viewport.bottom, 0.5));
-    expect(
-      m.bar!.top,
-      greaterThan(contentBottom),
-      reason: '胶囊在滚动视口之下，不遮挡滚动中的课表内容',
-    );
-    final last = tester.getRect(find.text('$lastNo').first);
-    expect(last.top, greaterThanOrEqualTo(0));
-    expect(last.bottom, lessThanOrEqualTo(m.viewport.bottom + 0.5));
-
-    await tester.pump(const Duration(seconds: 11));
-    await tester.pumpWidget(const SizedBox());
-  });
-
   testWidgets('关栏：滚动到底最后一节完整露出，留白 16（不被任何栏遮挡）', (tester) async {
-    await pumpHome(tester, showBottomBar: false, style: BottomBarStyle.tab);
+    await pumpHome(tester, showBottomBar: false);
     expect(find.byType(HomeTabBar), findsNothing);
-    expect(find.byType(HomeCapsule), findsNothing);
 
     final lastNo = await lastSection(tester);
     await scrollToBottom(tester);
@@ -254,12 +211,7 @@ void main() {
   });
 
   testWidgets('带底部安全区 34：标签栏留白 == 64 + 34，安全区只加一次', (tester) async {
-    await pumpHome(
-      tester,
-      showBottomBar: true,
-      style: BottomBarStyle.tab,
-      safeAreaBottom: 34,
-    );
+    await pumpHome(tester, showBottomBar: true, safeAreaBottom: 34);
     final barRect = tester.getRect(find.byType(HomeTabBar));
     expect(barRect.height, kBottomBarTabHeight + 34, reason: '栏体自己吃掉安全区');
 
@@ -267,17 +219,35 @@ void main() {
     await scrollToBottom(tester);
     final m = gridMetrics(tester);
     expect(m.inset, barRect.height, reason: '留白 == 栏高（含安全区）');
-    expect(
-      m.inset,
-      bottomBarGridBottomPadding(
-        34,
-        showBottomBar: true,
-        style: BottomBarStyle.tab,
-      ),
-    );
+    expect(m.inset, bottomBarGridBottomPadding(34, showBottomBar: true));
     final contentBottom = m.viewport.bottom - m.inset;
     expect(contentBottom, closeTo(m.bar!.top, 1.0));
     final last = tester.getRect(find.text('$lastNo').first);
+    expect(last.bottom, lessThanOrEqualTo(m.bar!.top + 0.5));
+
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('自适应一屏：开栏时整周恰好一屏，纵向不用滚动', (tester) async {
+    await pumpHome(tester, showBottomBar: true, autoFitHeight: true);
+    expect(find.byType(HomeTabBar), findsOneWidget);
+
+    // 2.1.7 同版本修复：行高先扣底栏留白再均分，整周总高 + 留白 == 视口高，
+    // 纵向滚动体不可滚动；最后一节的节次文字完整在视口内、栏顶之上
+    final vertical = tester
+        .stateList<ScrollableState>(find.byType(Scrollable))
+        .firstWhere((s) => s.axisDirection == AxisDirection.down);
+    expect(
+      vertical.position.maxScrollExtent,
+      0,
+      reason: '整周恰好一屏：最后一行不用滚动就看得到',
+    );
+    final m = gridMetrics(tester);
+    expect(m.inset, kBottomBarTabHeight);
+    final lastNo = await lastSection(tester);
+    final last = tester.getRect(find.text('$lastNo').first);
+    expect(last.top, greaterThanOrEqualTo(0));
     expect(last.bottom, lessThanOrEqualTo(m.bar!.top + 0.5));
 
     await tester.pump(const Duration(seconds: 11));

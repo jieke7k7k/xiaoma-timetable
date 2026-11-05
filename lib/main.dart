@@ -29,7 +29,6 @@ import 'pages/settings_sections.dart';
 import 'pages/time_settings_page.dart';
 import 'pages/week_view_page.dart';
 import 'providers/providers.dart';
-import 'widgets/home_capsule.dart';
 import 'widgets/home_tab_bar.dart';
 import 'widgets/permission_guide.dart';
 
@@ -376,29 +375,20 @@ class _RootGate extends ConsumerWidget {
 ///   底部栏恒两键；设置根页作为一级视图、无返回箭头。
 /// - 关：恢复为 2.1.1 单页结构，设置从右上角菜单 Push 进入（300ms 右滑、有返回箭头）。
 ///
-/// 2.1.5（WB_SPEC_216 第 1 节）：开栏时底部栏按 `UiSettings.bottomBarStyle`
-/// 二选一，两种形态都**贴底不悬浮**（无悬浮间距、无悬浮阴影）：
-/// - [BottomBarStyle.tab] 图标+文字标签栏（默认）：整宽贴住屏幕底边、顶部一条
-///   1 像素细分割线，两格等宽（图标在上、文字在下），选中态图标与文字同为琥珀黄；
-/// - [BottomBarStyle.capsule] 胶囊贴底：栏体保持胶囊外形，贴底。
+/// 2.1.5（WB_SPEC_216 第 1 节）：开栏时底部栏是图标+文字标签栏——整宽贴住
+/// 屏幕底边、顶部一条细分割线，两格等宽（图标在上、文字在下），选中态图标与
+/// 文字同为琥珀黄；贴底不悬浮（无悬浮间距、无悬浮阴影）。
 ///
 /// 2.1.6（WB_SPEC_217）：
-/// - 第 1 节：标签栏形态 [HomeTabBar] 改为**液态玻璃**渲染（毛玻璃独立层 +
-///   50% 宽滑动指示器 + 弹簧曲线 + 按压回弹），布局、文案、功能一律不变；
-///   胶囊形态原样保留不做液态化。
+/// - 第 1 节：标签栏加 50% 宽滑动指示器 + 弹簧曲线 + 按压回弹，布局、文案、
+///   功能一律不变；
 /// - 第 2 节：壳内两个一级视图的切换改为 260ms（反向 200ms）、进入减速 /
 ///   退出加速、淡入 + 0.985→1.0 微缩放，消除纯淡入的重影感；防困死与系统
 ///   返回逻辑不动。
 ///
-/// 2.1.7（WB_SPEC_218 第 ① 节）：胶囊形态从「悬浮贴底」改为**占位式**——
-/// 主布局底部切出一整条专属槽位（高 64 + 安全区、背景与页面底色一致），
-/// 胶囊在槽位内居中，课表/设置的滚动视口截断在槽位上方，内容永远不滑到
-/// 胶囊下面去；胶囊外观（圆角 26、居中自适应宽、两键）与样式切换、关栏
-/// 行为一律不变。标签栏形态保持悬浮 overlay（轻透玻璃需要底下内容透出来）。
-///
-/// 2.1.4 的「通栏贴底」（`BottomBarStyle.bar`）已随 `lib/widgets/home_bottom_bar.dart`
-/// 一并删除；旧库里残留的字符串 `bar` 由 `BottomBarStyle.fromId` 回落到 [BottomBarStyle.tab]，
-/// 不会出现「未知样式 → 无栏」或崩溃。
+/// 2.1.7 同版本修复：胶囊形态整体删除（用户定：只要新标签栏），底部栏只有
+/// 标签栏一种；毛玻璃层整体删除（`BackdropFilter` 真机整屏漫溢，整片课表
+/// 蒙雾），栏体只留半透明底色。
 ///
 /// 保留 [ConsumerStatefulWidget]：启动联动（提醒重排 / 常驻通知 / 小组件 /
 /// 快捷入口 / 自动备份）需要 ref，且壳内一级视图切换要用 setState。
@@ -520,17 +510,15 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           setState(() => _tab = HomeShellTab.schedule);
         }
       },
-      child: _buildShell(ui.bottomBarStyle),
+      child: _buildShell(),
     );
   }
 
-  /// 壳层主体：按底部栏形态二选一。
+  /// 壳层主体：只有新标签栏一种形态。
   ///
-  /// - 胶囊（WB_SPEC_218 第 ① 节）：占位式——[Column] 把主布局底部切出一整条
-  ///   专属槽位，课表/设置的滚动视口截断在槽位上方，内容永远不滑到胶囊下面；
-  /// - 标签栏（液态玻璃）：悬浮 overlay——[Stack] 里玻璃栏浮在视图之上，
-  ///   [BackdropFilter] 才有背景可糊（轻透玻璃需要底下有内容透出来）。
-  Widget _buildShell(BottomBarStyle style) {
+  /// 标签栏是悬浮 overlay——[Stack] 里栏浮在视图之上，网格底部按栏高留白
+  /// （见 [bottomBarGridBottomInset]），最后一节不会被栏压住。
+  Widget _buildShell() {
     // 底层：当前一级视图，原地淡入淡出切换，不压导航栈
     // 2.1.6（WB_SPEC_217 第 2 节）：260ms（反向 200ms）、进入减速 /
     // 退出加速，过渡从「纯淡入」升级为「淡入 + 0.985→1.0 微缩放」——
@@ -551,18 +539,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       ),
     );
 
-    if (style == BottomBarStyle.capsule) {
-      return Column(
-        children: [
-          Expanded(child: view),
-          _buildCapsuleSlot(),
-        ],
-      );
-    }
     return Stack(
       children: [
         Positioned.fill(child: view),
-        // 顶层：液态玻璃标签栏（恒两键［课表｜设置］），悬浮贴底
+        // 顶层：标签栏（恒两键［课表｜设置］），悬浮贴底
         Positioned(
           left: 0,
           right: 0,
@@ -574,37 +554,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           ),
         ),
       ],
-    );
-  }
-
-  /// 胶囊占位式专属槽位（WB_SPEC_218 第 ① 节；2.1.7 复查 Bug 5 后改 padding 式）。
-  ///
-  /// 主布局底部一整条不滚动区域：背景与页面底色一致、最小高 = 胶囊槽高 64 +
-  /// 底部安全区，胶囊在槽位内居中，距课表滚动区底边与系统手势栏顶边各留
-  /// 6dp；悬浮「离底边留空隙、不贴死底边」在此依然遵守（胶囊不顶到手势栏）。
-  /// 槽位不用写死高度的 SizedBox：系统字体放大时胶囊纵向伸展，Container
-  /// 用 minHeight 64 + 上下各 6 padding 随内容长高，不顶破、不溢出黄条。
-  Widget _buildCapsuleSlot() {
-    final scheme = Theme.of(context).colorScheme;
-    return Material(
-      // 背景与页面底色一致，把槽位视觉上「并入」页面，而不是一块悬浮遮挡
-      color: scheme.surface,
-      child: SafeArea(
-        top: false,
-        child: Container(
-          constraints: const BoxConstraints(
-            minHeight: kCapsuleSlotHeight,
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Center(
-            child: HomeCapsule(
-              activeTab: _tab,
-              onSelectTab: (tab) => setState(() => _tab = tab),
-              onTapSchedule: _onTapScheduleKey,
-            ),
-          ),
-        ),
-      ),
     );
   }
 

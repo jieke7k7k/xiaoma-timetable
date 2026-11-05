@@ -1119,38 +1119,41 @@ class _GridArea extends ConsumerWidget {
         final columnCount = displayDays.length;
         final cellWidth =
             (constraints.maxWidth - timeAxisWidth - 1) / columnCount;
+        // 底部安全留白（WB_SPEC_213 网格处理；2.1.5 按栏高分档）：
+        // 只加在滚动视图底部，不改外框高度、不改外层 Column/Expanded 约束、
+        // 不因读取 showBottomBar 导致课表组件 Key 变化或 ScrollController 重建。
+        // 口径统一在 ui/bottom_bar_metrics.dart：开栏 64（栏体实测高度）另加
+        // 底部安全区、关栏 16——既不会让内容被栏遮住，也不会留白过大
+        // （WB_SPEC_216 第 2 节：滚动到底最后一节必须完整露出）。
+        final bottomInset = bottomBarGridBottomPadding(
+          MediaQuery.paddingOf(context).bottom,
+          showBottomBar: ui.showBottomBar,
+        );
         // 行高：默认用界面设置的固定格子高度；开启「自适应一屏」（B1）时
-        // 按可用高度均分（分隔带高度固定扣除），整表恰好一屏
+        // 按可用高度均分——先扣掉底部留白与分隔带高度再均分，整表恰好一屏。
+        // 2.1.7 同版本修复：以前按整高均分、再在滚动视图底部加留白，总高
+        // 超出视口约 64px，最后一行总要滚一下才看得到（用户反馈「不能一次
+        // 性显示完整课表」）。
         var rowHeight = ui.cellHeight;
         if (ui.autoFitHeight && constraints.maxHeight.isFinite) {
           final fit =
-              (constraints.maxHeight - activeBands.length * kBandHeight) /
+              (constraints.maxHeight -
+                      bottomInset -
+                      activeBands.length * kBandHeight) /
                   sectionCount;
           rowHeight = fit < 24 ? 24 : fit;
         }
         final totalHeight =
             sectionCount * rowHeight + activeBands.length * kBandHeight;
-        // 内容不足一屏时按可视高撑满（格子保持设定高度，空白留在底部）。
-        // 2.0.2（WB-202 第 1 项）：删掉 2.0.1 加的底部内边距——底栏三键改等大
-        // 平铺后没有凸起按钮，再留一层与底栏等高的内边距属于和底栏重复计算，
-        // 课表下方空一大截；网格区恢复贴合到底栏（与 2.0.0 一致）。
+        // 内容不足一屏时按「可视高 - 底部留白」撑满（格子保持设定高度，空白留在底部）。
+        // 2.1.7 同版本修复：以前按可视高整高撑满，滚动视图底部再加留白，总高
+        // 超出视口恰好一个留白（开栏 64px）——即使整表本已一屏，仍多出 64px
+        // 幽灵滚动，最后一行总要滚一下才看得到。撑满口径改成
+        // maxHeight - bottomInset 后，总高 + 留白 == 视口高，不再多滚。
         final contentHeight =
-            totalHeight < constraints.maxHeight
-                ? constraints.maxHeight
+            totalHeight < constraints.maxHeight - bottomInset
+                ? constraints.maxHeight - bottomInset
                 : totalHeight;
-        // 底部安全留白（WB_SPEC_213 网格处理；2.1.5 按底部栏形态分档）：
-        // 只加在滚动视图底部，不改外框高度、不改外层 Column/Expanded 约束、
-        // 不因读取 showBottomBar / bottomBarStyle 导致课表组件 Key 变化或
-        // ScrollController 重建。口径统一在 ui/bottom_bar_metrics.dart：
-        // 标签栏 64（该 widget 实测高度）、胶囊占位式 0（槽位占布局高度、
-        // 网格不再留白）、关栏 16，
-        // 另加底部安全区高度——既不会让内容被栏遮住，也不会留白过大
-        // （WB_SPEC_216 第 2 节：滚动到底最后一节必须完整露出）。
-        final bottomInset = bottomBarGridBottomPadding(
-          MediaQuery.paddingOf(context).bottom,
-          showBottomBar: ui.showBottomBar,
-          style: ui.bottomBarStyle,
-        );
         return MediaQuery(
           // 降灵敏：子树手势触发距离 18 → 30，静置手指不再拖动课表
           data: MediaQuery.of(context).copyWith(

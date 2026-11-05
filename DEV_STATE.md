@@ -1,8 +1,29 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-11-04（2.1.7+32：WB_SPEC_218 胶囊零遮挡 + 玻璃轻透 + 删云同步 + 设置重组）
+> 更新时间：2026-11-05（2.1.7+32 同版本修复：去雾 + 删胶囊 + 整表一屏，不升版）
 
 ## 做到哪了
+
+## 2026-11-05（2.1.7 同版本修复：去雾 + 删胶囊 + 整表一屏，不升版）
+
+用户 2.1.7 真机反馈三条（2026-11-05 20:11，截图状态栏 8:11）：「整片课表都糊，像蒙了雾」「只有底部栏不模糊」「不能一次性显示完整课表」，另立三条新规矩：修复 bug 不算更新、不升版本号、胶囊贴底去掉、只要新标签栏。本次同版本修复（pubspec 仍 2.1.7+32，不打新 tag，Release v2.1.7 已存在；App 内按 versionCode 比对，同版本不提示更新，需手动重装）。
+
+### 去雾：毛玻璃层整层删除
+- 根因：`HomeTabBar` 里 `_LiquidGlass`（`RepaintBoundary` + `BackdropFilter`）无 ClipRect，真机上整屏漫溢——整片课表糊、只有栏本身（滑块与按键画在滤镜层之上）清晰；2.1.6「根本看不清原内容」与 2.1.7「还是模糊」是同一根因，sigma 15→3.5 降数值没用。本地核对 Flutter 框架源码：`RenderBackdropFilter.paint` 用 `offset & size` 解滤镜，`BackdropFilterLayer.addToScene` 调 `pushBackdropFilter` 不带 bounds——滤镜区域由祖先裁剪决定，栏内 Stack 的 hardEdge 裁剪未能兜住，属实测行为而非猜测。
+- 改动：`home_tab_bar.dart` 删 `_LiquidGlass` 层与 `kHomeTabBarGlassKey` / `kHomeTabBarBlurKey`，Stack 只剩滑块＋按键两层；`liquid_glass.dart` 删 `liquidGlassImageFilter` / `liquidGlassBlurSigma` / sigma 常量与 `dart:ui` import；`HomeShellTab` 枚举从 `home_capsule.dart` 迁入 `home_tab_bar.dart`。栏体只留半透明底色（浅色白 58%／深色 #18181C 64%）＋细分割线＋金色滑块。
+- 测试：`liquid_bottom_bar_test.dart` 玻璃组改「栏内没有任何 BackdropFilter」（浅色＋深色两例，含玻璃 Key 消失断言）。
+
+### 删胶囊：只留新标签栏
+- 改动：删 `lib/widgets/home_capsule.dart` + `test/home_capsule_test.dart`；删 `BottomBarStyle` 枚举与 `UiSettings.bottomBarStyle` 字段（构造／copyWith／toJson／fromEncoded 全清，旧库里的 `bottomBarStyle` 值读时直接忽略）；`main.dart` `_buildShell()` 不再分形态、删 `_buildCapsuleSlot`；`settings_sections.dart` 删「底部栏样式」ChoiceChip 行与 `bottomBarStyleChipKey`；`settings_page.dart` 副标题改「标签栏」；`bottom_bar_metrics.dart` 删 `kCapsuleSlotHeight` / `kBottomBarKeyHeight`，留白口径改无形态参数（开栏 64／关栏 16）。
+- 测试：`ui_settings_test.dart` 删形态相关 2 例、新增「旧字段整体忽略」1 例；`bottom_bar_style_test.dart` 删胶囊组 2 例、留白三态改两态；`home_shell_test.dart` 删切换形态 1 例、关栏恢复改写、旧值 bar 用例改「旧字段忽略」；`settings_sections_test.dart` 删样式 3 例、新增「无样式选项」1 例；`home_grid_bottom_inset_test.dart` 删胶囊用例。
+
+### 整表一屏：自适应行高先扣留白
+- 根因（`week_view_page.dart` `_GridArea`）：autoFitHeight 按网格区整高均分行高得 totalHeight＝视口高，随后 `SingleChildScrollView` 又加 `padding: bottomInset`（开栏 64＋安全区），总内容比视口高出约 64px，最后一行必须滚动；且 `contentHeight = max(totalHeight, maxHeight)` 按整高撑满，即使内容本已一屏也多出 64px 幽灵滚动。
+- 改动：先算 bottomInset，自适应均分前从可用高度里扣掉它；撑满口径改 `max(totalHeight, maxHeight - bottomInset)`。总高＋留白 == 视口高。
+- 测试：`home_grid_bottom_inset_test.dart` 新增「自适应一屏：开栏时整周恰好一屏，纵向不用滚动」（断言 `maxScrollExtent == 0` 且最后一节节次文字在栏顶之上）。
+
+### 验证
+- `flutter analyze`：No issues found；`flutter test`：**383 例全绿**（396 − 删 18 ＋ 新增 5：删胶囊文件 6、bottom_bar_style 胶囊组 2、ui_settings 形态 2、liquid 玻璃组 3、home_shell 切换形态 1、settings_sections 样式 3、home_grid 胶囊 1；新增浅色/深色无滤镜 2、ui 旧字段忽略 1、settings 无样式选项 1、home_grid 自适应一屏 1）。
 
 ## 2026-11-04（2.1.7+32：WB_SPEC_218 胶囊零遮挡 + 玻璃轻透 + 删云同步 + 设置重组）
 

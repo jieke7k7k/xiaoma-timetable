@@ -1,18 +1,15 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xiaoma_timetable/ui/bottom_bar_metrics.dart';
 import 'package:xiaoma_timetable/ui/liquid_glass.dart';
-import 'package:xiaoma_timetable/widgets/home_capsule.dart' show HomeShellTab;
 import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 
-/// 标签栏液态玻璃化的渲染与动效断言（WB_SPEC_217 第 1 节）。
+/// 标签栏液态滑块与动效断言（WB_SPEC_217 第 1 节）。
 ///
 /// 按 Argon 方案逐条落地并逐条断言：
-/// 1. 毛玻璃层独立（[RepaintBoundary] + [BackdropFilter]，浅色 sigma 3.5／
-///    深色 sigma 4.0，2.1.7 WB_SPEC_218 第 ② 节轻透），与按键动画层分离——
-///    按键不在玻璃层里；
+/// 1. **栏内没有任何模糊滤镜**：2.1.7 同版本修复——毛玻璃层（[RepaintBoundary]
+///    + [BackdropFilter]）整体删除，它在真机上整屏漫溢、整片课表蒙雾；
+///    栏体只留半透明底色；
 /// 2. 底色不透明度浅色 0.58／深色 0.64、顶部细分割线（浅色 0.8dp／深色 0.6dp）、
 ///    贴底无阴影；
 /// 3. 液态指示器：宽度 = 栏宽 50%、[AnimatedAlign] 对齐随选中项变化、
@@ -62,91 +59,33 @@ void main() {
         .first,
   );
 
-  group('毛玻璃层（Argon 方案第 5 条：必须与按键动画层分离）', () {
-    testWidgets('玻璃层独立存在：RepaintBoundary + BackdropFilter，铺满栏体', (
-      tester,
-    ) async {
+  group('无模糊滤镜（2.1.7 同版本修复：毛玻璃层整屏漫溢已删）', () {
+    testWidgets('栏内没有任何 BackdropFilter：整片课表永不蒙雾', (tester) async {
       await pumpBar(tester);
 
-      expect(find.byKey(kHomeTabBarGlassKey), findsOneWidget);
-      expect(tester.widget(find.byKey(kHomeTabBarGlassKey)), isA<RepaintBoundary>());
-      expect(find.byKey(kHomeTabBarBlurKey), findsOneWidget);
-      expect(
-        tester.widget(find.byKey(kHomeTabBarBlurKey)),
-        isA<BackdropFilter>(),
-        reason: '玻璃层里必须有真正的 BackdropFilter',
-      );
-      // 铺满整个栏体（上下左右不留缝）
-      final glass = tester.getRect(find.byKey(kHomeTabBarGlassKey));
-      final bar = tester.getRect(find.byType(HomeTabBar));
-      expect(glass.width, closeTo(bar.width, 0.5));
-      expect(glass.height, closeTo(bar.height, 0.5));
-    });
-
-    testWidgets('模糊 sigma 轻透化：浅色 3.5、深色 4.0（不再 15 重模糊）', (
-      tester,
-    ) async {
-      await pumpBar(tester);
-
-      final blur = tester.widget<BackdropFilter>(find.byKey(kHomeTabBarBlurKey));
-      // 常量口径：轻透，sigma 不超过 6（否则 12~14sp 汉字糊成色块）
-      expect(kLiquidGlassBlurSigmaLight, inInclusiveRange(3, 6));
-      expect(kLiquidGlassBlurSigmaLight, 3.5);
-      expect(kLiquidGlassBlurSigmaDark, 4.0);
-      expect(liquidGlassBlurSigma(Brightness.light), 3.5);
-      expect(liquidGlassBlurSigma(Brightness.dark), 4.0);
-      // 默认浅色主题：实际挂到 BackdropFilter 上的滤镜确实是 3.5（不是写死的 15）
-      expect(blur.filter.toString(), contains('ImageFilter.blur(3.5, 3.5'));
-      // 常量与实现同源：改了常量，滤镜跟着变
-      expect(
-        liquidGlassImageFilter(brightness: Brightness.light).toString(),
-        blur.filter.toString(),
-        reason: '滤镜必须由 liquidGlassImageFilter 按主题亮度生成',
-      );
-      expect(
-        liquidGlassImageFilter(brightness: Brightness.light),
-        isA<ImageFilter>(),
-      );
-    });
-
-    testWidgets('玻璃层与按键层分离：按键不在 BackdropFilter 里面', (tester) async {
-      await pumpBar(tester);
-
-      // 两格按键都不是玻璃层的后代 → 切换时按键动画不会带着模糊一起重算
-      expect(
-        find.ancestor(
-          of: find.byKey(kHomeTabBarScheduleKey),
-          matching: find.byType(BackdropFilter),
-        ),
-        findsNothing,
-      );
-      expect(
-        find.ancestor(
-          of: find.byKey(kHomeTabBarSettingsKey),
-          matching: find.byType(BackdropFilter),
-        ),
-        findsNothing,
-      );
-      expect(
-        find.ancestor(
-          of: find.byKey(kHomeTabBarScheduleKey),
-          matching: find.byKey(kHomeTabBarGlassKey),
-        ),
-        findsNothing,
-      );
-      // 反过来：玻璃层里也没有任何按键
+      // 栏体子树里一个模糊滤镜都不许有——滤镜层无 ClipRect 整屏漫溢，
+      // sigma 从 15 降到 3.5 也没用，根子在滤镜层本身
+      expect(find.byType(BackdropFilter), findsNothing);
       expect(
         find.descendant(
-          of: find.byKey(kHomeTabBarGlassKey),
-          matching: find.byType(InkWell),
+          of: find.byType(HomeTabBar),
+          matching: find.byType(BackdropFilter),
         ),
         findsNothing,
       );
+      // 玻璃层的两个 Key 也随之消失（没有 RepaintBoundary 包着的滤镜层了）
+      expect(find.byKey(const ValueKey('home_tab_bar_glass')), findsNothing);
+      expect(find.byKey(const ValueKey('home_tab_bar_blur')), findsNothing);
+    });
+
+    testWidgets('深色主题下栏内同样没有任何 BackdropFilter', (tester) async {
+      await pumpBar(tester, brightness: Brightness.dark);
+      expect(find.byType(BackdropFilter), findsNothing);
     });
   });
 
   group('栏体：高透染色底色 + 顶部细分割线 + 贴底无阴影', () {
-    testWidgets('底色 = 高透染色玻璃：浅色白 58%（不再 72% 重底色）', (tester) async {
+    testWidgets('底色 = 半透明染色：浅色白 58%（不再 72% 重底色）', (tester) async {
       await pumpBar(tester);
 
       final material = barMaterial(tester);

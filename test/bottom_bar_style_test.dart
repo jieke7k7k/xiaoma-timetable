@@ -1,23 +1,20 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xiaoma_timetable/models/ui_settings.dart';
 import 'package:xiaoma_timetable/ui/bottom_bar_metrics.dart';
 import 'package:xiaoma_timetable/ui/liquid_glass.dart';
-import 'package:xiaoma_timetable/widgets/home_capsule.dart';
 import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 
-/// 底部栏两形态的渲染断言（WB_SPEC_215 第 2/3 节；WB_SPEC_216 第 1 节改形态）。
+/// 底部栏（只有新标签栏一种形态）的渲染断言（WB_SPEC_215 第 2/3 节；WB_SPEC_216 第 1 节）。
 ///
-/// 两个形态都贴底、都不悬浮，只换外形：
-/// - 形态 A「图标+文字标签栏」[HomeTabBar]（默认）：整宽、贴屏幕底边、无悬浮阴影、
-///   顶部一条细分割线（浅色 0.8dp／深色 0.6dp，2.1.7 WB_SPEC_218 第 ② 节），
-///   两格等宽（图标在上、文字在下），
-///   选中态图标与文字同为琥珀黄，未选中态同为灰；
-/// - 形态 B「胶囊占位式」[HomeCapsule]（2.1.7 WB_SPEC_218 第 ① 节改占位式，
-///   不再贴底）：宽度随内容自适应、在主布局底部专属槽位内居中、无阴影、圆角 26。
+/// 标签栏 [HomeTabBar]（默认、唯一形态）：整宽、贴屏幕底边、无悬浮阴影、
+/// 顶部一条细分割线（浅色 0.8dp／深色 0.6dp，2.1.7 WB_SPEC_218 第 ② 节），
+/// 两格等宽（图标在上、文字在下），
+/// 选中态图标与文字同为琥珀黄，未选中态同为灰。
 ///
-/// 2.1.4 的「通栏贴底」形态（HomeBottomBar）已删除，本文件不再有它的用例。
+/// 2.1.7 同版本修复：胶囊形态整体删除（用户定：只要新标签栏），本文件不再有
+/// 它的用例；毛玻璃层整体删除（`BackdropFilter` 真机整屏漫溢），栏体只留
+/// 半透明底色，栏内无任何模糊滤镜（见 liquid_bottom_bar_test.dart 的断言）。
 ///
 /// 这里是纯 widget 测试：不碰库、不碰 Riverpod，直接把栏放进 Stack 底部，
 /// 断言几何与外观（宽度、贴底位置、elevation、分割线、颜色、格宽），以及键的回调语义。
@@ -49,20 +46,7 @@ void main() {
         onTapSchedule: _noopVoid,
       );
 
-  /// HomeShell 里胶囊形态的实际包法：贴底 + 居中 + SafeArea
-  Widget capsuleAtBottom() => const SafeArea(
-    top: false,
-    child: Align(
-      alignment: Alignment.bottomCenter,
-      child: HomeCapsule(
-        activeTab: HomeShellTab.schedule,
-        onSelectTab: _noop,
-        onTapSchedule: _noopVoid,
-      ),
-    ),
-  );
-
-  group('形态 A：图标+文字标签栏 HomeTabBar（默认）', () {
+  group('图标+文字标签栏 HomeTabBar（唯一形态）', () {
     testWidgets('整宽 + 贴屏幕底边：无悬浮间距，实测高度 64', (tester) async {
       await pumpBar(tester, tabBarAtBottom());
 
@@ -88,15 +72,12 @@ void main() {
             )
             .first,
       );
-      expect(material.elevation, 0, reason: '两形态都不悬浮，不得有悬浮阴影');
+      expect(material.elevation, 0, reason: '标签栏不悬浮，不得有悬浮阴影');
       expect(material.shadowColor, Colors.transparent);
       expect(material.color, isNotNull, reason: '栏体背景取表面色');
       // 留白口径用的就是这一栏的实测高度
       expect(
-        bottomBarGridBottomInset(
-          showBottomBar: true,
-          style: BottomBarStyle.tab,
-        ),
+        bottomBarGridBottomInset(showBottomBar: true),
         tester.getSize(find.byType(HomeTabBar)).height,
       );
     });
@@ -379,121 +360,30 @@ void main() {
     });
   });
 
-  group('形态 B：胶囊贴底 HomeCapsule（保留）', () {
-    testWidgets('胶囊宽度随内容自适应（不是整宽）+ 贴屏幕底边', (tester) async {
-      await pumpBar(tester, capsuleAtBottom());
-
-      final size = tester.getSize(find.byType(HomeCapsule));
-      final topLeft = tester.getTopLeft(find.byType(HomeCapsule));
-      // 宽度随内容自适应：明显小于整宽，且水平居中
-      expect(size.width, lessThan(screenW));
-      expect(size.width, greaterThan(0));
-      expect(
-        topLeft.dx + size.width / 2,
-        closeTo(screenW / 2, 0.5),
-        reason: '胶囊仍居中',
-      );
-      // 贴底：底边与屏幕底边齐平
-      expect(
-        topLeft.dy + size.height,
-        screenH,
-        reason: '胶囊形态必须贴住屏幕底边，不再悬浮',
-      );
-      // 胶囊最小高 52
-      expect(size.height, greaterThanOrEqualTo(kBottomBarKeyHeight));
-      expect(kBottomBarKeyHeight, 52);
-    });
-
-    testWidgets('无悬浮阴影：胶囊 elevation 为 0、圆角 26', (tester) async {
-      await pumpBar(tester, capsuleAtBottom());
-
-      final material = tester.widget<Material>(
-        find
-            .descendant(
-              of: find.byType(HomeCapsule),
-              matching: find.byType(Material),
-            )
-            .first,
-      );
-      expect(material.elevation, 0, reason: '胶囊贴底后不再有悬浮阴影');
-      final shape = material.shape! as RoundedRectangleBorder;
-      expect(shape.borderRadius, BorderRadius.circular(26));
-    });
-  });
-
   group('几何常量与网格留白口径', () {
-    test('三态留白：关栏 16 / 标签栏 64 / 胶囊占位式 0', () {
+    test('两态留白：关栏 16 / 开栏 64', () {
       // 关栏：16（沿用 2.1.3）
+      expect(bottomBarGridBottomInset(showBottomBar: false), 16);
+      // 开栏：64 = 该 widget 实测高度
       expect(
-        bottomBarGridBottomInset(
-          showBottomBar: false,
-          style: BottomBarStyle.tab,
-        ),
-        16,
-      );
-      expect(
-        bottomBarGridBottomInset(
-          showBottomBar: false,
-          style: BottomBarStyle.capsule,
-        ),
-        16,
-      );
-      // 标签栏（默认）：64 = 该 widget 实测高度
-      expect(
-        bottomBarGridBottomInset(
-          showBottomBar: true,
-          style: BottomBarStyle.tab,
-        ),
+        bottomBarGridBottomInset(showBottomBar: true),
         kBottomBarTabHeight,
       );
       expect(kBottomBarTabHeight, HomeTabBar.height);
-      // 胶囊占位式：0（WB_SPEC_218 第 ① 节）——胶囊改成主布局底部一整条
-      // 专属槽位，槽位自己占布局高度，网格滚动视口截断在槽位上方，
-      // 不再按胶囊高度留白
-      expect(
-        bottomBarGridBottomInset(
-          showBottomBar: true,
-          style: BottomBarStyle.capsule,
-        ),
-        0,
-      );
-      expect(kCapsuleSlotHeight, 64,
-          reason: '槽位最小高 64 = 胶囊 52 + 上下各 6 间隙（字体放大时随内容长高）');
     });
 
     test('叠加底部安全区：安全区只加一次，不重复计算', () {
       expect(
-        bottomBarGridBottomPadding(
-          34,
-          showBottomBar: true,
-          style: BottomBarStyle.tab,
-        ),
+        bottomBarGridBottomPadding(34, showBottomBar: true),
         34 + kBottomBarTabHeight,
       );
-      // 胶囊占位式：槽位已吃掉安全区，网格不叠加，返回 0（不重复留白）
       expect(
-        bottomBarGridBottomPadding(
-          34,
-          showBottomBar: true,
-          style: BottomBarStyle.capsule,
-        ),
-        0,
-      );
-      expect(
-        bottomBarGridBottomPadding(
-          34,
-          showBottomBar: false,
-          style: BottomBarStyle.tab,
-        ),
+        bottomBarGridBottomPadding(34, showBottomBar: false),
         34 + 16,
       );
       // 异常值（负数/无穷）按 0 处理，绝不把 NaN 塞进 EdgeInsets
       expect(
-        bottomBarGridBottomPadding(
-          -1,
-          showBottomBar: true,
-          style: BottomBarStyle.tab,
-        ),
+        bottomBarGridBottomPadding(-1, showBottomBar: true),
         kBottomBarTabHeight,
       );
     });

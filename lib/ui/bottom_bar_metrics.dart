@@ -1,30 +1,21 @@
 /// 底部栏几何常量与网格联动留白（WB_SPEC_215 第 2 节新增；WB_SPEC_216 第 1 节改写）。
 ///
-/// 2.1.5 起底部栏有两种形态，**都贴底、都不悬浮**（无悬浮间距、无悬浮阴影）：
-/// - [BottomBarStyle.tab]（图标+文字标签栏，默认）：栏体撑满整宽、贴住屏幕底边，
-///   顶部一条细分割线（浅色 0.8dp／深色 0.6dp），两格等宽——图标在上、文字在下，
-///   选中态图标与文字同为琥珀黄（[kTabBarActiveColor]）；
-/// - [BottomBarStyle.capsule]（胶囊占位式，WB_SPEC_218 第 ① 节）：胶囊外形
-///   不变（圆角 26、宽度随内容自适应），但改为主布局底部一整条专属槽位
-///   （高 64 + 底部安全区、背景与页面底色一致），胶囊在槽位内居中，课表
-///   网格滚动视口截断在槽位上方，内容永远不滑到胶囊下面去。
+/// 底部栏只有一种形态：图标+文字标签栏，撑满整宽、贴住屏幕底边，顶部一条
+/// 细分割线（浅色 0.8dp／深色 0.6dp），两格等宽——图标在上、文字在下，
+/// 选中态图标与文字同为琥珀黄（[kTabBarActiveColor]）。
 ///
-/// 2.1.4 的「通栏贴底」（id `bar`）已整体删除，旧库里残留的 `bar` 由
-/// `BottomBarStyle.fromId` 回落到 [BottomBarStyle.tab]。
+/// 胶囊形态已在 2.1.7 同版本修复中整体删除（用户定：只要新标签栏），本文件
+/// 不再有任何胶囊口径：`BottomBarStyle` 枚举、`kCapsuleSlotHeight`、
+/// `kBottomBarKeyHeight` 一并删除。
 ///
-/// 网格底部留白必须按当前形态算，否则要么内容被栏遮住（留白偏小），
-/// 要么下方空一大截（留白偏大）。这里的 [bottomBarGridBottomInset] 是唯一口径，
+/// 网格底部留白必须按栏高算，否则要么内容被栏遮住（留白偏小），要么下方
+/// 空一大截（留白偏大）。这里的 [bottomBarGridBottomInset] 是唯一口径，
 /// 主页周视图与壳内设置页都调它，不各自硬编码数字。
 library;
 
 import 'package:flutter/widgets.dart';
 
-import '../models/ui_settings.dart';
-
-/// 键体最小高度（胶囊形态沿用；标签栏高度见 [kBottomBarTabHeight]）
-const double kBottomBarKeyHeight = 52;
-
-/// 键体与胶囊栏体的圆角半径（半圆胶囊）
+/// 滑块与栏体的圆角半径（半圆）。
 const double kBottomBarRadius = 26;
 
 /// 标签栏顶部细分割线的粗细（WB_SPEC_218 第 ② 节「栏体描边」：浅色 0.8dp 内高光、
@@ -47,16 +38,6 @@ double bottomBarDividerWidth(Brightness brightness) =>
 ///
 /// 与 `HomeTabBar.height` 同源：改栏体结构时两边一起改，测试会实测对比。
 const double kBottomBarTabHeight = 64;
-
-/// 胶囊占位式专属槽位**最小**高度（**不含**底部安全区，WB_SPEC_218 第 ① 节；
-/// 2.1.7 复查 Bug 5 后由固定高改为最小高）。
-///
-/// 常规字体下 64 = 胶囊高 52 + 上下各 6 空隙：胶囊在槽位内垂直居中，距课表
-/// 滚动区底边与系统手势栏顶边各留 6dp。系统字体放大时胶囊纵向伸展，槽位
-/// 用 padding 式布局随内容长高（见 main.dart _buildCapsuleSlot），不顶破、
-/// 不溢出黄条。槽位是主布局底部一整条不滚动区域（背景与页面底色一致），
-/// 课表网格滚动视口截断在槽位上方，内容永远不滑到胶囊下面。
-const double kCapsuleSlotHeight = 64;
 
 /// 关闭底部栏时的网格底部留白（沿用 2.1.3 的 16）
 const double kBottomBarHiddenInset = 16;
@@ -90,37 +71,23 @@ const Color kTabBarActiveColorDark = Color(0xFFFEF3C7);
 /// 网格滚动视图底部留白（**不含**底部安全区）。
 ///
 /// - 关栏：16；
-/// - 标签栏：栏体实测高 64（玻璃标签栏仍是悬浮 overlay，网格视口延伸到底，
-///   需要留足栏高避免最后一节被栏压住）；
-/// - 胶囊占位式：0（WB_SPEC_218 第 ① 节）——胶囊改成主布局底部一整条专属
-///   槽位，槽位自己占布局高度，网格滚动视口截断在槽位上方，不再需要按
-///   胶囊高度留白。
+/// - 开栏：栏体实测高 64（标签栏是悬浮 overlay，网格视口延伸到底，
+///   需要留足栏高避免最后一节被栏压住）。
 ///
 /// 调用方再各自叠加 `MediaQuery.paddingOf(context).bottom`，
-/// 因为标签栏形态把安全区留在栏体之外（栏体自己吃 SafeArea），不能重复计算；
-/// 胶囊占位式则由槽位吃掉安全区，网格完全不叠加。
-double bottomBarGridBottomInset({
-  required bool showBottomBar,
-  required BottomBarStyle style,
-}) {
+/// 因为标签栏把安全区留在栏体之外（栏体自己吃 SafeArea），不能重复计算。
+double bottomBarGridBottomInset({required bool showBottomBar}) {
   if (!showBottomBar) return kBottomBarHiddenInset;
-  if (style == BottomBarStyle.capsule) return 0;
   return kBottomBarTabHeight;
 }
 
 /// 叠加底部安全区后的完整留白，供 `padding: EdgeInsets.only(bottom: ...)` 直接用。
-///
-/// 胶囊占位式（WB_SPEC_218 第 ① 节）返回 0：槽位已把底部安全区一并吃掉，
-/// 网格不再叠加，否则会与槽位的 SafeArea 重复留白、下面空一截。
 double bottomBarGridBottomPadding(
   double safeAreaBottom, {
   required bool showBottomBar,
-  required BottomBarStyle style,
 }) {
-  if (showBottomBar && style == BottomBarStyle.capsule) return 0;
   final safe = safeAreaBottom.isFinite && safeAreaBottom > 0
       ? safeAreaBottom
       : 0.0;
-  return safe +
-      bottomBarGridBottomInset(showBottomBar: showBottomBar, style: style);
+  return safe + bottomBarGridBottomInset(showBottomBar: showBottomBar);
 }

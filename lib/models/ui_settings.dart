@@ -2,42 +2,14 @@ import 'dart:convert';
 
 import '../utils/color_schemes.dart';
 
-/// 底部栏形态（WB_SPEC_216 第 1 节）：两种都实现、都贴底不悬浮，用设置项切换。
-///
-/// - [tab] 图标+文字标签栏（默认）：栏体撑满整宽、贴住屏幕底边，顶部一条 1 像素
-///   细分割线，两格等宽——图标在上、文字在下，选中态图标与文字同为琥珀黄；
-/// - [capsule] 胶囊贴底：栏体保持胶囊外形（宽度随内容自适应），贴底、无阴影。
-///
-/// 2.1.5 起删除 2.1.4 的「通栏贴底」（[id] 曾是 `bar`）：旧库里残留的 `bar`
-/// 读取时由 [fromId] 回落到 [tab]，绝不出现未知样式导致无栏或崩溃。
-///
-/// 存库只存 [id]（`tab` / `capsule`），读取用 [fromId] 兜底——
-/// 旧数据没有这个字段、或值被改坏（含旧值 `bar`）时一律回 [tab]。
-enum BottomBarStyle {
-  tab('tab', '新标签栏'),
-  capsule('capsule', '胶囊贴底');
-
-  const BottomBarStyle(this.id, this.label);
-
-  /// 持久化用的字符串值（app_settings 的 ui_settings JSON 字段）
-  final String id;
-
-  /// 设置页显示的中文名
-  final String label;
-
-  /// 字符串 → 枚举；未知值/空值/旧值 `bar` 一律回默认 [BottomBarStyle.tab]
-  static BottomBarStyle fromId(String? raw) {
-    for (final s in BottomBarStyle.values) {
-      if (s.id == raw) return s;
-    }
-    return BottomBarStyle.tab;
-  }
-}
-
 /// 界面设置（1.1.1 新增）：课表格子外观、课程配色方案、主题色、显示字体。
 ///
 /// 整体以 JSON 存 app_settings 的 ui_settings 键；字段都有默认值，
 /// 旧版本没有该键或字段缺失时回退默认，保证升级不丢、损坏不崩。
+///
+/// 2.1.7 同版本修复：底部栏只剩新标签栏一种形态，`BottomBarStyle` 枚举与
+/// `bottomBarStyle` 字段整体删除；旧库里的 `bottomBarStyle` 值（`tab` /
+/// `capsule` / `bar`）读取时直接忽略，不影响其它字段。
 class UiSettings {
   const UiSettings({
     this.cellHeight = 46,
@@ -59,7 +31,6 @@ class UiSettings {
     this.autoFitHeight = true,
     this.highlightTodayColumn = false,
     this.showBottomBar = true,
-    this.bottomBarStyle = BottomBarStyle.tab,
   });
 
   /// 课程格子高度（逻辑像素 px），范围 44~96；默认 46 与旧版按屏均分的手感接近
@@ -142,17 +113,10 @@ class UiSettings {
   /// 今天整列边框高亮开关（1.2.6）：1.2.5 的整列边框改为可关，默认关
   final bool highlightTodayColumn;
 
-  /// 底部悬浮胶囊栏开关（WB_SPEC_213 第 1 节）：主页底部是否显示悬浮胶囊
-  /// （课表/设置切换键）。默认开；用户关闭后持久化记忆，下次启动仍保持关闭。
-  /// 旧数据无此字段时按默认开兜底，绝不为 null 导致启动白屏。
+  /// 底部栏开关：主页底部是否显示标签栏（课表/设置切换键）。默认开；
+  /// 用户关闭后持久化记忆，下次启动仍保持关闭。旧数据无此字段时按默认开兜底，
+  /// 绝不为 null 导致启动白屏。
   final bool showBottomBar;
-
-  /// 底部栏形态（WB_SPEC_216 第 1 节）：新标签栏 / 胶囊贴底，默认新标签栏。
-  ///
-  /// 只在 [showBottomBar] 为 true 时有意义；关闭底部栏时保留用户上次选择，
-  /// 重新打开后恢复同一形态（不重置成默认）。旧数据无此字段、值为 null、
-  /// 值为未知字符串（含 2.1.4 的旧值 `bar`）时一律按默认 [BottomBarStyle.tab] 兜底。
-  final BottomBarStyle bottomBarStyle;
 
   /// 实际生效的主题种子色（ARGB）
   int get themeSeedValue =>
@@ -191,7 +155,6 @@ class UiSettings {
     bool? autoFitHeight,
     bool? highlightTodayColumn,
     bool? showBottomBar,
-    BottomBarStyle? bottomBarStyle,
   }) {
     return UiSettings(
       cellHeight: cellHeight ?? this.cellHeight,
@@ -215,7 +178,6 @@ class UiSettings {
       autoFitHeight: autoFitHeight ?? this.autoFitHeight,
       highlightTodayColumn: highlightTodayColumn ?? this.highlightTodayColumn,
       showBottomBar: showBottomBar ?? this.showBottomBar,
-      bottomBarStyle: bottomBarStyle ?? this.bottomBarStyle,
     );
   }
 
@@ -239,7 +201,6 @@ class UiSettings {
     'autoFitHeight': autoFitHeight,
     'highlightTodayColumn': highlightTodayColumn,
     'showBottomBar': showBottomBar,
-    'bottomBarStyle': bottomBarStyle.id,
   };
 
   String encode() => jsonEncode(toJson());
@@ -296,10 +257,6 @@ class UiSettings {
         highlightTodayColumn: bl('highlightTodayColumn', false),
         // 反序列化容错：旧数据无此字段或字段为 null 时一律按默认开兜底（true）
         showBottomBar: bl('showBottomBar', true),
-        // 形态容错（WB_SPEC_216 第 1 节）：缺失/null/未知值/2.1.4 旧值 bar
-        // 一律回默认「新标签栏」。fromId 内部已兜底，这里再显式把缺失值先落成
-        // 'tab' 只是为了语义清楚——两者结果一致。
-        bottomBarStyle: BottomBarStyle.fromId(st('bottomBarStyle', 'tab')),
       );
     } catch (_) {
       return const UiSettings();
