@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:xiaoma_timetable/database/dao.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
 import 'package:xiaoma_timetable/pages/settings_sections.dart';
@@ -109,6 +110,76 @@ void main() {
     expect(tester.widget<SwitchListTile>(tile).value, isFalse);
   });
 
+  testWidgets('外观子页：切换动效三选项存在、默认错峰淡入、点击切换即时生效（2026-11-05）', (tester) async {
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: AppearanceSettingsPage()),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+    });
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    // 三种动效都做，做成开关让用户自己选；默认错峰淡入
+    expect(find.text('切换动效'), findsOneWidget);
+    expect(find.byType(ChoiceChip), findsNWidgets(3));
+    for (final style in ShellTransitionStyle.values) {
+      expect(find.byKey(shellTransitionChipKey(style)), findsOneWidget);
+      expect(find.text(style.label), findsOneWidget);
+    }
+    expect(
+      tester
+          .widget<ChoiceChip>(
+            find.byKey(
+              shellTransitionChipKey(ShellTransitionStyle.fadeThroughParallax),
+            ),
+          )
+          .selected,
+      isTrue,
+    );
+
+    // 点「极速淡入」→ 即时切换并持久化（apply 走真实 FFI 异步落库）
+    await tester.tap(
+      find.byKey(shellTransitionChipKey(ShellTransitionStyle.quickFade)),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 400)),
+    );
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(
+      tester
+          .widget<ChoiceChip>(
+            find.byKey(
+              shellTransitionChipKey(ShellTransitionStyle.quickFade),
+            ),
+          )
+          .selected,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<ChoiceChip>(
+            find.byKey(
+              shellTransitionChipKey(ShellTransitionStyle.fadeThroughParallax),
+            ),
+          )
+          .selected,
+      isFalse,
+    );
+    final saved = await tester.runAsync(
+      () => Dao.instance.getSetting('ui_settings'),
+    );
+    expect(
+      UiSettings.fromEncoded(saved).shellTransitionStyle,
+      ShellTransitionStyle.quickFade,
+    );
+  });
+
   testWidgets('外观子页：没有「底部栏样式」选项（只有新标签栏一种形态）', (
     tester,
   ) async {
@@ -125,11 +196,13 @@ void main() {
     }
 
     // 2.1.7 同版本修复：胶囊形态删除，底部栏只有新标签栏一种，
-    // 外观页不再有「底部栏样式」二选一；底部栏开关本身仍在
+    // 外观页不再有「底部栏样式」二选一；底部栏开关本身仍在。
+    // 注意：页面上仍有 ChoiceChip——那是 2026-11-05 新增的「切换动效」
+    // 三选项（错峰淡入/官方淡入/极速淡入），不是底部栏样式。
     expect(find.text('底部栏样式'), findsNothing);
     expect(find.text('新标签栏'), findsNothing);
     expect(find.text('胶囊贴底'), findsNothing);
-    expect(find.byType(ChoiceChip), findsNothing);
+    expect(find.byType(ChoiceChip), findsNWidgets(3));
     expect(
       find.widgetWithText(SwitchListTile, '底部栏显示'),
       findsOneWidget,

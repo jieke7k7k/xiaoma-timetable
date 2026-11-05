@@ -11,6 +11,7 @@ import 'package:xiaoma_timetable/main.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
 import 'package:xiaoma_timetable/ui/bottom_bar_metrics.dart';
+import 'package:xiaoma_timetable/pages/week_view_page.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
 import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 
@@ -126,12 +127,36 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 60));
     }
+    // 再等网格滚动体渲出：右上角菜单出现只代表学期就绪，课程读库可能
+    // 还在排队（多文件并行跑时数据库会被隔壁文件占住），网格体没出来
+    // 就量留白/滚到底会取到空。2026-11-05 常驻双页后启动读库更多，
+    // 这个等待尤其必要。
+    for (var i = 0; i < 25; i++) {
+      final grid = find.descendant(
+        of: find.byType(WeekViewPage),
+        matching: find.byType(SingleChildScrollView),
+      );
+      if (grid.evaluate().isNotEmpty) break;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 80)),
+      );
+      await tester.pump(const Duration(milliseconds: 60));
+    }
   }
 
   /// 把纵向滚动体滚到最底（横向 PageView 的 Scrollable 不算）
+  ///
+  /// 2026-11-05：默认动效是双页常驻，设置页的 ListView 也在树里（同样是
+  /// 纵向 Scrollable），须把查找限定在 WeekViewPage 内，否则会误取到
+  /// 设置页的列表（其 maxScrollExtent 可能为 0）。
   Future<void> scrollToBottom(WidgetTester tester) async {
     final vertical = tester
-        .stateList<ScrollableState>(find.byType(Scrollable))
+        .stateList<ScrollableState>(
+          find.descendant(
+            of: find.byType(WeekViewPage),
+            matching: find.byType(Scrollable),
+          ),
+        )
         .firstWhere((s) => s.axisDirection == AxisDirection.down);
     expect(vertical.position.maxScrollExtent, greaterThan(0), reason: '网格必须可滚动');
     vertical.position.jumpTo(vertical.position.maxScrollExtent);

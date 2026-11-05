@@ -41,6 +41,8 @@ dependencies:
   flutter_riverpod: ^2.6.1
   # 日期格式化
   intl: ^0.20.2
+  # 切换动效 B：官方 Material 3 FadeThrough（animations 包）
+  animations: ^2.0.11
   # 阶段三：文件选择（ICS/PDF）
   file_picker: ^13.1.0
   # 阶段三：拍照/相册选课表截图

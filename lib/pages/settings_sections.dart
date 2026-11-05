@@ -49,6 +49,12 @@ import '../widgets/empty_state.dart';
 /// 实时预览「今天整列边框」覆盖层的 Key：测试据此断言开关开/关时该层的有无。
 const Key kPreviewTodayHighlightKey = ValueKey('preview_today_highlight');
 
+/// 外观页「切换动效」某个选项的 Key（2026-11-05：三种动效做成开关）。
+///
+/// 测试据此取 ChoiceChip，断言选中态与切换后的持久化。
+Key shellTransitionChipKey(ShellTransitionStyle style) =>
+    ValueKey('shell_transition_${style.id}');
+
 /// 把同一节内的一组连续设置行用 1px 分隔线隔开（2.0.7 Taste 化）。
 ///
 /// 分隔线用现有主题 dividerColor（`Divider` 不指定 color 即取主题值），
@@ -237,6 +243,48 @@ class AppearanceSettingsPage extends StatelessWidget {
                 onChanged: (v) => ref
                     .read(uiSettingsProvider.notifier)
                     .apply(ui.copyWith(showBottomBar: v)),
+              );
+            },
+          ),
+          // 切换动效三选一（2026-11-05 用户定：三种都做，做成开关让用户自己选，
+          // 默认错峰淡入）。紧跟在「底部栏显示」开关下方，切换即时生效并持久化。
+          Consumer(
+            builder: (ctx, ref, _) {
+              final ui =
+                  ref.watch(uiSettingsProvider).value ?? const UiSettings();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const ListTile(
+                    leading: Icon(Icons.animation_outlined),
+                    title: Text(
+                      '切换动效',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    subtitle: Text('课表与设置之间切换时的动效，默认错峰淡入'),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(56, 0, 16, 12),
+                    child: Wrap(
+                      spacing: AppSpacing.s,
+                      runSpacing: AppSpacing.s,
+                      children: [
+                        for (final style in ShellTransitionStyle.values)
+                          ChoiceChip(
+                            key: shellTransitionChipKey(style),
+                            label: Text(style.label),
+                            selected: ui.shellTransitionStyle == style,
+                            visualDensity: VisualDensity.compact,
+                            onSelected: (_) => ref
+                                .read(uiSettingsProvider.notifier)
+                                .apply(
+                                  ui.copyWith(shellTransitionStyle: style),
+                                ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               );
             },
           ),

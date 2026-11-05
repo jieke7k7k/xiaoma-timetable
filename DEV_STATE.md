@@ -1,8 +1,30 @@
 # 简课表 · 开发状态备忘（给下一阶段 / 真机验收用）
 
-> 更新时间：2026-11-05（2.1.7+32 同版本修复：去雾 + 删胶囊 + 整表一屏，不升版）
+> 更新时间：2026-11-05（2.1.7+32 同版本修复之二：切换动效三选一，不升版）
 
 ## 做到哪了
+
+## 2026-11-05（2.1.7 同版本修复之二：切换动效三选一，不升版）
+
+用户装上 20:40 修复版后反馈（20:42）：「按钮切换后主页面切换到设置界面不够丝滑，不好看」，并点名问 Argon。Argon 已问（Gemini 旧对话「小马课表 App 底部栏设计方案优化指南」，Argon、Medium，对话链接 https://gemini.google.com/app/edc0b913bf660679）。用户 22:12 定：三种都做，做成开关让用户自己选。本次仍不升版（pubspec 仍 2.1.7+32，不打新 tag；App 内按 versionCode 比对，同版本不提示更新，需手动重装）。
+
+### 根因（Argon 诊断，5 点）
+- 每次切换都在同步销毁与重建整棵 Widget 树（无保活）：点「设置」的瞬间要在同一帧内完成设置页 initState、Provider 读取、三组 ListView 的首次 Measure 与 Layout，前 2~3 帧必然掉帧，动画开头「卡一下」才跳到中间帧；切回课表时设置页滚动位置也丢失。
+- 交叉淡入淡出重影：旧 AnimatedSwitcher 让两页在中段各占 50% 透明度叠在一起，13×7 彩色格子与设置列表半透明重叠，俗称「鬼影」。
+- 退场曲线与缩放方向错误：旧页退场也跟着缩（1.0→0.985），新页进场放大，两页半透明下往相反方向微缩，边缘抖动。
+- 两页 AppBar／背景色差造成顶边闪烁；缺 RepaintBoundary 隔离，动画每帧重绘上百个格子节点。
+- Argon 原文有两处数字不一致（A 写 14px、代码 16px；C 写 120ms、代码 140ms），以代码为准；A 代码未写 dispose，落地时已补。
+
+### 改动（本地亲手改，未走 WorkBuddy）
+- 新增 `lib/ui/shell_transition.dart`：`ShellTransitionView` 三选一；A `ParallaxShellBody`（双页常驻保活＋错峰淡入：课表页 t 0.0→0.45 淡出、设置页 t 0.35→1.0 淡入，16px 水平微位移，0.985→1.0 微缩放，240ms，`Visibility maintainSize/maintainState`＋`RepaintBoundary`，控制器 dispose 已补）；B `PageTransitionSwitcher`＋`FadeThroughTransition`（220ms，`animations` 包新依赖 ^2.0.11，旧页卸载、滚动位置不保留）；C `QuickFadeShellBody`（双页常驻＋140ms 纯透明度，不缩放）。
+- 新增 `UiSettings.shellTransitionStyle`（`ShellTransitionStyle` 枚举：`fade-parallax` 错峰淡入／`fade-through` 官方淡入／`quick-fade` 极速淡入，默认错峰淡入；存库只存 id，缺失／null／未知值一律回默认）。
+- `settings_sections.dart` 外观页「底部栏显示」开关下方新增「切换动效」三选项 ChoiceChip（`shellTransitionChipKey`），切换即时生效并持久化。
+- `main.dart` `_buildShell(style)` 改用 `ShellTransitionView`，旧 AnimatedSwitcher（260ms 淡入＋0.985 微缩放）整体删除；`liquid_glass.dart` 删 `kLiquidShell*` 常量与 `liquidShellTransition`，文件头注释同步改写。
+- 测试：`ui_settings_test.dart` 新增容错 1 例＋往返/copyWith 1 例；`settings_sections_test.dart` 新增三选项 1 例、「无底部栏样式」断言改 ChoiceChip 为 3 枚（动效选项）；`home_shell_test.dart` 旧切换动效 1 例改写为三例（默认 A 双页常驻切页、 B 官方淡入切页、 C 极速淡入双页常驻切页），另两例因常驻页导致 `find.text('设置')` 多命中改按栏键／栏内限定；`home_grid_bottom_inset_test.dart` 的 `scrollToBottom` 限定到 WeekViewPage 内（常驻设置页 ListView 也是纵向 Scrollable），pumpHome 补等网格滚动体渲出（常驻双页后启动读库更多，多文件并行时数据库会被隔壁文件占住）；`sunday_dialog_once_test.dart` 切页改按栏键（同上多命中），注释改「常驻不销毁」。
+- 常见 Bug 预查（打包前自查）：控制器 dispose 已补；切动效开关时旧控制器随组件卸载释放；旧库无新字段时回默认；版本号未动（2.1.7+32）；B 方案滚动位置不保留是已知取舍、已在 CHANGELOG 说明。
+
+### 验证
+- `flutter analyze`：No issues found；`flutter test`：**388 例全绿**（383 ＋ 新增 5：ui_settings 2、settings_sections 1、home_shell 净增 2）。
 
 ## 2026-11-05（2.1.7 同版本修复：去雾 + 删胶囊 + 整表一屏，不升版）
 

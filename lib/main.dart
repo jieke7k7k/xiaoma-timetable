@@ -41,7 +41,7 @@ import 'services/ongoing_notice_service.dart';
 import 'services/widget_service.dart';
 import 'ui/app_styles.dart';
 import 'ui/bottom_bar_metrics.dart';
-import 'ui/liquid_glass.dart';
+import 'ui/shell_transition.dart';
 import 'ui/page_transitions.dart';
 
 /// 全局异常日志的持久化键（app_settings 表）。
@@ -510,7 +510,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           setState(() => _tab = HomeShellTab.schedule);
         }
       },
-      child: _buildShell(),
+      child: _buildShell(ui.shellTransitionStyle),
     );
   }
 
@@ -518,26 +518,14 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   ///
   /// 标签栏是悬浮 overlay——[Stack] 里栏浮在视图之上，网格底部按栏高留白
   /// （见 [bottomBarGridBottomInset]），最后一节不会被栏压住。
-  Widget _buildShell() {
-    // 底层：当前一级视图，原地淡入淡出切换，不压导航栈
-    // 2.1.6（WB_SPEC_217 第 2 节）：260ms（反向 200ms）、进入减速 /
-    // 退出加速，过渡从「纯淡入」升级为「淡入 + 0.985→1.0 微缩放」——
-    // 纯淡入时新旧视图在中段各占一半透明度，课表格子与设置列表叠出
-    // 重影，加一点微缩放就有了前后关系。两视图各有自己的 ValueKey
-    // （ValueKey(_tab)），防困死与系统返回逻辑一律不动。
-    final view = AnimatedSwitcher(
-      duration: kLiquidShellDuration,
-      reverseDuration: kLiquidShellReverseDuration,
-      switchInCurve: kLiquidShellInCurve,
-      switchOutCurve: kLiquidShellOutCurve,
-      transitionBuilder: liquidShellTransition,
-      child: KeyedSubtree(
-        key: ValueKey(_tab),
-        child: _tab == HomeShellTab.schedule
-            ? const WeekViewPage()
-            : const SettingsPage(isEmbeddedInShell: true),
-      ),
-    );
+  ///
+  /// 视图区切换动效三选一（2026-11-05 用户定：三种都做，做成开关让用户自己选，
+  /// 默认错峰淡入）：见 [ShellTransitionView]——旧 AnimatedSwitcher（260ms
+  /// 淡入＋0.985 微缩放）已删除，它每次切换都同步销毁重建整棵 Widget 树
+  /// （设置页首次 build/layout 掉帧），且两页交叉淡入淡出、中段各占 50%
+  /// 透明度叠出重影（Argon 诊断）。
+  Widget _buildShell(ShellTransitionStyle style) {
+    final view = ShellTransitionView(currentTab: _tab, style: style);
 
     return Stack(
       children: [

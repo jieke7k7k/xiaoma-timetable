@@ -1,18 +1,19 @@
-/// 液态滑块与丝滑动效常量（WB_SPEC_217 第 1 / 第 2 节）。
+/// 液态滑块与丝滑动效常量（WB_SPEC_217 第 1 节）。
 ///
 /// 这一版把「液态滑块 + 丝滑切换」的所有数字集中在这里，栏体、指示器、按压
-/// 回弹、壳切换各取各的，不在页面里散落硬编码——改手感只改本文件，测试也只
+/// 回弹各取各的，不在页面里散落硬编码——改手感只改本文件，测试也只
 /// 断言本文件的常量，避免「代码写 380、测试写 300」这种两边分叉。
 ///
 /// 曲线与时长全部按 Argon 方案落地：
 /// - **位移**（指示器滑动）380ms 弹簧曲线，只动位置不动渐变；
 /// - **颜色**（图标 / 文字选中态）280ms 减速曲线，与位移彻底分开；
-/// - **按压**分两段：按下 90ms 极快缩到 0.92，松手 350ms 弹簧回弹；
-/// - **壳切换**260ms（反向 200ms），进入减速、退出加速，叠 0.985→1.0 微缩放。
-/// 四条各管各的，绝不用「一条过渡管所有属性」的老办法（渐变插值天然生硬）。
+/// - **按压**分两段：按下 90ms 极快缩到 0.92，松手 350ms 弹簧回弹。
+/// 三条各管各的，绝不用「一条过渡管所有属性」的老办法（渐变插值天然生硬）。
 ///
 /// 2.1.7 同版本修复：毛玻璃层已整体删除（`BackdropFilter` 在真机上整屏漫溢，
 /// 整片课表蒙雾），本文件不再有任何模糊半径与滤镜；栏体只留半透明底色。
+/// 壳切换动效（旧 260ms 淡入＋0.985 微缩放）也已删除，见
+/// `lib/ui/shell_transition.dart`（三种动效开关）。
 library;
 
 import 'package:flutter/widgets.dart';
@@ -115,47 +116,6 @@ const double kLiquidActiveIconLift = -1.5;
 
 /// 标签栏图标尺寸（与 2.1.5 一致的 24）。
 const double kLiquidTabIconSize = 24;
-
-// ---------------------------------------------------------------------------
-// 壳内一级视图切换（WB_SPEC_217 第 2 节）
-// ---------------------------------------------------------------------------
-
-/// 壳切换进入时长：260ms。
-const Duration kLiquidShellDuration = Duration(milliseconds: 260);
-
-/// 壳切换返回时长：200ms（返回比进入略快，符合「往回走更急」的手感）。
-const Duration kLiquidShellReverseDuration = Duration(milliseconds: 200);
-
-/// 壳切换进入曲线：减速（新视图快速到位后稳住）。
-const Cubic kLiquidShellInCurve = Curves.easeOutCubic;
-
-/// 壳切换退出曲线：加速（旧视图尽快让位，不与新视图长时间重叠）。
-const Cubic kLiquidShellOutCurve = Curves.easeInCubic;
-
-/// 壳切换微缩放的起始值：0.985 → 1.0。
-///
-/// 纯淡入时新旧视图中段会各占 50% 透明度叠在一起，课表格子与设置列表
-/// 交叉出「重影」；叠一点微缩放让两者有轻微前后关系，重影感就消掉了。
-/// 幅度刻意压到 1.5% 以内——超过 2% 就能明显看出「页面在缩放」，喧宾夺主。
-const double kLiquidShellScaleBegin = 0.985;
-
-/// 壳内一级视图切换过渡（[AnimatedSwitcher.transitionBuilder]）：
-/// 淡入 + [kLiquidShellScaleBegin] → 1.0 微缩放。
-///
-/// 写成公开函数是为了让测试能直接调它、断言「起始缩放确实是 0.985」，
-/// 不用靠肉眼判断「有没有微缩放」。
-Widget liquidShellTransition(Widget child, Animation<double> animation) {
-  return FadeTransition(
-    opacity: animation,
-    child: ScaleTransition(
-      scale: Tween<double>(
-        begin: kLiquidShellScaleBegin,
-        end: 1.0,
-      ).animate(animation),
-      child: child,
-    ),
-  );
-}
 
 // ---------------------------------------------------------------------------
 // 颜色 / 位移分开过渡的两个小组件（Argon 方案第 2 条）

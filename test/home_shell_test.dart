@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,7 +11,7 @@ import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/main.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
-import 'package:xiaoma_timetable/ui/liquid_glass.dart';
+import 'package:xiaoma_timetable/ui/shell_transition.dart';
 import 'package:xiaoma_timetable/pages/settings_page.dart';
 import 'package:xiaoma_timetable/pages/week_view_page.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
@@ -141,8 +142,22 @@ void main() {
     expect(find.byType(BottomNavigationBar), findsNothing);
     expect(find.byType(NavigationBar), findsNothing);
     // 栏里恰两键，无「主页」键，也没有 AI 键及其图标
-    expect(find.text('课表'), findsOneWidget);
-    expect(find.text('设置'), findsOneWidget);
+    // （2026-11-05：默认动效是双页常驻，设置页 AppBar 标题「设置」也在树里，
+    // 须把文字断言限定在栏内，否则会多命中常驻页的标题）
+    expect(
+      find.descendant(
+        of: find.byType(HomeTabBar),
+        matching: find.text('课表'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(HomeTabBar),
+        matching: find.text('设置'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('我的'), findsNothing);
     expect(find.text('主页'), findsNothing);
     expect(find.byIcon(Icons.smart_toy_outlined), findsNothing);
@@ -175,8 +190,9 @@ void main() {
   testWidgets('点设置键切到壳内设置根页，且无返回箭头', (tester) async {
     await pumpHome(tester);
 
-    // 此刻只有栏上的「设置」键这一处文字
-    await tester.tap(find.text('设置'));
+    // 此刻栏上的「设置」键是切换入口（2026-11-05：默认动效双页常驻，
+    // 设置页 AppBar 标题「设置」也在树里，须按栏键点，不能按文字点）
+    await tester.tap(find.byKey(kHomeTabBarSettingsKey));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -287,75 +303,84 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets(
-    '壳切换动效：260ms（反向 200ms）、进入减速/退出加速、淡入 + 0.985→1.0 微缩放',
-    (tester) async {
-      await pumpHome(tester);
+  testWidgets('切换动效默认＝错峰淡入：双页常驻，点设置切页、点课表切回', (tester) async {
+    await pumpHome(tester);
 
-      final switcher = tester.widget<AnimatedSwitcher>(
-        find.byType(AnimatedSwitcher),
-      );
-      expect(switcher.duration, kLiquidShellDuration);
-      expect(switcher.duration, const Duration(milliseconds: 260));
-      expect(switcher.reverseDuration, kLiquidShellReverseDuration);
-      expect(switcher.reverseDuration, const Duration(milliseconds: 200));
-      expect(switcher.switchInCurve, kLiquidShellInCurve);
-      expect(switcher.switchInCurve, Curves.easeOutCubic);
-      expect(switcher.switchOutCurve, kLiquidShellOutCurve);
-      expect(switcher.switchOutCurve, Curves.easeInCubic);
+    // 默认动效是 A：ParallaxShellBody 挂载，且两页都在树里（常驻保活，
+    // 透明度 0 的那页也在，只是不显示——切页时 0 重建）
+    expect(find.byType(ParallaxShellBody), findsOneWidget);
+    expect(find.byType(WeekViewPage), findsOneWidget);
+    expect(find.byType(SettingsPage), findsOneWidget);
+    expect(find.byType(PageTransitionSwitcher), findsNothing);
+    expect(find.byType(QuickFadeShellBody), findsNothing);
 
-      // 过渡不是纯淡入：叠了 0.985 → 1.0 的微缩放（消除新旧视图的重影感）
-      final builtStart = switcher.transitionBuilder(
-        const SizedBox(),
-        const AlwaysStoppedAnimation<double>(0.0),
-      );
-      expect(builtStart, isA<FadeTransition>());
-      final fadeStart = builtStart as FadeTransition;
-      expect(fadeStart.child, isA<ScaleTransition>());
-      expect(
-        (fadeStart.child! as ScaleTransition).scale.value,
-        closeTo(kLiquidShellScaleBegin, 1e-9),
-      );
-      expect(kLiquidShellScaleBegin, 0.985);
-      final builtEnd = switcher.transitionBuilder(
-        const SizedBox(),
-        const AlwaysStoppedAnimation<double>(1.0),
-      ) as FadeTransition;
-      expect(builtEnd.opacity.value, 1.0);
-      expect((builtEnd.child! as ScaleTransition).scale.value, 1.0);
+    // 课表 → 设置：240ms 内完成
+    await tester.tap(find.byKey(kHomeTabBarSettingsKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(SettingsPage), findsOneWidget);
+    // 设置 → 课表：反向同样 240ms（泵 300ms 必然已完成）
+    await tester.tap(find.byKey(kHomeTabBarScheduleKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(WeekViewPage), findsOneWidget);
 
-      // 两个一级视图各有独立的 ValueKey（切回时能识别反向、也能正确重建）
-      Key? keyOfSwitcher() => tester
-          .widgetList<KeyedSubtree>(
-            find.descendant(
-              of: find.byType(AnimatedSwitcher),
-              matching: find.byType(KeyedSubtree),
-            ),
-          )
-          .first
-          .key;
-      final keyBefore = keyOfSwitcher();
-      expect(keyBefore, isNotNull);
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pumpWidget(const SizedBox());
+  });
 
-      // 课表 → 设置：260ms 内完成
-      await tester.tap(find.byKey(kHomeTabBarSettingsKey));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(find.byType(SettingsPage), findsOneWidget);
-      expect(find.byType(WeekViewPage), findsNothing);
-      expect(keyOfSwitcher(), isNot(keyBefore), reason: '两视图的 ValueKey 各自独立');
+  testWidgets('切换动效 B：官方 FadeThrough，切页正常', (tester) async {
+    await tester.runAsync(
+      () => Dao.instance.setSetting(
+        'ui_settings',
+        const UiSettings(
+          shellTransitionStyle: ShellTransitionStyle.fadeThroughOfficial,
+        ).encode(),
+      ),
+    );
+    await pumpHome(tester);
 
-      // 设置 → 课表：反向 200ms（泵 260ms 必然已完成）
-      await tester.tap(find.byKey(kHomeTabBarScheduleKey));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 260));
-      expect(find.byType(WeekViewPage), findsOneWidget);
-      expect(find.byType(SettingsPage), findsNothing);
+    expect(find.byType(PageTransitionSwitcher), findsOneWidget);
+    expect(find.byType(ParallaxShellBody), findsNothing);
+    expect(find.byType(WeekViewPage), findsOneWidget);
 
-      await tester.pump(const Duration(seconds: 11));
-      await tester.pumpWidget(const SizedBox());
-    },
-  );
+    await tester.tap(find.byKey(kHomeTabBarSettingsKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(SettingsPage), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('切换动效 C：极速淡入，双页常驻、切页正常', (tester) async {
+    await tester.runAsync(
+      () => Dao.instance.setSetting(
+        'ui_settings',
+        const UiSettings(
+          shellTransitionStyle: ShellTransitionStyle.quickFade,
+        ).encode(),
+      ),
+    );
+    await pumpHome(tester);
+
+    expect(find.byType(QuickFadeShellBody), findsOneWidget);
+    expect(find.byType(WeekViewPage), findsOneWidget);
+    expect(find.byType(SettingsPage), findsOneWidget);
+
+    await tester.tap(find.byKey(kHomeTabBarSettingsKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(SettingsPage), findsOneWidget);
+    await tester.tap(find.byKey(kHomeTabBarScheduleKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(WeekViewPage), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pumpWidget(const SizedBox());
+  });
 }
 
 /// 测试用路由表里的设置页（关栏时从菜单 Push 进入：独立页面、有返回箭头）

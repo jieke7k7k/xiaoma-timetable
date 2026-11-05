@@ -11,6 +11,7 @@ import 'package:xiaoma_timetable/main.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/services/sunday_dialog_service.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
+import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 
 /// 周日收尾弹窗「一天一次」（WB_SPEC_215 第 1/3 节）。
 ///
@@ -293,12 +294,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(dialogTitle, findsNothing);
 
-    // 切到设置（底部栏「设置」键 → 壳内设置根页，WeekViewPage 被换掉、State 销毁）
-    await tester.tap(find.text('设置'));
+    // 切到设置（底部栏「设置」键 → 壳内设置根页；2026-11-05 起默认动效是
+    // 双页常驻，WeekViewPage 不再被换掉销毁、而是常驻在树里——弹窗仍不该重弹）
+    // 按栏键点：设置页 AppBar 标题「设置」也在树里，按文字点会命中两个
+    await tester.tap(find.byKey(kHomeTabBarSettingsKey));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
-    // 切回课表（WeekViewPage 重新构建、State 是新实例）
-    await tester.tap(find.text('课表'));
+    // 切回课表（常驻页重新显现，State 是同一实例）
+    await tester.tap(find.byKey(kHomeTabBarScheduleKey));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 

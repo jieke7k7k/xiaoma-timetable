@@ -82,6 +82,57 @@ void main() {
       expect(UiSettings.fromEncoded('{"showBottomBar": true}').showBottomBar, isTrue);
     });
 
+    test('shellTransitionStyle 反序列化容错：缺失/null/未知值一律回默认错峰淡入', () {
+      // 2026-11-05：三种切换动效做成开关，默认错峰淡入；旧数据没有这个字段、
+      // 值为 null、或值被改坏时一律回默认，绝不崩。
+      expect(
+        UiSettings.fromEncoded('{}').shellTransitionStyle,
+        ShellTransitionStyle.fadeThroughParallax,
+      );
+      expect(
+        UiSettings.fromEncoded('{"shellTransitionStyle": null}')
+            .shellTransitionStyle,
+        ShellTransitionStyle.fadeThroughParallax,
+      );
+      expect(
+        UiSettings.fromEncoded('{"shellTransitionStyle": "unknown"}')
+            .shellTransitionStyle,
+        ShellTransitionStyle.fadeThroughParallax,
+      );
+      expect(
+        UiSettings.fromEncoded('{"shellTransitionStyle": "fade-through"}')
+            .shellTransitionStyle,
+        ShellTransitionStyle.fadeThroughOfficial,
+      );
+      expect(
+        UiSettings.fromEncoded('{"shellTransitionStyle": "quick-fade"}')
+            .shellTransitionStyle,
+        ShellTransitionStyle.quickFade,
+      );
+    });
+
+    test('shellTransitionStyle 编码→解码往返不丢、copyWith 可改', () {
+      const ui = UiSettings(
+        shellTransitionStyle: ShellTransitionStyle.quickFade,
+      );
+      expect(ui.toJson()['shellTransitionStyle'], 'quick-fade');
+      final back = UiSettings.fromEncoded(ui.encode());
+      expect(back.shellTransitionStyle, ShellTransitionStyle.quickFade);
+      final changed = ui.copyWith(
+        shellTransitionStyle: ShellTransitionStyle.fadeThroughOfficial,
+      );
+      expect(changed.shellTransitionStyle, ShellTransitionStyle.fadeThroughOfficial);
+      // 三个选项的 id 与中文名各不相同
+      expect(
+        ShellTransitionStyle.values.map((s) => s.id).toSet().length,
+        ShellTransitionStyle.values.length,
+      );
+      expect(
+        ShellTransitionStyle.values.map((s) => s.label).toSet().length,
+        ShellTransitionStyle.values.length,
+      );
+    });
+
     test('旧 bottomBarStyle 字段整体忽略：读旧库不崩、写新库不再存它', () {
       // 2.1.7 同版本修复：胶囊形态删除，BottomBarStyle 枚举与字段一并删除。
       // 旧库里的 bottomBarStyle 值（tab / capsule / bar / 任意字符串）读取时
