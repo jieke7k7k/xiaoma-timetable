@@ -126,9 +126,18 @@ void main() {
     // 三种动效都做，做成开关让用户自己选；默认柔和（官方淡入）
     expect(find.text('切换动效'), findsOneWidget);
     expect(find.byType(ChoiceChip), findsNWidgets(3));
-    for (final style in ShellTransitionStyle.values) {
+    // 复查 Bug 6：断言字面量「灵动/柔和/疾速」与三个 id 的映射，不与实现
+    // 共用同一枚举 label（否则改名写错仍全绿）。
+    const expectedLabels = {
+      'fade-parallax': '灵动',
+      'fade-through': '柔和',
+      'quick-fade': '疾速',
+    };
+    for (final entry in expectedLabels.entries) {
+      final style = ShellTransitionStyle.fromId(entry.key);
+      expect(style.label, entry.value, reason: 'id ${entry.key} 的中文名应为 ${entry.value}');
       expect(find.byKey(shellTransitionChipKey(style)), findsOneWidget);
-      expect(find.text(style.label), findsOneWidget);
+      expect(find.text(entry.value), findsOneWidget);
     }
     expect(
       tester

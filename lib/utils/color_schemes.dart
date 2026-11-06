@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart' show Color, HSVColor;
+import 'package:flutter/material.dart'
+    show Brightness, Color, ColorScheme, DynamicSchemeVariant, HSVColor;
 
 import 'morandi_palette.dart';
 
@@ -189,6 +190,45 @@ ThemePreset themePresetById(String id) => kThemePresets.firstWhere(
   (p) => p.id == id,
   orElse: () => kThemePresets.first,
 );
+
+/// 全 App 生产配色唯一入口（复查 Bug 1 / 优化 2）。
+///
+/// `ColorScheme.fromSeed` 的 tonalSpot 会给 surface 与容器色染上种子倾向，
+/// 整屏看起来像被主题色罩住；这里用 fidelity 保真（primary 等关键色更贴
+/// 近种子色）再把 surface 与整套容器色一并 copyWith 成中性梯度，只留
+/// 4% 种子倾向。中性底色（浅纸白／暗夜黑）与容器梯度见下方常量。
+///
+/// main.dart 浅/深两处与导出图、测试都走这里，不再各造一套配色。
+ColorScheme buildAppColorScheme(Color seed, Brightness brightness) {
+  final isDark = brightness == Brightness.dark;
+  // 只留 4% 种子倾向：与 surface 固定中性同口径（Argon 方案 Q2）。
+  Color neutral(Color base) =>
+      Color.alphaBlend(seed.withValues(alpha: 0.04), base);
+  return ColorScheme.fromSeed(
+    seedColor: seed,
+    brightness: brightness,
+    dynamicSchemeVariant: DynamicSchemeVariant.fidelity,
+  ).copyWith(
+    surface: neutral(
+      isDark ? const Color(0xFF121214) : const Color(0xFFFAFAF8),
+    ),
+    surfaceContainerLowest: neutral(
+      isDark ? const Color(0xFF0B0B0D) : const Color(0xFFFFFFFF),
+    ),
+    surfaceContainerLow: neutral(
+      isDark ? const Color(0xFF161618) : const Color(0xFFF7F4EF),
+    ),
+    surfaceContainer: neutral(
+      isDark ? const Color(0xFF1D1D21) : const Color(0xFFF0EBE3),
+    ),
+    surfaceContainerHigh: neutral(
+      isDark ? const Color(0xFF26262B) : const Color(0xFFE8E2D7),
+    ),
+    surfaceContainerHighest: neutral(
+      isDark ? const Color(0xFF2F2F36) : const Color(0xFFDFD8CA),
+    ),
+  );
+}
 
 /// 由基础色推出加深版（边框用）：HSV 明度与饱和度各收敛一档，同色系深一号。
 /// 把颜色提亮一档（与白色按比例混合），深色底色的边框/描边用（1.2.3 B4）

@@ -64,6 +64,9 @@ class UiSettings {
     this.highlightTodayColumn = false,
     this.showBottomBar = true,
     this.shellTransitionStyle = ShellTransitionStyle.fadeThroughOfficial,
+    // 默认 true：新构造的值都是「已决策」的（显式传入或新默认），不参与迁移；
+    // 只有从旧库读到、无此键的 'fade-parallax' 才按旧默认迁移（见 fromEncoded）
+    this.shellTransitionStyleMigrated = true,
   });
 
   /// 课程格子高度（逻辑像素 px），范围 44~96；默认 46 与旧版按屏均分的手感接近
@@ -155,6 +158,13 @@ class UiSettings {
   /// 默认柔和（官方淡入）。旧数据无此字段、值为 null、值为未知字符串时一律按默认兜底。
   final ShellTransitionStyle shellTransitionStyle;
 
+  /// 动效旧默认值迁移标记（复查 Bug 4）：2.1.7 之前默认是「灵动」，
+  /// 旧库 toJson() 每次都会把 'fade-parallax' 写进去，分不清「用户主动
+  /// 选了灵动」还是「从没选过、吃的是旧默认」。首次读到无标记的
+  /// 'fade-parallax' 时按旧默认处理、迁移成「柔和」并立标记；此后用户
+  /// 再主动选灵动会带着标记写回，不会被再次迁移。
+  final bool shellTransitionStyleMigrated;
+
   /// 实际生效的主题种子色（ARGB）
   int get themeSeedValue =>
       themeCustomColor ?? themePresetById(themePresetId).seed;
@@ -193,6 +203,7 @@ class UiSettings {
     bool? highlightTodayColumn,
     bool? showBottomBar,
     ShellTransitionStyle? shellTransitionStyle,
+    bool? shellTransitionStyleMigrated,
   }) {
     return UiSettings(
       cellHeight: cellHeight ?? this.cellHeight,
@@ -217,6 +228,12 @@ class UiSettings {
       highlightTodayColumn: highlightTodayColumn ?? this.highlightTodayColumn,
       showBottomBar: showBottomBar ?? this.showBottomBar,
       shellTransitionStyle: shellTransitionStyle ?? this.shellTransitionStyle,
+      // 显式改动效 = 用户主动选择，立迁移标记，免得下次加载又被当成旧默认迁走
+      shellTransitionStyleMigrated:
+          shellTransitionStyleMigrated ??
+          (shellTransitionStyle != null
+              ? true
+              : this.shellTransitionStyleMigrated),
     );
   }
 
@@ -241,6 +258,7 @@ class UiSettings {
     'highlightTodayColumn': highlightTodayColumn,
     'showBottomBar': showBottomBar,
     'shellTransitionStyle': shellTransitionStyle.id,
+    'shellTransitionStyleMigrated': shellTransitionStyleMigrated,
   };
 
   String encode() => jsonEncode(toJson());
@@ -260,6 +278,16 @@ class UiSettings {
       bool bl(String k, bool dft) => map[k] is bool ? map[k] as bool : dft;
       String st(String k, String dft) =>
           map[k] is String ? map[k] as String : dft;
+      // 动效旧默认迁移（复查 Bug 4）：无迁移标记的 'fade-parallax' 是
+      // 2.1.7 之前旧默认值写进去的，按「从没选过」处理成新默认「柔和」
+      // 并立标记；带标记的 'fade-parallax' 是用户主动选的灵动，原样保留。
+      final storedStyleId = st('shellTransitionStyle', 'fade-through');
+      final styleMigrated = bl('shellTransitionStyleMigrated', false);
+      final needsMigration =
+          !styleMigrated && storedStyleId == 'fade-parallax';
+      final shellStyle = needsMigration
+          ? ShellTransitionStyle.fadeThroughOfficial
+          : ShellTransitionStyle.fromId(storedStyleId);
       return UiSettings(
         cellHeight: dbl('cellHeight', 46, 44, 96),
         cornerRadius: dbl('cornerRadius', 12, 0, 20),
@@ -297,10 +325,9 @@ class UiSettings {
         highlightTodayColumn: bl('highlightTodayColumn', false),
         // 反序列化容错：旧数据无此字段或字段为 null 时一律按默认开兜底（true）
         showBottomBar: bl('showBottomBar', true),
-        // 动效容错：缺失/null/未知值一律回默认「柔和」
-        shellTransitionStyle: ShellTransitionStyle.fromId(
-          st('shellTransitionStyle', 'fade-through'),
-        ),
+        // 动效容错：缺失/null/未知值一律回默认「柔和」（见上方迁移逻辑）
+        shellTransitionStyle: shellStyle,
+        shellTransitionStyleMigrated: styleMigrated || needsMigration,
       );
     } catch (_) {
       return const UiSettings();

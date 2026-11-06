@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../services/permission_service.dart';
+import '../utils/route_observer.dart';
 import '../ui/app_styles.dart';
 import '../ui/bottom_bar_metrics.dart';
 
@@ -134,16 +135,20 @@ class SettingsPage extends ConsumerWidget {
   /// AppBar 右上角 ⋮ 更多菜单（WB_SPEC_218 第 ④ 节）：
   /// 权限自检、关于小马课表——原路由不动，仅触发按钮从 ListView 移到菜单。
   ///
-  /// 位置与圆角（Argon 方案 Q7）：offset 下沉 10dp、左移 8dp，菜单悬浮在
-  /// ⋮ 正下方、打开后仍能看到顶栏；圆角 16dp；背景浅色 surfaceContainerHigh／
-  /// 深色 surfaceContainer，阴影浅 6／深 8。
+  /// 位置与圆角（Argon 方案 Q7 + 复查 Bug 2）：offset 左移 8dp、下沉 48dp，
+  /// 菜单顶落在顶栏底（toolbarHeight 48）之下，打开后仍能看到顶栏；
+  /// 圆角 16dp；背景浅色 surfaceContainerHigh／深色 surfaceContainer，
+  /// 阴影浅 6／深 8。
   Widget _buildMoreMenu(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final dark = scheme.brightness == Brightness.dark;
     return PopupMenuButton<String>(
       tooltip: '更多',
       icon: const Icon(Icons.more_vert),
-      offset: const Offset(-8, 10),
+      // 复查 Bug 2：M3 下菜单顶 = ⋮ 按钮顶 + offset.dy；按钮贴顶栏顶，
+      // dy=10 时菜单顶才 10，盖住顶栏约 34dp。dy 取顶栏高 48，菜单顶
+      // 正好落在顶栏底之下（见 settings_page_test「⋮ 菜单」位置断言）。
+      offset: const Offset(-8, 48),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
@@ -245,19 +250,63 @@ class _ReminderEntryTile extends ConsumerStatefulWidget {
   ConsumerState<_ReminderEntryTile> createState() => _ReminderEntryTileState();
 }
 
-class _ReminderEntryTileState extends ConsumerState<_ReminderEntryTile> {
-  /// 是否已发起过权限查询（只查一次；提醒没开时不查）。
-  bool _checked = false;
-
+class _ReminderEntryTileState extends ConsumerState<_ReminderEntryTile>
+    with WidgetsBindingObserver, RouteAware {
   /// 提醒开了且权限有缺失时为 true，行尾挂「待完善」徽标。
+  ///
+  /// 双向更新（复查 Bug 3）：每次查询都按最新 allGranted 重写，补授权后
+  /// 返回徽标消失；查询失败也不锁死，下次触发会再查。
   bool _needsAttention = false;
 
-  Future<void> _check() async {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // 首帧后查一次（provider 此时可能未就绪，_checkIfNeeded 内现读现判）
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkIfNeeded());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) appRouteObserver.subscribe(this, route);
+  }
+
+  @override
+  void dispose() {
+    appRouteObserver.unsubscribe(this);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 从系统设置回来（去开权限时应用会切后台）重新查询
+    if (state == AppLifecycleState.resumed) _checkIfNeeded();
+  }
+
+  @override
+  void didPopNext() {
+    // 从提醒设置子页回来重新查询：补授权后徽标消失
+    _checkIfNeeded();
+  }
+
+  /// 提醒开了才查权限；结果双向写回 _needsAttention，失败不锁死。
+  Future<void> _checkIfNeeded() async {
+    final enabled =
+        ref.read(reminderSettingsProvider).value?.enabled ?? false;
+    if (!enabled) {
+      if (mounted) setState(() => _needsAttention = false);
+      return;
+    }
     try {
       final s = await PermissionService.instance.status();
-      if (mounted && !s.allGranted) setState(() => _needsAttention = true);
+      if (mounted) setState(() => _needsAttention = !s.allGranted);
     } catch (_) {
-      // 查询失败（平台通道缺失/异常）按「无异常」处理，不打扰、不闪退
+      // 查询失败（平台通道缺失/异常）按「无异常」处理，不打扰、不闪退；
+      // 不锁死：下次开关变化/页面恢复/回到本页时会再查
+      if (mounted) setState(() => _needsAttention = false);
     }
   }
 
@@ -265,11 +314,9 @@ class _ReminderEntryTileState extends ConsumerState<_ReminderEntryTile> {
   Widget build(BuildContext context) {
     final reminder = ref.watch(reminderSettingsProvider).value;
     final enabled = reminder?.enabled ?? false;
-    // 提醒开了才查权限（只查一次）；提醒没开时完全不检查、不显示。
-    if (enabled && !_checked) {
-      _checked = true;
-      _check();
-    }
+    // 提醒开关变化时重查（关→开且缺权限要出现徽标；开→关要清掉徽标）。
+    // 不在 build 里直接发查询（复查优化 3）：只挂监听，查询走生命周期。
+    ref.listen(reminderSettingsProvider, (_, _) => _checkIfNeeded());
     final showBadge = enabled && _needsAttention;
     final scheme = Theme.of(context).colorScheme;
     return ListTile(

@@ -1257,8 +1257,10 @@ class _GridArea extends ConsumerWidget {
   }
 }
 
-/// 单条通栏分隔带（1.2.2）：左侧时间轴段写名称，右侧居中显示名称 + 时间段，
-/// 整行同一个容器绘制，与网格/时间轴之间不存在接缝。
+/// 单条通栏分隔带（1.2.2）：时间轴外（axisWidth > 0，如导出图）左侧时间轴段
+/// 写名称，右侧居中显示名称 + 时间段；页内（axisWidth == 0）只留同色底，
+/// 名称由固定时间轴占位画（复查 Bug 5，去重影）。整行同一个容器绘制，
+/// 与网格/时间轴之间不存在接缝。
 class _FullBand extends StatelessWidget {
   const _FullBand({required this.band, required this.axisWidth});
 
@@ -1269,30 +1271,33 @@ class _FullBand extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final bg = scheme.surfaceContainerHighest.withValues(alpha: 0.6);
+    // 页内带子（axisWidth == 0）只留同色底，不画任何文字（复查 Bug 5）：
+    // 名称已由固定时间轴占位画，再在每页里画一份居中「午休 12:00–14:00」，
+    // 切周滑到中途会出现双份重影。时间轴外（axisWidth > 0，如导出图）
+    // 仍画时间轴段名称 + 居中名称与时间段。
+    if (axisWidth == 0) {
+      return Container(height: kBandHeight, color: bg);
+    }
     final divider = scheme.outlineVariant.withValues(alpha: 0.6);
     return Container(
       height: kBandHeight,
       color: bg,
       child: Row(
         children: [
-          // 页内带子（axisWidth == 0）不画时间轴段：名称由时间轴占位自己画，
-          // 这里只留居中的名称 + 时间段。
-          if (axisWidth > 0) ...[
-            SizedBox(
-              width: axisWidth,
-              child: Center(
-                child: Text(
-                  band.label,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: scheme.outline.withValues(alpha: 0.9),
-                  ),
+          SizedBox(
+            width: axisWidth,
+            child: Center(
+              child: Text(
+                band.label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.outline.withValues(alpha: 0.9),
                 ),
               ),
             ),
-            Container(width: 1, color: divider),
-          ],
+          ),
+          Container(width: 1, color: divider),
           Expanded(
             child: Center(
               child: Row(
@@ -1668,10 +1673,12 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
           // 仍完整压住带子（卡片在 Stack 里画在带子之后，见 A2）。
           for (final b in activeBands)
             Positioned(
-              top:
-                  b.after * rowHeight +
-                  activeBands.where((o) => o.after < b.after).length *
-                      kBandHeight,
+              // 复查优化 1：top 公式与 _topOf/bandsBefore 同口径，不再手写 where 计数
+              top: yOffsetTop(
+                b.after + 1,
+                rowHeight,
+                bandsBefore(b.after, activeBands),
+              ),
               left: 0,
               right: 0,
               height: kBandHeight,

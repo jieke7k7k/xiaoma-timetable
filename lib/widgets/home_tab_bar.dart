@@ -160,22 +160,26 @@ class _HomeTabBarState extends State<HomeTabBar> {
       alignment: Alignment(isSchedule ? -1 : 1, 1),
       duration: kSelectionPillDuration,
       curve: kSelectionPillCurve,
-      child: FractionallySizedBox(
-        key: kHomeTabBarIndicatorBoxKey,
-        widthFactor: kLiquidIndicatorWidthFactor,
-        child: Align(
-          // 水平居中、底部对齐：短条悬在选中那格正下方中央、距栏底 5dp
-          alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: kSelectionPillBottomGap),
-            child: SizedBox(
-              width: kSelectionPillWidth,
-              height: kSelectionPillHeight,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: scheme.primary,
-                  borderRadius: BorderRadius.circular(
-                    kSelectionPillHeight / 2,
+      child: IgnorePointer(
+        // 复查 Bug 8：短条只是指示器，不能吞点击；Stack 顺序或按键命中区
+        // 一变，20×3dp 区域就会挡住下面那格的点击
+        child: FractionallySizedBox(
+          key: kHomeTabBarIndicatorBoxKey,
+          widthFactor: kLiquidIndicatorWidthFactor,
+          child: Align(
+            // 水平居中、底部对齐：短条悬在选中那格正下方中央、距栏底 5dp
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: kSelectionPillBottomGap),
+              child: SizedBox(
+                width: kSelectionPillWidth,
+                height: kSelectionPillHeight,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: scheme.primary,
+                    borderRadius: BorderRadius.circular(
+                      kSelectionPillHeight / 2,
+                    ),
                   ),
                 ),
               ),
@@ -222,9 +226,12 @@ class _HomeTabBarState extends State<HomeTabBar> {
         key: key,
         onTap: onTap,
         // 点击水波纹设透明：方形水波纹本身也会被当成「选中框」（Argon 方案 Q1）；
-        // 按压反馈仍由外层 AnimatedScale（0.92）承担。
+        // 按压反馈仍由外层 AnimatedScale（0.92）承担。focus/hover 也置透明
+        // （复查优化 5）：外接键盘/鼠标焦点导航不出现矩形高亮块。
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,
+        focusColor: Colors.transparent,
+        hoverColor: Colors.transparent,
         // 按压两段：按下立刻缩、松手（或手指划开取消）弹簧回弹
         onTapDown: (_) => _setPressed(tab),
         onTapUp: (_) => _setPressed(null),

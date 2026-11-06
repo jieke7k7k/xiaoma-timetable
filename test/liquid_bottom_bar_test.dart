@@ -234,7 +234,7 @@ void main() {
       );
     });
 
-    testWidgets('短条是独立层：不占按键布局，两格仍各占整宽一半', (tester) async {
+    testWidgets('短条不拦点击：它不吃指针事件（pointer-events: none 的 Flutter 对应）', (tester) async {
       await pumpBar(tester);
 
       final scheduleSize = tester.getSize(find.byKey(kHomeTabBarScheduleKey));
@@ -249,6 +249,90 @@ void main() {
         ),
         findsNothing,
       );
+      // 复查 Bug 8：指示器包 IgnorePointer，20×3dp 区域永不吞点击
+      // （短条在栏底 5dp 处、位于 43dp 高的按键区下方空白带里，点它
+      // 本来就不触发切换；IgnorePointer 是防御性兜底，Stack 顺序或
+      // 按键区一变时也不会吞点击）
+      expect(
+        find.descendant(
+          of: find.byKey(kHomeTabBarIndicatorKey),
+          matching: find.byType(IgnorePointer),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('短条中心正落选中格中央（复查优化 4：直接断言短条本体，不只断言容器）', (tester) async {
+      await pumpBar(tester, active: HomeShellTab.schedule);
+      await tester.pump(const Duration(milliseconds: 320));
+
+      DecoratedBox pillBox() => tester.widget<DecoratedBox>(
+        find.descendant(
+          of: find.byKey(kHomeTabBarIndicatorBoxKey),
+          matching: find.byType(DecoratedBox),
+        ),
+      );
+      final pillRect = tester.getRect(
+        find.descendant(
+          of: find.byKey(kHomeTabBarIndicatorBoxKey),
+          matching: find.byType(DecoratedBox),
+        ),
+      );
+      final scheduleRect = tester.getRect(find.byKey(kHomeTabBarScheduleKey));
+      expect(pillRect.center.dx, closeTo(scheduleRect.center.dx, 1.0),
+          reason: '短条本体中心应对准课表格中心');
+      expect(pillBox().decoration, isA<BoxDecoration>());
+      expect((pillBox().decoration as BoxDecoration).color,
+          ThemeData(brightness: Brightness.light).colorScheme.primary);
+
+      // 切到设置格：短条本体中心跟到设置格中央
+      await pumpBar(tester, active: HomeShellTab.settings);
+      await tester.pump(const Duration(milliseconds: 320));
+      final pillRect2 = tester.getRect(
+        find.descendant(
+          of: find.byKey(kHomeTabBarIndicatorBoxKey),
+          matching: find.byType(DecoratedBox),
+        ),
+      );
+      final settingsRect = tester.getRect(find.byKey(kHomeTabBarSettingsKey));
+      expect(pillRect2.center.dx, closeTo(settingsRect.center.dx, 1.0),
+          reason: '短条本体中心应对准设置格中心');
+    });
+
+    testWidgets('两格里没有任何包住图标/文字的色块（复查优化 4：无框的负向断言）', (tester) async {
+      await pumpBar(tester);
+
+      // 图标/文字所在的两格子树里，一个 DecoratedBox 都不许有——任何
+      // tint、胶囊、色块重现都会先撞上这条断言
+      for (final cell in [kHomeTabBarScheduleKey, kHomeTabBarSettingsKey]) {
+        expect(
+          find.descendant(
+            of: find.byKey(cell),
+            matching: find.byType(DecoratedBox),
+          ),
+          findsNothing,
+          reason: '「$cell」格里不应有色块容器',
+        );
+      }
+      // 全栏唯一的实色 DecoratedBox 就是 20×3dp 短条本体
+      final colored = tester
+          .widgetList<DecoratedBox>(
+            find.descendant(
+              of: find.byType(HomeTabBar),
+              matching: find.byType(DecoratedBox),
+            ),
+          )
+          .where((b) => (b.decoration as BoxDecoration?)?.color != null)
+          .toList();
+      expect(colored.length, 1, reason: '全栏只许短条一个实色块');
+      final pill = tester.getRect(
+        find.descendant(
+          of: find.byKey(kHomeTabBarIndicatorBoxKey),
+          matching: find.byType(DecoratedBox),
+        ),
+      );
+      expect(pill.width, closeTo(20, 0.5));
+      expect(pill.height, closeTo(3, 0.5));
     });
   });
 

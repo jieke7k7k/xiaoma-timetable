@@ -21,6 +21,10 @@ class PermissionService {
 
   static final PermissionService instance = PermissionService._();
 
+  /// 测试替身：设置后 [status] 直接用它返回，不走平台通道。
+  /// 测试结束要置回 null（见 settings_page_test 的 tearDown）。
+  static Future<PermissionSnapshot> Function()? debugStatusOverride;
+
   /// 首次引导的标记键（app_settings）。值 '1' 表示这套引导已经走过。
   static const String askedKey = 'permissions_asked_v1';
 
@@ -33,6 +37,8 @@ class PermissionService {
   /// 三项权限当前状态；非 Android（或通道没实现）一律按「无需处理」返回已授权，
   /// 免得在别的平台上显示一堆红色「未授权」。
   Future<PermissionSnapshot> status() async {
+    final override = debugStatusOverride;
+    if (override != null) return override();
     if (defaultTargetPlatform != TargetPlatform.android) {
       return const PermissionSnapshot(
         notification: true,

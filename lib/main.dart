@@ -38,6 +38,8 @@ import 'services/auto_backup_service.dart';
 import 'services/fonts_service.dart';
 import 'services/notification_service.dart';
 import 'services/ongoing_notice_service.dart';
+import 'utils/color_schemes.dart';
+import 'utils/route_observer.dart';
 import 'services/widget_service.dart';
 import 'ui/app_styles.dart';
 import 'ui/bottom_bar_metrics.dart';
@@ -194,34 +196,18 @@ class SimpleTimetableApp extends ConsumerWidget {
     final uiSettings =
         ref.watch(uiSettingsProvider).value ?? const UiSettings();
     final seed = Color(uiSettings.themeSeedValue);
-    // fidelity 保真（Argon 方案 Q2）：低饱和种子色经 tonalSpot 二次降饱和会
-    // 发灰发脏，fidelity 让 primary 等关键色更贴近种子色；surface 再 copyWith
-    // 固定为中性纸白/暗夜黑（只留 4% 主题倾向），避免整屏染色。
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: seed,
-      dynamicSchemeVariant: DynamicSchemeVariant.fidelity,
-    ).copyWith(
-      surface: Color.alphaBlend(
-        seed.withValues(alpha: 0.04),
-        const Color(0xFFFAFAF8),
-      ),
-    );
-    final darkColorScheme = ColorScheme.fromSeed(
-      seedColor: seed,
-      brightness: Brightness.dark,
-      dynamicSchemeVariant: DynamicSchemeVariant.fidelity,
-    ).copyWith(
-      surface: Color.alphaBlend(
-        seed.withValues(alpha: 0.04),
-        const Color(0xFF121214),
-      ),
-    );
+    // 生产配色唯一入口（复查 Bug 1 / 优化 2）：fidelity 保真 + surface 与
+    // 整套容器色一并中性化（只留 4% 种子倾向），浅/深两处同口径。
+    final colorScheme = buildAppColorScheme(seed, Brightness.light);
+    final darkColorScheme = buildAppColorScheme(seed, Brightness.dark);
     final fontFamily = FontsService.resolveFamily(uiSettings);
     // 全局统一圆角/弹层形状（阶段五·视觉打磨）：卡片 12px、BottomSheet 顶部 16px，
     // 具体常量见 ui/app_styles.dart，页面内不要再各自硬编码
     return MaterialApp(
       title: '小马课表',
       debugShowCheckedModeBanner: false,
+      // 路由观察者（复查 Bug 3）：子页返回时相关页面可感知并重查状态
+      navigatorObservers: [appRouteObserver],
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: colorScheme,

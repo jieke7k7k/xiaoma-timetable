@@ -121,12 +121,15 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
               child: RepaintBoundary(
                 key: _boundaryKey,
                 child: Theme(
-                  // 导出图固定浅色：卡片用存储色原色，深色模式下也不发灰
+                  // 导出图固定浅色：卡片用存储色原色，深色模式下也不发灰；
+                  // 配色走生产唯一入口，与 App 内同口径（中性 surface/容器）
                   data: ThemeData(
                     useMaterial3: true,
                     brightness: Brightness.light,
-                    colorScheme: ColorScheme.fromSeed(
-                        seedColor: Color(ui.themeSeedValue)),
+                    colorScheme: buildAppColorScheme(
+                      Color(ui.themeSeedValue),
+                      Brightness.light,
+                    ),
                     fontFamily: FontsService.resolveFamily(ui),
                   ),
                   child: _ExportSheet(
@@ -216,8 +219,8 @@ class _ExportSheet extends StatelessWidget {
     double topOf(int section) =>
         (section - 1) * rowH + _bandsBefore(section) * kBandHeight;
     double bandTop(GridBand b) =>
-        b.after * rowH +
-        bands.where((x) => x.after < b.after).length * kBandHeight;
+        // 复查优化 1：与 topOf/_bandsBefore 同口径，不再手写 where 计数
+        b.after * rowH + _bandsBefore(b.after) * kBandHeight;
     final scheme = Theme.of(context).colorScheme;
     final bandColor = scheme.surfaceContainerHighest.withValues(alpha: 0.6);
 

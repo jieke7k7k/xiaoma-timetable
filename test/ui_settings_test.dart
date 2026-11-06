@@ -109,11 +109,31 @@ void main() {
             .shellTransitionStyle,
         ShellTransitionStyle.quickFade,
       );
-      expect(
-        UiSettings.fromEncoded('{"shellTransitionStyle": "fade-parallax"}')
-            .shellTransitionStyle,
-        ShellTransitionStyle.fadeThroughParallax,
+      // 复查 Bug 4：无迁移标记的 'fade-parallax' 是 2.1.7 之前旧默认值
+      // 写进去的，按「从没选过」迁移成新默认「柔和」，并立标记
+      final migrated = UiSettings.fromEncoded(
+        '{"shellTransitionStyle": "fade-parallax"}',
       );
+      expect(migrated.shellTransitionStyle, ShellTransitionStyle.fadeThroughOfficial);
+      expect(migrated.shellTransitionStyleMigrated, isTrue);
+    });
+
+    test('shellTransitionStyle 迁移：带标记的 fade-parallax 是用户主动选的灵动，原样保留', () {
+      final kept = UiSettings.fromEncoded(
+        '{"shellTransitionStyle": "fade-parallax", '
+        '"shellTransitionStyleMigrated": true}',
+      );
+      expect(kept.shellTransitionStyle, ShellTransitionStyle.fadeThroughParallax);
+      expect(kept.shellTransitionStyleMigrated, isTrue);
+
+      // 显式选灵动再编解码：copyWith 会立标记，往返后仍是灵动
+      final picked = const UiSettings().copyWith(
+        shellTransitionStyle: ShellTransitionStyle.fadeThroughParallax,
+      );
+      expect(picked.shellTransitionStyleMigrated, isTrue);
+      final back = UiSettings.fromEncoded(picked.encode());
+      expect(back.shellTransitionStyle, ShellTransitionStyle.fadeThroughParallax);
+      expect(back.shellTransitionStyleMigrated, isTrue);
     });
 
     test('shellTransitionStyle 编码→解码往返不丢、copyWith 可改', () {
