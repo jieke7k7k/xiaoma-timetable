@@ -569,33 +569,67 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
         // 生成的返回箭头（首次使用经导入流程进入时曾出现无用返回按钮）
         automaticallyImplyLeading: false,
         centerTitle: false,
-        title: InkWell(
-          onTap: () => setState(() => _showJumper = !_showJumper),
-          borderRadius: BorderRadius.circular(AppRadii.chip),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Column(
+        title: Builder(
+          builder: (context) {
+            // WB_SPEC_221：展开态聚焦框——主题色 1.5dp 描边＋极淡同色底。
+            // 收起态边框同样占 1.5 宽、颜色透明，切换时宽高不变、不抖动。
+            final cs = Theme.of(context).colorScheme;
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            final radius = BorderRadius.circular(AppRadii.chip);
+            final borderColor = _showJumper
+                ? cs.primary.withValues(alpha: isDark ? 0.85 : 0.75)
+                : Colors.transparent;
+            final bgColor = _showJumper
+                ? cs.primary.withValues(alpha: isDark ? 0.16 : 0.10)
+                : Colors.transparent;
+            final contentColor = _showJumper ? cs.primary : cs.onSurface;
+            return InkWell(
+              onTap: () => setState(() => _showJumper = !_showJumper),
+              borderRadius: radius,
+              splashColor: cs.primary.withValues(alpha: 0.12),
+              highlightColor: cs.primary.withValues(alpha: 0.06),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: radius,
+                  border: Border.all(color: borderColor, width: 1.5),
+                ),
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // WB_SPEC_209 第 4 节：左上角只显示周数，删掉日期范围行
-                    Text(
-                      ui.showWeekParity
-                          ? WeekCalc.weekTitle(displayWeek)
-                          : '第 $displayWeek 周',
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // WB_SPEC_209 第 4 节：左上角只显示周数，删掉日期范围行
+                        AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeOutCubic,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: contentColor,
+                          ),
+                          child: Text(
+                            ui.showWeekParity
+                                ? WeekCalc.weekTitle(displayWeek)
+                                : '第 $displayWeek 周',
+                          ),
+                        ),
+                      ],
+                    ),
+                    Icon(
+                      _showJumper ? Icons.expand_less : Icons.expand_more,
+                      // 展开态箭头跟框同色；收起态不显式设色，保持原默认。
+                      color: _showJumper ? cs.primary : null,
                     ),
                   ],
                 ),
-                Icon(_showJumper ? Icons.expand_less : Icons.expand_more),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
         actions: [
           // 编辑模式开关（右上角）：防误触——不开时点空白不新建、长按不出菜单
@@ -1353,6 +1387,14 @@ class _TimeAxis extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    // WB_SPEC_221 附带修：行高太矮时起止时间放不下会溢出——跳转条展开＋
+    // 横幅同现时 autoFit 行高能压到 40 以下（实测 39.3 时三行仍溢约 1.9px）。
+    // 文字行高跟随主题 bodyMedium 的 height（当前 1.4），三行约 39px＋
+    // 上下边距 2px；按行高逐级降级，阈值从当前行高因子算，不写死数字。
+    // 节次号单行约 17px，行高下限 24 恒放得下。
+    final lineFactor = DefaultTextStyle.of(context).style.height ?? 1.2;
+    final showStart = showTime && rowHeight >= (12 + 8) * lineFactor + 2;
+    final showEnd = showTime && rowHeight >= (12 + 8 + 8) * lineFactor + 2;
     return SizedBox(
       width: width,
       child: Column(
@@ -1383,7 +1425,7 @@ class _TimeAxis extends StatelessWidget {
                         color: colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    if (showTime) ...[
+                    if (showStart) ...[
                       Text(
                         slots[i].startTime,
                         style: TextStyle(
@@ -1391,13 +1433,14 @@ class _TimeAxis extends StatelessWidget {
                           color: colorScheme.outline,
                         ),
                       ),
-                      Text(
-                        slots[i].endTime,
-                        style: TextStyle(
-                          fontSize: 8,
-                          color: colorScheme.outline,
+                      if (showEnd)
+                        Text(
+                          slots[i].endTime,
+                          style: TextStyle(
+                            fontSize: 8,
+                            color: colorScheme.outline,
+                          ),
                         ),
-                      ),
                     ],
                   ],
                 ),
