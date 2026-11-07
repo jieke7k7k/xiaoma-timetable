@@ -19,6 +19,7 @@ import '../services/permission_service.dart';
 import '../services/widget_service.dart';
 import '../ui/app_styles.dart';
 import '../ui/grid_metrics.dart';
+import '../ui/settings_icon_box.dart';
 import '../utils/backup_codec.dart';
 import '../utils/color_schemes.dart';
 import '../utils/ics_export.dart';
@@ -55,18 +56,50 @@ const Key kPreviewTodayHighlightKey = ValueKey('preview_today_highlight');
 Key shellTransitionChipKey(ShellTransitionStyle style) =>
     ValueKey('shell_transition_${style.id}');
 
-/// 把同一节内的一组连续设置行用 1px 分隔线隔开（2.0.7 Taste 化）。
+/// 把同一组内连续行用轻量分隔线隔开（与 settings_page 的 Taste 口径一致）。
 ///
-/// 分隔线用现有主题 dividerColor（`Divider` 不指定 color 即取主题值），
-/// 不改黑、不放大；只作用于「行与行之间」，节标题、预览、下拉、色板等
-/// 非行控件不走这里。
-List<Widget> _divideRows(List<Widget> rows) {
+/// WB_SPEC_222：分隔线 thickness 0.5、outlineVariant 20%，对齐标题文字左缘。
+/// 组内行都有 leading 槽时文字左缘在 x=72（ListTile 标题起始位置是
+/// max(minLeadingWidth=40, leading 宽) + horizontalTitleGap=16，再加内容边距左 16；
+/// Argon 给的 64 漏算了 40dp leading 槽宽，已纠正），此时 indent 取 72。
+/// 组内行没有 leading（如 _SliderRow、无 secondary 的 SwitchListTile）时文字左缘
+/// 在 x=16，调用处须传 indent: 16，否则分隔线会越过文字左缘（222 复审 Bug 4）。
+/// 只作用于「行与行之间」，节标题、预览、下拉、色板等非行控件不走这里。
+List<Widget> _divideRows(ColorScheme scheme, List<Widget> rows,
+    {double indent = 72}) {
   return [
     for (var i = 0; i < rows.length; i++) ...[
-      if (i > 0) const Divider(height: 1, thickness: 1),
+      if (i > 0)
+        Divider(
+          height: 1,
+          thickness: 0.5,
+          color: scheme.outlineVariant.withValues(alpha: 0.2),
+          indent: indent,
+          endIndent: 16,
+        ),
       rows[i],
     ],
   ];
+}
+
+/// 行尾小箭头（WB_SPEC_222：20dp、onSurfaceVariant 60%）。
+///
+/// 单独成组件是因为各行处于不同的 builder 作用域（Consumer 的 ctx、
+/// FutureBuilder 的 ctx 等），直接取 Theme 不方便。
+class _Chevron extends StatelessWidget {
+  const _Chevron();
+
+  @override
+  Widget build(BuildContext context) {
+    return Icon(
+      Icons.chevron_right,
+      size: 20,
+      color: Theme.of(context)
+          .colorScheme
+          .onSurfaceVariant
+          .withValues(alpha: 0.6),
+    );
+  }
 }
 
 /// 学期设置子页：学期名称（只读）、开学日期、总周数
@@ -80,9 +113,9 @@ class SemesterSettingsPage extends ConsumerWidget {
       appBar: AppBar(title: const Text('学期设置'), centerTitle: true),
       body: semesterAsync.when(
         data: (semester) => ListView(
-          children: _divideRows([
+          children: _divideRows(Theme.of(context).colorScheme, [
             ListTile(
-              leading: const Icon(Icons.badge_outlined),
+              leading: const SettingsIconBox(icon: Icons.badge_outlined, category: SettingsIconCategory.schedule),
               title: const Text(
                 '学期名称',
                 style: TextStyle(fontWeight: FontWeight.w500),
@@ -90,23 +123,23 @@ class SemesterSettingsPage extends ConsumerWidget {
               subtitle: Text(semester.name),
             ),
             ListTile(
-              leading: const Icon(Icons.event_outlined),
+              leading: const SettingsIconBox(icon: Icons.event_outlined, category: SettingsIconCategory.schedule),
               title: const Text(
                 '开学日期',
                 style: TextStyle(fontWeight: FontWeight.w500),
               ),
               subtitle: Text('${semester.startDate}（自动对齐到当周周一）'),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: const _Chevron(),
               onTap: () => _pickStartDate(context, ref, semester.startDate),
             ),
             ListTile(
-              leading: const Icon(Icons.view_week_outlined),
+              leading: const SettingsIconBox(icon: Icons.view_week_outlined, category: SettingsIconCategory.schedule),
               title: const Text(
                 '总周数',
                 style: TextStyle(fontWeight: FontWeight.w500),
               ),
               subtitle: Text('${semester.totalWeeks} 周'),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: const _Chevron(),
               onTap: () => _editTotalWeeks(context, ref, semester.totalWeeks),
             ),
           ]),
@@ -241,6 +274,8 @@ class RemindersSettingsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // WB_SPEC_222：组内分隔线颜色取自当前主题。
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('提醒'), centerTitle: true),
       body: ListView(
@@ -250,7 +285,7 @@ class RemindersSettingsPage extends ConsumerWidget {
               final settings = ref.watch(reminderSettingsProvider);
               return settings.when(
                 data: (s) => SwitchListTile(
-                  secondary: const Icon(Icons.notifications_active_outlined),
+                  secondary: const SettingsIconBox(icon: Icons.notifications_active_outlined, category: SettingsIconCategory.reminder),
                   title: const _InfoTitle(
                     title: '上课提醒',
                     message: '每节课提前提醒，App 被杀后也能准时响铃',
@@ -259,26 +294,32 @@ class RemindersSettingsPage extends ConsumerWidget {
                   onChanged: (v) => _onReminderToggle(ctx, ref, v),
                 ),
                 loading: () => const ListTile(
-                  leading: Icon(Icons.notifications_active_outlined),
+                  leading: SettingsIconBox(icon: Icons.notifications_active_outlined, category: SettingsIconCategory.reminder),
                   title: Text('上课提醒'),
                   subtitle: Text('加载中…'),
                 ),
                 error: (e, _) => ListTile(
-                  leading: const Icon(Icons.notifications_active_outlined),
+                  leading: const SettingsIconBox(icon: Icons.notifications_active_outlined, category: SettingsIconCategory.reminder),
                   title: const Text('上课提醒'),
                   subtitle: Text('加载失败：$e'),
                 ),
               );
             },
           ),
-          const Divider(height: 1, thickness: 1),
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            color: scheme.outlineVariant.withValues(alpha: 0.2),
+            indent: 72,
+            endIndent: 16,
+          ),
           // 上课播报（2.0.2 起从「外观」页归入提醒组）：主页顶部状态条开关
           Consumer(
             builder: (ctx, ref, _) {
               final ui =
                   ref.watch(uiSettingsProvider).value ?? const UiSettings();
               return SwitchListTile(
-                secondary: const Icon(Icons.campaign_outlined),
+                secondary: const SettingsIconBox(icon: Icons.campaign_outlined, category: SettingsIconCategory.reminder),
                 title: const _InfoTitle(
                   title: '上课播报',
                   message: '主页顶部显示当前/下一节课状态条，默认关',
@@ -290,13 +331,19 @@ class RemindersSettingsPage extends ConsumerWidget {
               );
             },
           ),
-          const Divider(height: 1, thickness: 1),
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            color: scheme.outlineVariant.withValues(alpha: 0.2),
+            indent: 72,
+            endIndent: 16,
+          ),
           Consumer(
             builder: (ctx, ref, _) {
               final enabled = ref.watch(ongoingNoticeSettingsProvider);
               return enabled.when(
                 data: (on) => SwitchListTile(
-                  secondary: const Icon(Icons.pin_outlined),
+                  secondary: const SettingsIconBox(icon: Icons.pin_outlined, category: SettingsIconCategory.reminder),
                   title: const _InfoTitle(
                     title: '今日课程常驻通知',
                     message: '通知栏常驻显示今日剩余或明日课程预告',
@@ -307,32 +354,38 @@ class RemindersSettingsPage extends ConsumerWidget {
                       .setEnabled(v),
                 ),
                 loading: () => const ListTile(
-                  leading: Icon(Icons.pin_outlined),
+                  leading: SettingsIconBox(icon: Icons.pin_outlined, category: SettingsIconCategory.reminder),
                   title: Text('今日课程常驻通知'),
                   subtitle: Text('加载中…'),
                 ),
                 error: (e, _) => ListTile(
-                  leading: const Icon(Icons.pin_outlined),
+                  leading: const SettingsIconBox(icon: Icons.pin_outlined, category: SettingsIconCategory.reminder),
                   title: const Text('今日课程常驻通知'),
                   subtitle: Text('加载失败：$e'),
                 ),
               );
             },
           ),
-          const Divider(height: 1, thickness: 1),
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            color: scheme.outlineVariant.withValues(alpha: 0.2),
+            indent: 72,
+            endIndent: 16,
+          ),
           Consumer(
             builder: (ctx, ref, _) {
               final advance =
                   ref.watch(reminderSettingsProvider).value?.advanceMinutes ??
                   15;
               return ListTile(
-                leading: const Icon(Icons.timer_outlined),
+                leading: const SettingsIconBox(icon: Icons.timer_outlined, category: SettingsIconCategory.reminder),
                 title: const Text(
                   '提前提醒',
                   style: TextStyle(fontWeight: FontWeight.w500),
                 ),
                 subtitle: Text('提前 $advance 分钟'),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: const _Chevron(),
                 onTap: () => _pickAdvanceMinutes(ctx, ref),
               );
             },
@@ -434,6 +487,8 @@ class DataSettingsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // WB_SPEC_222：组内分隔线颜色取自当前主题。
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('数据备份与换机'), centerTitle: true),
       body: ListView(
@@ -442,62 +497,92 @@ class DataSettingsPage extends ConsumerWidget {
           // 顶部 InfoBanner 常驻提示换机/重装前先导出备份，不弹全屏公告。
           const _LocalOnlyInfoBanner(),
           ListTile(
-            leading: const Icon(Icons.upload_file_outlined),
+            leading: const SettingsIconBox(icon: Icons.upload_file_outlined, category: SettingsIconCategory.data),
             title: const _InfoTitle(
               title: '导入课表',
               message: 'ICS / 图片 OCR / PDF 导入，支持冲突检测',
             ),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: const _Chevron(),
             onTap: () => Navigator.pushNamed(context, '/import'),
           ),
-          const Divider(height: 1, thickness: 1),
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            color: scheme.outlineVariant.withValues(alpha: 0.2),
+            indent: 72,
+            endIndent: 16,
+          ),
           ListTile(
-            leading: const Icon(Icons.school_outlined),
+            leading: const SettingsIconBox(icon: Icons.school_outlined, category: SettingsIconCategory.data),
             title: const _InfoTitle(
               title: '学期管理',
               message: '新建、切换或删除学期',
             ),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: const _Chevron(),
             onTap: () => Navigator.pushNamed(context, '/semester-manage'),
           ),
-          const Divider(height: 1, thickness: 1),
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            color: scheme.outlineVariant.withValues(alpha: 0.2),
+            indent: 72,
+            endIndent: 16,
+          ),
           ListTile(
-            leading: const Icon(Icons.backup_outlined),
+            leading: const SettingsIconBox(icon: Icons.backup_outlined, category: SettingsIconCategory.data),
             title: const _InfoTitle(
               title: '备份到文件',
               message: '导出全部数据为 JSON 文件，换机/重装可恢复',
             ),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: const _Chevron(),
             onTap: () => _exportBackup(context),
           ),
-          const Divider(height: 1, thickness: 1),
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            color: scheme.outlineVariant.withValues(alpha: 0.2),
+            indent: 72,
+            endIndent: 16,
+          ),
           ListTile(
-            leading: const Icon(Icons.restore_outlined),
+            leading: const SettingsIconBox(icon: Icons.restore_outlined, category: SettingsIconCategory.data),
             title: const _InfoTitle(
               title: '从备份恢复',
               message: '选择备份 JSON，恢复前会再次确认（覆盖现有数据）',
             ),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: const _Chevron(),
             onTap: () => _restoreBackup(context, ref),
           ),
-          const Divider(height: 1, thickness: 1),
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            color: scheme.outlineVariant.withValues(alpha: 0.2),
+            indent: 72,
+            endIndent: 16,
+          ),
           ListTile(
-            leading: const Icon(Icons.calendar_month_outlined),
+            leading: const SettingsIconBox(icon: Icons.calendar_month_outlined, category: SettingsIconCategory.data),
             title: const _InfoTitle(
               title: '导出课表（ICS）',
               message: '当前学期课表导出为日历文件，可分享或导入其他日历 App',
             ),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: const _Chevron(),
             onTap: () => _exportIcs(context, ref),
           ),
-          const Divider(height: 1, thickness: 1),
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            color: scheme.outlineVariant.withValues(alpha: 0.2),
+            indent: 72,
+            endIndent: 16,
+          ),
           ListTile(
-            leading: const Icon(Icons.sd_storage_outlined),
+            leading: const SettingsIconBox(icon: Icons.sd_storage_outlined, category: SettingsIconCategory.data),
             title: const _InfoTitle(
               title: '数据管理',
               message: '存储占用、备份快捷入口与恢复出厂',
             ),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: const _Chevron(),
             onTap: () => Navigator.pushNamed(context, '/data-manage'),
           ),
         ],
@@ -732,12 +817,14 @@ class WidgetSettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // WB_SPEC_222：组内分隔线颜色取自当前主题。
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('桌面小组件'), centerTitle: true),
       body: ListView(
         children: [
           ListTile(
-            leading: Icon(Icons.widgets_outlined),
+            leading: const SettingsIconBox(icon: Icons.widgets_outlined, category: SettingsIconCategory.appearance),
             title: Text(
               '今日课程小组件',
               style: const TextStyle(fontWeight: FontWeight.w500),
@@ -745,11 +832,17 @@ class WidgetSettingsPage extends StatelessWidget {
             subtitle: Text('在桌面长按空白处 →「小组件」→ 找到「小马课表」，即可添加今日课程小组件'),
           ),
           // WB_SPEC_219：从外观页移入「立即刷新桌面小部件」「部件状态」，
-          // 追加在「今日课程小组件」说明行之后，中间用标准 1px Divider 隔开；
+          // 追加在「今日课程小组件」说明行之后，中间用 0.5 Divider 隔开；
           // 两项 onTap 逻辑、SnackBar 文案、FutureBuilder 逻辑一字不动。
-          const Divider(height: 1, thickness: 1),
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            color: scheme.outlineVariant.withValues(alpha: 0.2),
+            indent: 72,
+            endIndent: 16,
+          ),
           ListTile(
-            leading: const Icon(Icons.widgets_outlined),
+            leading: const SettingsIconBox(icon: Icons.widgets_outlined, category: SettingsIconCategory.appearance),
             title: const _InfoTitle(
               title: '立即刷新桌面小部件',
               message: '把最新课程重新推送到桌面小部件',
@@ -762,7 +855,13 @@ class WidgetSettingsPage extends StatelessWidget {
               );
             },
           ),
-          const Divider(height: 1, thickness: 1),
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            color: scheme.outlineVariant.withValues(alpha: 0.2),
+            indent: 72,
+            endIndent: 16,
+          ),
           // 部件自检状态（1.2.7）：Provider 回写的上次更新记录
           FutureBuilder<({int ts, int ids, String? error})>(
             future: WidgetService.instance.debugStatus(),
@@ -770,7 +869,7 @@ class WidgetSettingsPage extends StatelessWidget {
               final d = snap.data;
               if (d == null || d.ts == 0) {
                 return const ListTile(
-                  leading: Icon(Icons.info_outline),
+                  leading: SettingsIconBox(icon: Icons.info_outline, category: SettingsIconCategory.system),
                   title: Text(
                     '部件状态',
                     style: TextStyle(fontWeight: FontWeight.w500),
@@ -782,7 +881,7 @@ class WidgetSettingsPage extends StatelessWidget {
               final hh = t.hour.toString().padLeft(2, '0');
               final mm = t.minute.toString().padLeft(2, '0');
               return ListTile(
-                leading: const Icon(Icons.info_outline),
+                leading: const SettingsIconBox(icon: Icons.info_outline, category: SettingsIconCategory.system),
                 title: const Text(
                   '部件状态',
                   style: TextStyle(fontWeight: FontWeight.w500),
@@ -836,7 +935,7 @@ class _PermissionSummaryTileState extends State<_PermissionSummaryTile> {
       builder: (ctx, snap) {
         final s = snap.data;
         return ListTile(
-          leading: const Icon(Icons.shield_outlined),
+          leading: const SettingsIconBox(icon: Icons.shield_outlined, category: SettingsIconCategory.schedule),
           title: const Text(
             '权限',
             style: TextStyle(fontWeight: FontWeight.w500),
@@ -848,7 +947,7 @@ class _PermissionSummaryTileState extends State<_PermissionSummaryTile> {
                     '闹钟 ${s.exactAlarm ? '已授权' : '未授权'} · '
                     '电池 ${s.battery ? '已授权' : '未授权'}',
           ),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: const _Chevron(),
           onTap: _open,
         );
       },
@@ -1032,10 +1131,12 @@ class _AppearanceGroup extends ConsumerWidget {
 
         // ── 第 2 组「课表网格与表头」────────────────────────────
         const _Header('课表网格与表头'),
-        ..._divideRows([
+        // 组内第 2、3 行无 leading（文字左缘 x=16），分隔线 indent 取 16
+        //（222 复审 Bug 4；默认 72 会越过这两行文字左缘）。
+        ..._divideRows(Theme.of(context).colorScheme, [
           // 1. 周末无课时自动收起周六日（从页底移入）
           SwitchListTile(
-            secondary: const Icon(Icons.weekend_outlined),
+            secondary: const SettingsIconBox(icon: Icons.weekend_outlined, category: SettingsIconCategory.appearance),
             title: const _InfoTitle(
               title: '周末无课时自动收起周六日',
               message: '开启后周末没课时周视图只显示周一到周五，更宽敞',
@@ -1117,7 +1218,7 @@ class _AppearanceGroup extends ConsumerWidget {
           ),
           // 9. 显示非本周课程（从页底移入）
           SwitchListTile(
-            secondary: const Icon(Icons.visibility_outlined),
+            secondary: const SettingsIconBox(icon: Icons.visibility_outlined, category: SettingsIconCategory.appearance),
             title: const _InfoTitle(
               title: '显示非本周课程',
               message: '开启后其他周次的课程置灰显示，方便全局查看',
@@ -1126,11 +1227,13 @@ class _AppearanceGroup extends ConsumerWidget {
             onChanged: (v) =>
                 ref.read(showOtherWeeksProvider.notifier).toggle(v),
           ),
-        ]),
+        ], indent: 16),
 
         // ── 第 3 组「课程卡片样式与字体」────────────────────────
         const _Header('课程卡片样式与字体'),
-        ..._divideRows([
+        // 组内 5 行全无 leading（文字左缘 x=16），分隔线 indent 取 16
+        //（222 复审 Bug 4；默认 72 会越过全部 5 行文字左缘）。
+        ..._divideRows(Theme.of(context).colorScheme, [
           // 1. 卡片圆角大小（规格书 2.2 命名，即原「格子圆角半径」滑杆，
           //    从第 2 组移入此处；控件本身不动）
           _SliderRow(
@@ -1179,7 +1282,7 @@ class _AppearanceGroup extends ConsumerWidget {
             value: ui.showNote,
             onChanged: (v) => apply(ui.copyWith(showNote: v)),
           ),
-        ]),
+        ], indent: 16),
         // 6. 全局显示字体（_FontSection，从原位置整体移入，控件本身不动）
         _FontSection(ui: ui, apply: apply),
 
@@ -1190,7 +1293,7 @@ class _AppearanceGroup extends ConsumerWidget {
         // （219 复审优化：外层已 watch 同一 provider，内层 Consumer 多余，
         //  复用外层 ui/apply，行为不变）
         SwitchListTile(
-          secondary: const Icon(Icons.smartphone_outlined),
+          secondary: const SettingsIconBox(icon: Icons.smartphone_outlined, category: SettingsIconCategory.appearance),
           title: const Text(
             '底部栏显示',
             style: TextStyle(fontWeight: FontWeight.w500),
@@ -1207,7 +1310,7 @@ class _AppearanceGroup extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const ListTile(
-              leading: Icon(Icons.animation_outlined),
+              leading: SettingsIconBox(icon: Icons.animation_outlined, category: SettingsIconCategory.appearance),
               title: Text(
                 '切换动效',
                 style: TextStyle(fontWeight: FontWeight.w500),
@@ -1289,7 +1392,11 @@ class _Header extends StatelessWidget {
         style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
-          color: Theme.of(context).colorScheme.onSurface,
+          // WB_SPEC_222：弱化标题、突出内容；小标题不上彩色。
+          color: Theme.of(context)
+              .colorScheme
+              .onSurfaceVariant
+              .withValues(alpha: 0.6),
         ),
       ),
     );

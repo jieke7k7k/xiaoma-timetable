@@ -7,6 +7,7 @@ import '../services/permission_service.dart';
 import '../utils/route_observer.dart';
 import '../ui/app_styles.dart';
 import '../ui/bottom_bar_metrics.dart';
+import '../ui/settings_icon_box.dart';
 
 /// 设置页（QQ 式分级 → WB_SPEC_218 第 ④ 节重组为三大分组）
 ///
@@ -48,6 +49,8 @@ class SettingsPage extends ConsumerWidget {
 
     final themeMode =
         ref.watch(themeSettingsProvider).value ?? ThemeMode.system;
+    // WB_SPEC_222：组内分隔线颜色取自当前主题（_divideRows 需传 scheme）。
+    final scheme = Theme.of(context).colorScheme;
     final themeLabel = switch (themeMode) {
       ThemeMode.light => '浅色',
       ThemeMode.dark => '深色',
@@ -84,15 +87,17 @@ class SettingsPage extends ConsumerWidget {
         ),
         children: [
           const _GroupHeader('课表与学期'),
-          ..._divideRows([
+          ..._divideRows(scheme, [
             _EntryTile(
               icon: Icons.badge_outlined,
+              category: SettingsIconCategory.schedule,
               title: '当前学期与周次',
               subtitle: semesterSubtitle,
               route: '/settings-semester',
             ),
             const _EntryTile(
               icon: Icons.handyman_outlined,
+              category: SettingsIconCategory.schedule,
               title: '课表工具箱',
               subtitle: '搜索、空闲时段、考试倒计时',
               route: '/course-tools',
@@ -100,6 +105,7 @@ class SettingsPage extends ConsumerWidget {
             // WB_SPEC_219：节次时间设置入口从外观二级页移入设置首页「课表与学期」组
             const _EntryTile(
               icon: Icons.schedule_outlined,
+              category: SettingsIconCategory.schedule,
               title: '节次时间设置',
               subtitle: '自定义每节课上下课时间',
               route: '/time-settings',
@@ -107,15 +113,17 @@ class SettingsPage extends ConsumerWidget {
           ]),
           const SizedBox(height: AppSpacing.group),
           const _GroupHeader('展示与桌面'),
-          ..._divideRows([
+          ..._divideRows(scheme, [
             _EntryTile(
               icon: Icons.palette_outlined,
+              category: SettingsIconCategory.appearance,
               title: '外观与底栏',
               subtitle: appearanceSubtitle,
               route: '/settings-appearance',
             ),
             const _EntryTile(
               icon: Icons.widgets_outlined,
+              category: SettingsIconCategory.appearance,
               title: '桌面小组件',
               subtitle: '今日课程小组件的添加说明',
               route: '/settings-widget',
@@ -126,9 +134,10 @@ class SettingsPage extends ConsumerWidget {
           ]),
           const SizedBox(height: AppSpacing.group),
           const _GroupHeader('数据与安全'),
-          ..._divideRows([
+          ..._divideRows(scheme, [
             const _EntryTile(
               icon: Icons.backup_outlined,
+              category: SettingsIconCategory.data,
               title: '数据备份与换机',
               subtitle: '本地导出、恢复与换机迁移（纯本地存储）',
               route: '/settings-data',
@@ -166,7 +175,10 @@ class SettingsPage extends ConsumerWidget {
         PopupMenuItem(
           value: '/settings-permissions',
           child: ListTile(
-            leading: Icon(Icons.shield_outlined),
+            leading: SettingsIconBox(
+              icon: Icons.shield_outlined,
+              category: SettingsIconCategory.schedule,
+            ),
             title: Text('权限自检'),
             contentPadding: EdgeInsets.zero,
           ),
@@ -174,7 +186,10 @@ class SettingsPage extends ConsumerWidget {
         PopupMenuItem(
           value: '/about',
           child: ListTile(
-            leading: Icon(Icons.info_outline),
+            leading: SettingsIconBox(
+              icon: Icons.info_outline,
+              category: SettingsIconCategory.system,
+            ),
             title: Text('关于小马课表'),
             contentPadding: EdgeInsets.zero,
           ),
@@ -185,33 +200,46 @@ class SettingsPage extends ConsumerWidget {
 }
 
 /// 分类入口行（图标 + 名称 + 一行副标题 + ›）：点进对应子页/已有二级页
+///
+/// WB_SPEC_222：leading 图标换成语义化分组柔和彩色底块（SettingsIconBox），
+/// 箭头缩小到 20dp、颜色 onSurfaceVariant 60%。
 class _EntryTile extends StatelessWidget {
   const _EntryTile({
     required this.icon,
+    required this.category,
     required this.title,
     required this.subtitle,
     required this.route,
   });
 
   final IconData icon;
+  final SettingsIconCategory category;
   final String title;
   final String subtitle;
   final String route;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return ListTile(
-      leading: Icon(icon),
+      leading: SettingsIconBox(icon: icon, category: category),
       // 2.0.7 Taste 化：标题字重 medium，副标题沿用主题次要颜色与字号（不改色不放大）
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
       subtitle: Text(subtitle),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: Icon(
+        Icons.chevron_right,
+        size: 20,
+        color: scheme.onSurfaceVariant.withValues(alpha: 0.6),
+      ),
       onTap: () => Navigator.pushNamed(context, route),
     );
   }
 }
 
 /// 分组小标题（2.0.7 起沿用 settings_sections 同款：13 号、semibold、正文主色）。
+///
+/// WB_SPEC_222：字号 13、字重 w600、间距保持现状；颜色由正文主色改为
+/// onSurfaceVariant 60%（弱化标题、突出内容），小标题不上彩色。
 class _GroupHeader extends StatelessWidget {
   const _GroupHeader(this.title);
 
@@ -226,18 +254,32 @@ class _GroupHeader extends StatelessWidget {
         style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
-          color: Theme.of(context).colorScheme.onSurface,
+          color: Theme.of(context)
+              .colorScheme
+              .onSurfaceVariant
+              .withValues(alpha: 0.6),
         ),
       ),
     );
   }
 }
 
-/// 把同一组内连续行用 1px 分隔线隔开（与 settings_sections 的 Taste 口径一致）。
-List<Widget> _divideRows(List<Widget> rows) {
+/// 把同一组内连续行用轻量分隔线隔开（与 settings_sections 的 Taste 口径一致）。
+///
+/// WB_SPEC_222：分隔线对齐标题文字左缘——ListTile 标题起始位置是
+/// max(minLeadingWidth=40, leading 宽) + horizontalTitleGap=16，再加内容边距左 16，
+/// 文字左缘在 x=72（Argon 给的 64 漏算了 40dp leading 槽宽，已纠正）。
+List<Widget> _divideRows(ColorScheme scheme, List<Widget> rows) {
   return [
     for (var i = 0; i < rows.length; i++) ...[
-      if (i > 0) const Divider(height: 1, thickness: 1),
+      if (i > 0)
+        Divider(
+          height: 1,
+          thickness: 0.5,
+          color: scheme.outlineVariant.withValues(alpha: 0.2),
+          indent: 72,
+          endIndent: 16,
+        ),
       rows[i],
     ],
   ];
@@ -327,7 +369,11 @@ class _ReminderEntryTileState extends ConsumerState<_ReminderEntryTile>
     final showBadge = enabled && _needsAttention;
     final scheme = Theme.of(context).colorScheme;
     return ListTile(
-      leading: const Icon(Icons.notifications_active_outlined),
+      // WB_SPEC_222：leading 换成提醒组（橙）彩色底块；箭头 20dp、onSurfaceVariant 60%。
+      leading: const SettingsIconBox(
+        icon: Icons.notifications_active_outlined,
+        category: SettingsIconCategory.reminder,
+      ),
       // 2.0.7 Taste 化：标题字重 medium，副标题沿用主题次要颜色与字号
       title: const Text('上课提醒', style: TextStyle(fontWeight: FontWeight.w500)),
       subtitle: Text(widget.subtitle),
@@ -353,7 +399,11 @@ class _ReminderEntryTileState extends ConsumerState<_ReminderEntryTile>
               ),
             ),
           if (showBadge) const SizedBox(width: 6),
-          const Icon(Icons.chevron_right),
+          Icon(
+            Icons.chevron_right,
+            size: 20,
+            color: scheme.onSurfaceVariant.withValues(alpha: 0.6),
+          ),
         ],
       ),
       onTap: () => Navigator.pushNamed(context, '/settings-reminders'),
