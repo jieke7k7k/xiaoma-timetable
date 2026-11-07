@@ -463,6 +463,26 @@ final displayWeekProvider = NotifierProvider<DisplayWeekNotifier, int>(
   DisplayWeekNotifier.new,
 );
 
+/// 周数跳转条是否展开（WB_SPEC_223）
+///
+/// 单一事实来源：原来存在 `_WeekViewPageState._showJumper` 本地字段；
+/// 底部标签栏在 `main.dart` 的壳里（WeekViewPage 的祖先），点底部栏也要
+/// 只收起跳转条、不切页，所以开关必须提到 provider 层共享。
+/// 值不变时不写 state，避免无谓重建。
+class WeekJumperNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void setOpen(bool value) {
+    if (state == value) return;
+    state = value;
+  }
+}
+
+final weekJumperOpenProvider = NotifierProvider<WeekJumperNotifier, bool>(
+  WeekJumperNotifier.new,
+);
+
 /// 设置开关：是否显示非本周课程（置灰），默认隐藏
 class ShowOtherWeeksNotifier extends Notifier<bool> {
   @override

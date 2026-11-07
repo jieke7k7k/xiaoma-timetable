@@ -550,8 +550,22 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           bottom: 0,
           child: HomeTabBar(
             activeTab: _tab,
-            onSelectTab: (tab) => setState(() => _tab = tab),
-            onTapSchedule: _onTapScheduleKey,
+            // WB_SPEC_223：跳转条展开时点底部栏只收起，不切页／不回本周。
+            // WeekViewPage  watch 着这个 provider，置 false 后它自己收起。
+            onSelectTab: (tab) {
+              if (ref.read(weekJumperOpenProvider)) {
+                ref.read(weekJumperOpenProvider.notifier).setOpen(false);
+                return;
+              }
+              setState(() => _tab = tab);
+            },
+            onTapSchedule: () {
+              if (ref.read(weekJumperOpenProvider)) {
+                ref.read(weekJumperOpenProvider.notifier).setOpen(false);
+                return;
+              }
+              _onTapScheduleKey();
+            },
           ),
         ),
       ],

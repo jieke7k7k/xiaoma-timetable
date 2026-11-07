@@ -90,7 +90,19 @@ int weekViewInitialPage(int displayWeek, int totalWeeks) =>
 
 class _WeekViewPageState extends ConsumerState<WeekViewPage> {
   PageController? _pageController;
-  bool _showJumper = false;
+
+  /// 周数跳转条统一收起入口（WB_SPEC_223）：开关由 provider 持有
+  /// （见 weekJumperOpenProvider），本页只读不自存；已关时 no-op。
+  void _closeJumper() =>
+      ref.read(weekJumperOpenProvider.notifier).setOpen(false);
+
+  /// 跳转条展开时各入口的守卫（WB_SPEC_223 第 3.5 节）：这一下点只负责
+  /// 收起，不走原本的操作。返回 true 表示已拦截、调用方直接 return。
+  bool _guardJumper() {
+    if (!ref.read(weekJumperOpenProvider)) return false;
+    _closeJumper();
+    return true;
+  }
 
   /// 编辑模式：开启后才能点空白新建课程、长按课程编辑/删除；
   /// 关闭时点空白无反应、点课程只看详情，防止误触（用户真机反馈）
@@ -450,6 +462,8 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final displayWeek = ref.watch(displayWeekProvider);
+    // WB_SPEC_223：跳转条开关由 provider 持有（底部栏也要读它），本页只读。
+    final jumperOpen = ref.watch(weekJumperOpenProvider);
     final todayWeek = ref.watch(todayWeekProvider);
     final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
     // 2.1.0（WB_SPEC_212 第 2/4 节）：右上角「更多」菜单由配置驱动，
@@ -576,56 +590,64 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
             final cs = Theme.of(context).colorScheme;
             final isDark = Theme.of(context).brightness == Brightness.dark;
             final radius = BorderRadius.circular(AppRadii.chip);
-            final borderColor = _showJumper
+            final borderColor = jumperOpen
                 ? cs.primary.withValues(alpha: isDark ? 0.85 : 0.75)
                 : Colors.transparent;
-            final bgColor = _showJumper
+            final bgColor = jumperOpen
                 ? cs.primary.withValues(alpha: isDark ? 0.16 : 0.10)
                 : Colors.transparent;
-            final contentColor = _showJumper ? cs.primary : cs.onSurface;
-            return InkWell(
-              onTap: () => setState(() => _showJumper = !_showJumper),
-              borderRadius: radius,
-              splashColor: cs.primary.withValues(alpha: 0.12),
-              highlightColor: cs.primary.withValues(alpha: 0.06),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOutCubic,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: bgColor,
-                  borderRadius: radius,
-                  border: Border.all(color: borderColor, width: 1.5),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // WB_SPEC_209 第 4 节：左上角只显示周数，删掉日期范围行
-                        AnimatedDefaultTextStyle(
-                          duration: const Duration(milliseconds: 180),
-                          curve: Curves.easeOutCubic,
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
-                            color: contentColor,
+            final contentColor = jumperOpen ? cs.primary : cs.onSurface;
+            // WB_SPEC_223：标题文案抽成变量，Semantics label 与显示共用同一份。
+            final titleText = ui.showWeekParity
+                ? WeekCalc.weekTitle(displayWeek)
+                : '第 $displayWeek 周';
+            return Semantics(
+              button: true,
+              expanded: jumperOpen,
+              label: '$titleText，点击${jumperOpen ? '收起' : '选择'}周次',
+              child: InkWell(
+                onTap: () => ref
+                    .read(weekJumperOpenProvider.notifier)
+                    .setOpen(!jumperOpen),
+                borderRadius: radius,
+                splashColor: cs.primary.withValues(alpha: 0.12),
+                highlightColor: cs.primary.withValues(alpha: 0.06),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    borderRadius: radius,
+                    border: Border.all(color: borderColor, width: 1.5),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // WB_SPEC_209 第 4 节：左上角只显示周数，删掉日期范围行
+                          AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 180),
+                            curve: Curves.easeOutCubic,
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                              color: contentColor,
+                            ),
+                            child: Text(titleText),
                           ),
-                          child: Text(
-                            ui.showWeekParity
-                                ? WeekCalc.weekTitle(displayWeek)
-                                : '第 $displayWeek 周',
-                          ),
-                        ),
-                      ],
-                    ),
-                    Icon(
-                      _showJumper ? Icons.expand_less : Icons.expand_more,
-                      // 展开态箭头跟框同色；收起态不显式设色，保持原默认。
-                      color: _showJumper ? cs.primary : null,
-                    ),
-                  ],
+                        ],
+                      ),
+                      Icon(
+                        jumperOpen ? Icons.expand_less : Icons.expand_more,
+                        // 展开态箭头跟框同色；收起态不显式设色，保持原默认。
+                        color: jumperOpen ? cs.primary : null,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -633,9 +655,13 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
         ),
         actions: [
           // 编辑模式开关（右上角）：防误触——不开时点空白不新建、长按不出菜单
+          // WB_SPEC_223：跳转条展开时这一下只收起，不切换编辑模式。
           if (_editMode)
             TextButton.icon(
-              onPressed: () => setState(() => _editMode = false),
+              onPressed: () {
+                if (_guardJumper()) return;
+                setState(() => _editMode = false);
+              },
               icon: const Icon(Icons.check, size: 18),
               label: const Text('完成'),
             )
@@ -644,6 +670,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
               tooltip: '编辑模式（开启后可添加/修改课程）',
               icon: const Icon(Icons.edit_outlined),
               onPressed: () {
+                if (_guardJumper()) return;
                 HapticFeedback.lightImpact();
                 setState(() => _editMode = true);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -657,20 +684,35 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
           // 「新建」入口（2.0.0）：底栏三键改版后，原来的「新建」页签挪到这里。
           // 点开就是原来那套新建方式选择（手动填 / 导入课表），与编辑模式无关——
           // 这两条都是完整的表单页流程，不需要先开编辑模式。
+          // WB_SPEC_223：跳转条展开时这一下只收起，不弹新建表。
           IconButton(
             icon: const Icon(Icons.add_outlined),
-            onPressed: _showCreateSheet,
+            onPressed: () {
+              if (_guardJumper()) return;
+              _showCreateSheet();
+            },
           ),
           // 「更多」菜单（2.1.0 WB_SPEC_212 第 2/4 节；2.1.2 WB_SPEC_213 第 4 节）：
           // 按菜单配置动态生成，可见项在前、固定「设置」殿后；底部栏开时运行时
           // 过滤掉「设置」。六项全关且底栏关（去重前只有设置一项）时右上角直接
           // 齿轮进设置；六项全关且底栏开（去重后为空）时触发「更多工具」兜底——
           // 弹菜单列全部六项工具，不出现空菜单、不出现齿轮直进设置。
+          // WB_SPEC_223：PopupMenuButton 没有 onPressed 可守卫，展开时改渲染
+          // 一个同图标的普通按钮（只收起）；收起时照常渲染菜单。
           if (rawMenuItems.length <= 1 && !ui.showBottomBar)
             IconButton(
               tooltip: '设置',
               icon: const Icon(Icons.settings),
-              onPressed: () => Navigator.pushNamed(context, '/settings'),
+              onPressed: () {
+                if (_guardJumper()) return;
+                Navigator.pushNamed(context, '/settings');
+              },
+            )
+          else if (jumperOpen)
+            IconButton(
+              tooltip: '更多',
+              icon: const Icon(Icons.more_vert),
+              onPressed: _closeJumper,
             )
           else
             _buildMoreMenu(
@@ -683,8 +725,16 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
       body: Column(
         children: [
           // 当前/下一节课状态条（1.2.0）：点一下回到本周；由「上课播报」开关控制显隐
+          // WB_SPEC_223：横幅在跳转条上方，点按层盖不到，回调里守卫。
           if (ui.showClassBroadcast)
-            _ClassFocusBar(focus: focus, now: now, onTap: _goToday),
+            _ClassFocusBar(
+              focus: focus,
+              now: now,
+              onTap: () {
+                if (_guardJumper()) return;
+                _goToday();
+              },
+            ),
           // 更新提示横幅（1.2.4）：有新版且这个版本没被关过
           if (_channel != null &&
               _currentCode > 0 &&
@@ -694,8 +744,12 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
               icon: Icons.system_update_outlined,
               text: '有新版本 ${_channel!.latest!.versionName} 可用',
               actionLabel: '去看看',
-              onAction: () => Navigator.pushNamed(context, '/about'),
+              onAction: () {
+                if (_guardJumper()) return;
+                Navigator.pushNamed(context, '/about');
+              },
               onClose: () async {
+                if (_guardJumper()) return;
                 final code = _channel!.latest!.versionCode;
                 await ChannelService.dismissVersion(code);
                 if (mounted) setState(() => _dismissedCode = code);
@@ -708,66 +762,110 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
               text: '公告：${_bannerAnnouncement!.title}',
               actionLabel: '查看',
               onAction: () async {
+                if (_guardJumper()) return;
                 await Navigator.pushNamed(context, '/announcements');
                 final seen = await ChannelService.seenIds();
                 if (mounted) setState(() => _seenAnn = seen);
               },
               onClose: () async {
+                if (_guardJumper()) return;
                 final id = _bannerAnnouncement!.id;
                 await ChannelService.dismiss(id);
                 if (mounted) setState(() => _dismissedAnn.add(id));
               },
             ),
           // 周次快速跳转条
+          // WB_SPEC_223：收起动画加 alignment topCenter（默认 center 会让内容
+          // 往中间挤）＋ easeOutCubic；收起态占位用宽无限高 0（只做纯高度动画，
+          // 宽度不再从屏宽缩到 0）。这两项是新增，不是「保留」——旧代码里都没有。
           AnimatedSize(
             duration: const Duration(milliseconds: 200),
-            child: _showJumper
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: jumperOpen
                 ? _WeekJumper(
                     totalWeeks: semester.totalWeeks,
                     currentWeek: displayWeek,
                     todayWeek: todayWeek,
                     onTap: (w) {
                       _jumpToWeek(w);
-                      setState(() => _showJumper = false);
+                      _closeJumper();
                     },
                   )
-                : const SizedBox.shrink(),
+                : const SizedBox(width: double.infinity, height: 0),
           ),
-          // 表头（列数由 displayDays 驱动）
-          _HeaderRow(
-            dates: dates,
-            displayDays: displayDays,
-            timeAxisWidth: _timeAxisWidth,
-            today: DateTime.now(),
-            examsByDay: examsByDay,
-            onDayTap: (date, dayCourses) =>
-                _showDayExams(context, date, dayCourses),
-          ),
-          const Divider(height: 1),
-          // 网格区
+          // 跳转条以下区域（WB_SPEC_223 重组）：表头＋分割线＋网格收进同一个
+          // Expanded 的 Stack 里，点按层才能一次盖住它们；重组前后网格高度
+          // 一致（先扣表头＋分割线再把剩余分给网格，与原来 Column 里同口径）。
           Expanded(
-            child: Stack(
-              children: [
-                _GridArea(
-                  pageController: _pageController!,
-                  displayWeek: displayWeek,
-                  displayDays: displayDays,
-                  timeAxisWidth: _timeAxisWidth,
-                  editMode: _editMode,
-                  scrollLocked: _gridScrollLocked,
-                  onScrollLockChanged: (locked) =>
-                      setState(() => _gridScrollLocked = locked),
-                  onWeekChanged: (page) =>
-                      ref.read(displayWeekProvider.notifier).setWeek(page + 1),
-                ),
-                // 「回到本周」竖条悬浮按钮（WB_SPEC_209 第 2 节）：非本周视图时
-                // 贴主页右缘中间，本周视图不渲染
-                if (displayWeek != todayWeek)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: _BackToWeekRail(onTap: _goToday),
+            child: NotificationListener<ScrollStartNotification>(
+              // 滚动收起：只认用户手指拖动（dragDetails != null），程序化
+              // jumpToPage 的通知 dragDetails 为 null，不会误触发。
+              // 返回 false 不打断滚动；用 ScrollStart 而不用 ScrollUpdate——
+              // 拖动开始即触发，不用等位移攒到阈值。
+              onNotification: (notification) {
+                if (jumperOpen && notification.dragDetails != null) {
+                  _closeJumper();
+                }
+                return false;
+              },
+              child: Stack(
+                children: [
+                  Column(
+                    children: [
+                      // 表头（列数由 displayDays 驱动）
+                      _HeaderRow(
+                        dates: dates,
+                        displayDays: displayDays,
+                        timeAxisWidth: _timeAxisWidth,
+                        today: DateTime.now(),
+                        examsByDay: examsByDay,
+                        onDayTap: (date, dayCourses) =>
+                            _showDayExams(context, date, dayCourses),
+                      ),
+                      const Divider(height: 1),
+                      // 网格区
+                      Expanded(
+                        child: _GridArea(
+                          pageController: _pageController!,
+                          displayWeek: displayWeek,
+                          displayDays: displayDays,
+                          timeAxisWidth: _timeAxisWidth,
+                          editMode: _editMode,
+                          scrollLocked: _gridScrollLocked,
+                          contentLocked: jumperOpen,
+                          onScrollLockChanged: (locked) =>
+                              setState(() => _gridScrollLocked = locked),
+                          onWeekChanged: (page) => ref
+                              .read(displayWeekProvider.notifier)
+                              .setWeek(page + 1),
+                        ),
+                      ),
+                    ],
                   ),
-              ],
+                  // 「回到本周」竖条悬浮按钮（WB_SPEC_209 第 2 节）：非本周视图时
+                  // 贴主页右缘中间，本周视图不渲染
+                  if (displayWeek != todayWeek)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _BackToWeekRail(onTap: _goToday),
+                    ),
+                  // 透明点按层（WB_SPEC_223 主机制）：只在展开时存在。
+                  // 必须放最后（Stack 里最后＝画在最上＝命中顺序最先），
+                  // 抬手事件先到它，底下的课程点按／表头点按／回到本周一律被拒。
+                  // 只能用 translucent——opaque 会截断命中测试，底下滚动体
+                  // 的拖动识别器进不了竞技场，第一把滚动就被吞；
+                  // translucent 让拖动照常参与，超 slop 后拖动赢、滚动继续。
+                  if (jumperOpen)
+                    Positioned.fill(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTap: _closeJumper,
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1111,6 +1209,7 @@ class _GridArea extends ConsumerWidget {
     required this.editMode,
     required this.scrollLocked,
     required this.onScrollLockChanged,
+    required this.contentLocked,
   });
 
   final PageController pageController;
@@ -1121,6 +1220,14 @@ class _GridArea extends ConsumerWidget {
   final bool editMode;
   final bool scrollLocked;
   final ValueChanged<bool> onScrollLockChanged;
+
+  /// WB_SPEC_223：跳转条展开时锁住网格内容的手势（点按＋长按）。
+  /// 点按层拦不住长按（长按识别器在约 500ms 超时时就赢得竞技场，
+  /// 比点按层的抬手裁决早）——展开时在空白格长按会照常起高亮、
+  /// 在课程卡片长按会照常弹菜单，所以这里要整层锁死。
+  /// 只包 _WeekGrid，不包 SingleChildScrollView／PageView 本身
+  /// （它俩是 _WeekGrid 的祖先，不受影响）——滚动照常。
+  final bool contentLocked;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1262,19 +1369,22 @@ class _GridArea extends ConsumerWidget {
                           itemCount: semester.totalWeeks,
                           itemBuilder: (context, index) {
                             final week = index + 1;
-                            return _WeekGrid(
-                              key: ValueKey(week),
-                              week: week,
-                              sectionCount: sectionCount,
-                              displayDays: displayDays,
-                              cellWidth: cellWidth,
-                              rowHeight: rowHeight,
-                              activeBands: activeBands,
-                              editMode: editMode,
-                              onScrollLockChanged: onScrollLockChanged,
-                              highlightDay: week == thisWeekNo
-                                  ? highlightDay
-                                  : null,
+                            return IgnorePointer(
+                              ignoring: contentLocked,
+                              child: _WeekGrid(
+                                key: ValueKey(week),
+                                week: week,
+                                sectionCount: sectionCount,
+                                displayDays: displayDays,
+                                cellWidth: cellWidth,
+                                rowHeight: rowHeight,
+                                activeBands: activeBands,
+                                editMode: editMode,
+                                onScrollLockChanged: onScrollLockChanged,
+                                highlightDay: week == thisWeekNo
+                                    ? highlightDay
+                                    : null,
+                              ),
                             );
                           },
                         ),
