@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models/ui_settings.dart';
@@ -206,6 +207,15 @@ class SimpleTimetableApp extends ConsumerWidget {
     return MaterialApp(
       title: '小马课表',
       debugShowCheckedModeBanner: false,
+      // WB_SPEC_220：全局中文 locale（flutter_localizations，SDK 内置包，
+      // 不用 intl 初始化）：两处开学日期日历与其它 Material 文案自动变中文。
+      locale: const Locale('zh', 'CN'),
+      supportedLocales: const [Locale('zh', 'CN')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       // 路由观察者（复查 Bug 3）：子页返回时相关页面可感知并重查状态
       navigatorObservers: [appRouteObserver],
       theme: ThemeData(

@@ -119,14 +119,36 @@ class _ImportPageState extends ConsumerState<ImportPage> {
     );
   }
 
-  /// 选目标学期：已有学期列表 + 当场新建（新建即切换为当前学期并设为目标）
+  /// 当前学期 id：优先从已加载的学期列表取 isCurrent 项（复审 L1）——
+  /// 只 await 学期列表 provider 不能保证 current provider 已加载，
+  /// 直进导入页立刻点「更改」时后者可能仍是 loading。
+  int? _currentIdFrom(List<Semester> semesters) {
+    for (final s in semesters) {
+      if (s.isCurrent) return s.id;
+    }
+    return null;
+  }
+
+  /// 选目标学期（WB_SPEC_220 方案 B）：「新建学期」置顶默认勾选，
+  /// 下方列已有学期；点新建行或底部按钮进新建表单（表单叠在弹层上方，
+  /// 取消后仍留在弹层里改选旧学期；建好后关弹层并设为目标）。
   Future<void> _pickTarget(BuildContext context) async {
-    final semesters = ref.read(semestersProvider).value ?? const <Semester>[];
+    // 先等学期列表加载完再开弹层：首读可能是 loading，直接读 .value 会是空列表
+    // （生产里主页一般已预热过，但导入页直进时不能依赖这一点）。
+    List<Semester> semesters;
+    try {
+      semesters = await ref.read(semestersProvider.future);
+    } catch (_) {
+      semesters = ref.read(semestersProvider).value ?? const <Semester>[];
+    }
+    final currentId = _currentIdFrom(semesters) ??
+        ref.read(currentSemesterProvider).value?.id;
     final picked = await showModalBottomSheet<Object>(
       context: context,
-      builder: (ctx) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const ListTile(
               title: Text(
@@ -134,26 +156,88 @@ class _ImportPageState extends ConsumerState<ImportPage> {
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
-            for (final s in semesters)
-              ListTile(
-                leading: Icon(
-                  (_target?.id ??
-                              ref.read(currentSemesterProvider).value?.id) ==
-                          s.id
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_unchecked,
+            // 1. 默认选中项：新建学期（置顶、高亮、默认勾选）
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(AppRadii.card),
+                onTap: () => _createNewSemester(sheetContext),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(sheetContext)
+                        .colorScheme
+                        .primaryContainer
+                        .withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(AppRadii.card),
+                    border: Border.all(
+                      color: Theme.of(sheetContext).colorScheme.primary,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.add_circle_outline),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          '新建学期（新学期的课表选这个）',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Theme.of(sheetContext).colorScheme.primary,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '推荐',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(sheetContext)
+                                .colorScheme
+                                .onPrimary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.check_circle_rounded,
+                        color: Theme.of(sheetContext).colorScheme.primary,
+                      ),
+                    ],
+                  ),
                 ),
-                title: Text(s.name),
-                subtitle: Text('开学 ${s.startDate} · 共 ${s.totalWeeks} 周'),
-                onTap: () => Navigator.pop(ctx, s),
               ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.add_circle_outline),
-              title: const Text('新建学期（新学期的课表选这个）'),
-              onTap: () => Navigator.pop(ctx, #createNew),
             ),
             const SizedBox(height: 8),
+            // 2. 已有学期：当前学期只标灰字，不再打勾；点一行直接选中
+            for (final s in semesters)
+              ListTile(
+                leading: const Icon(Icons.radio_button_unchecked),
+                title: Text(s.name),
+                subtitle: Text(
+                  '开学 ${s.startDate} · 共 ${s.totalWeeks} 周'
+                  '${s.id == currentId ? " · 当前使用中" : ""}',
+                ),
+                onTap: () => Navigator.pop(sheetContext, s),
+              ),
+            const SizedBox(height: 8),
+            // 3. 底部主按钮：默认已勾新建，点它同样进新建表单
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: FilledButton(
+                onPressed: () => _createNewSemester(sheetContext),
+                child: const Text('继续（新建学期）'),
+              ),
+            ),
           ],
         ),
       ),
@@ -161,26 +245,34 @@ class _ImportPageState extends ConsumerState<ImportPage> {
     if (picked == null || !context.mounted) return;
     if (picked is Semester) {
       setState(() => _target = picked);
-      return;
     }
-    // 新建学期：建好 → 切换为当前学期 → 设为本次目标
-    final created = await showSemesterFormDialog(context);
-    if (created == null || !context.mounted) return;
+  }
+
+  /// 新建学期表单叠在目标选择弹层上方：取消（null）时什么都不做，
+  /// 用户仍留在弹层里；建好后写入并切换为当前学期，关弹层并设为本次目标。
+  Future<void> _createNewSemester(BuildContext sheetContext) async {
+    final created = await showSemesterFormDialog(sheetContext);
+    if (created == null || !sheetContext.mounted) return;
     try {
-      final id = await ref
-          .read(semestersProvider.notifier)
-          .addSemester(created);
+      final id =
+          await ref.read(semestersProvider.notifier).addSemester(created);
       await ref.read(semestersProvider.notifier).switchTo(id);
-      setState(() => _target = created.copyWith(id: id, isCurrent: true));
+      if (!sheetContext.mounted) return;
+      final target = created.copyWith(id: id, isCurrent: true);
+      Navigator.pop(sheetContext, target);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('已新建并切换到「${created.name}」，课表将导入到这里')),
         );
       }
     } catch (e) {
+      // 失败时先关弹层再用页面 context 弹提示（复审 L2）：SnackBar 渲在
+      // 页面 Scaffold 上，弹层开着会被遮罩盖住、用户看不到。
+      if (sheetContext.mounted) Navigator.pop(sheetContext);
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('新建学期失败：$e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('新建学期失败：$e')),
+        );
       }
     }
   }
