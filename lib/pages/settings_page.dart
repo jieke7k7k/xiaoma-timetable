@@ -97,6 +97,13 @@ class SettingsPage extends ConsumerWidget {
               subtitle: '搜索、空闲时段、考试倒计时',
               route: '/course-tools',
             ),
+            // WB_SPEC_219：节次时间设置入口从外观二级页移入设置首页「课表与学期」组
+            const _EntryTile(
+              icon: Icons.schedule_outlined,
+              title: '节次时间设置',
+              subtitle: '自定义每节课上下课时间',
+              route: '/time-settings',
+            ),
           ]),
           const SizedBox(height: AppSpacing.group),
           const _GroupHeader('展示与桌面'),

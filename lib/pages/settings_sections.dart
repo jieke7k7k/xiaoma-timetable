@@ -35,11 +35,11 @@ import '../widgets/empty_state.dart';
 /// 这些子页里的控件与业务逻辑全部从 settings_page.dart **原样搬来**（搬家），
 /// 不许丢项、不许改行为：
 /// - [SemesterSettingsPage]（/settings-semester）：学期名称 / 开学日期 / 总周数
-/// - [AppearanceSettingsPage]（/settings-appearance）：实时预览 + 外观组整体 + 节次时间入口
+/// - [AppearanceSettingsPage]（/settings-appearance）：实时预览 + 4 组外观条目（WB_SPEC_219）
 /// - [RemindersSettingsPage]（/settings-reminders）：上课提醒 / 上课播报 / 常驻通知 / 提前提醒
 /// - [DataSettingsPage]（/settings-data）：导入 / 学期管理 / 备份 / 恢复 / 导出 ICS / 数据管理
 /// - [PermissionsSettingsPage]（/settings-permissions）：原 `_PermissionSummaryTile` 内容
-/// - [WidgetSettingsPage]（/settings-widget）：桌面小组件说明文字
+/// - [WidgetSettingsPage]（/settings-widget）：桌面小组件说明 + 立即刷新桌面小部件 / 部件状态（WB_SPEC_219）
 ///
 /// 2.0.7（WB_SPEC_208 第 2 节）Taste 化只动布局与层级：同一节内连续行之间用 1px
 /// 分隔线（现有主题 dividerColor）、节与节之间间距统一 24（`AppSpacing.group`）、
@@ -214,7 +214,13 @@ class SemesterSettingsPage extends ConsumerWidget {
   }
 }
 
-/// 外观子页：实时预览（置于 [_AppearanceGroup] 顶部）+ 外观组整体 + 节次时间入口
+/// 外观子页（WB_SPEC_219 第 2 节）：实时预览置页首，其余条目按 4 组重排。
+///
+/// 预览吸顶（SliverPersistentHeader）与现有「ListView + 单一 _AppearanceGroup」
+/// 结构冲突：预览高度动态依赖 ui.cellHeight（44–96）与 columnCount，改造成
+/// slivers 需拆分预览网格参数计算、并会改动现有 widget 测试依赖的 ListView 结构。
+/// 按规格书 2.2 允许的退路，退为「页面第 1 项不吸顶」：预览区仍是列表首个
+/// 可视块，网格参数计算逻辑原样留在 [_AppearanceGroup] 内，未搬动。
 class AppearanceSettingsPage extends StatelessWidget {
   const AppearanceSettingsPage({super.key});
 
@@ -223,86 +229,7 @@ class AppearanceSettingsPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('外观'), centerTitle: true),
       body: ListView(
-        children: [
-          // 2.1.2（WB_SPEC_213 第 1 节）：底部栏显示开关。说明文字作为开关下方
-          // 常驻副标题显示（不再用 ⓘ 独立点击热区）；开关即时生效、无需重启。
-          Consumer(
-            builder: (ctx, ref, _) {
-              final ui =
-                  ref.watch(uiSettingsProvider).value ?? const UiSettings();
-              return SwitchListTile(
-                secondary: const Icon(Icons.smartphone_outlined),
-                title: const Text(
-                  '底部栏显示',
-                  style: TextStyle(fontWeight: FontWeight.w500),
-                ),
-                subtitle: const Text(
-                  '开启后主页底部显示底部栏，可一键切换课表与设置；关闭后设置改从右上角菜单进入',
-                ),
-                value: ui.showBottomBar,
-                onChanged: (v) => ref
-                    .read(uiSettingsProvider.notifier)
-                    .apply(ui.copyWith(showBottomBar: v)),
-              );
-            },
-          ),
-          // 切换动效三选一（2026-11-05 用户定：三种都做，做成开关让用户自己选，
-          // 默认柔和）。紧跟在「底部栏显示」开关下方，切换即时生效并持久化。
-          Consumer(
-            builder: (ctx, ref, _) {
-              final ui =
-                  ref.watch(uiSettingsProvider).value ?? const UiSettings();
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const ListTile(
-                    leading: Icon(Icons.animation_outlined),
-                    title: Text(
-                      '切换动效',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    subtitle: Text('课表与设置之间切换时的动效，默认柔和'),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(56, 0, 16, 12),
-                    child: Wrap(
-                      spacing: AppSpacing.s,
-                      runSpacing: AppSpacing.s,
-                      children: [
-                        for (final style in ShellTransitionStyle.values)
-                          ChoiceChip(
-                            key: shellTransitionChipKey(style),
-                            label: Text(style.label),
-                            selected: ui.shellTransitionStyle == style,
-                            visualDensity: VisualDensity.compact,
-                            onSelected: (_) => ref
-                                .read(uiSettingsProvider.notifier)
-                                .apply(
-                                  ui.copyWith(shellTransitionStyle: style),
-                                ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-          const Divider(height: 1, thickness: 1),
-          const SizedBox(height: AppSpacing.group),
-          const _AppearanceGroup(),
-          // 2.0.7 Taste 化：节次时间入口与外观组之间节间距统一 24
-          const SizedBox(height: AppSpacing.group),
-          ListTile(
-            leading: const Icon(Icons.schedule_outlined),
-            title: const _InfoTitle(
-              title: '节次时间设置',
-              message: '自定义每节课上下课时间，可一键套用大节时间',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.pushNamed(context, '/time-settings'),
-          ),
-        ],
+        children: const [_AppearanceGroup()],
       ),
     );
   }
@@ -817,6 +744,57 @@ class WidgetSettingsPage extends StatelessWidget {
             ),
             subtitle: Text('在桌面长按空白处 →「小组件」→ 找到「小马课表」，即可添加今日课程小组件'),
           ),
+          // WB_SPEC_219：从外观页移入「立即刷新桌面小部件」「部件状态」，
+          // 追加在「今日课程小组件」说明行之后，中间用标准 1px Divider 隔开；
+          // 两项 onTap 逻辑、SnackBar 文案、FutureBuilder 逻辑一字不动。
+          const Divider(height: 1, thickness: 1),
+          ListTile(
+            leading: const Icon(Icons.widgets_outlined),
+            title: const _InfoTitle(
+              title: '立即刷新桌面小部件',
+              message: '把最新课程重新推送到桌面小部件',
+            ),
+            onTap: () async {
+              await WidgetService.instance.refreshWidgets();
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('已推送。若桌面仍不显示，长按小部件删除后重新添加一次即可')),
+              );
+            },
+          ),
+          const Divider(height: 1, thickness: 1),
+          // 部件自检状态（1.2.7）：Provider 回写的上次更新记录
+          FutureBuilder<({int ts, int ids, String? error})>(
+            future: WidgetService.instance.debugStatus(),
+            builder: (ctx, snap) {
+              final d = snap.data;
+              if (d == null || d.ts == 0) {
+                return const ListTile(
+                  leading: Icon(Icons.info_outline),
+                  title: Text(
+                    '部件状态',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  subtitle: Text('还没有收到小部件的更新记录（先添加一个桌面小部件）'),
+                );
+              }
+              final t = DateTime.fromMillisecondsSinceEpoch(d.ts);
+              final hh = t.hour.toString().padLeft(2, '0');
+              final mm = t.minute.toString().padLeft(2, '0');
+              return ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text(
+                  '部件状态',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+                subtitle: Text(
+                  d.error == null
+                      ? '上次更新 $hh:$mm · 共 ${d.ids} 个小部件 · 无异常'
+                      : '上次更新 $hh:$mm · 共 ${d.ids} 个小部件 · 异常：${d.error}',
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
@@ -880,9 +858,10 @@ class _PermissionSummaryTileState extends State<_PermissionSummaryTile> {
 
 /// 外观分组（2.0.3 起由原「外观」二级页平铺进设置首页，2.0.5 起随 QQ 式整顿
 /// 整体搬进外观子页 [AppearanceSettingsPage]）：
-/// 主题模式三段选择 + 原外观页全部条目（实时预览/格子外观/卡片显示/课程配色/
-/// 主题颜色/显示字体）+ 显示非本周课程/周末收起/刷新小部件/部件状态。
-/// 条目顺序与原外观页内顺序一致，逻辑原样复用。
+/// 外观页重组后的全部条目（WB_SPEC_219 第 2 节）：
+/// 页首实时预览 + 4 个分组（色彩与主题 / 课表网格与表头 / 课程卡片样式与字体 /
+/// 导航与交互动效）。只移动位置与分组，控件、provider、字段、行为原样。
+/// 节次时间入口移到设置首页；立即刷新桌面小部件、部件状态移到 WidgetSettingsPage。
 class _AppearanceGroup extends ConsumerWidget {
   const _AppearanceGroup();
 
@@ -917,7 +896,13 @@ class _AppearanceGroup extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 主题三档选择：跟随系统/浅色/深色（阶段五·深色适配）
+        // ── 顶部：实时预览（页面第 1 项，不吸顶；网格参数计算原样不动）──
+        const _Header('实时预览'),
+        Preview(ui: ui, columnCount: previewDays.length, slots: slots),
+
+        // ── 第 1 组「色彩与主题」──────────────────────────────
+        const _Header('色彩与主题'),
+        // 1. 深浅模式：跟随系统/浅色/深色（阶段五·深色适配），原样
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
           child: SegmentedButton<ThemeMode>(
@@ -944,167 +929,7 @@ class _AppearanceGroup extends ConsumerWidget {
                 .setMode(selection.first),
           ),
         ),
-        const _Header('实时预览'),
-        Preview(ui: ui, columnCount: previewDays.length, slots: slots),
-        const _Header('格子外观'),
-        ..._divideRows([
-          SwitchListTile(
-            title: const _InfoTitle(
-              title: '行高自适应一屏',
-              message: '按屏幕高度均分行高，整张课表不用上下滚',
-            ),
-            value: ui.autoFitHeight,
-            onChanged: (v) => apply(ui.copyWith(autoFitHeight: v)),
-          ),
-          _SliderRow(
-            label: '课程格子高度',
-            valueText: ui.autoFitHeight
-                ? '自适应中'
-                : '${ui.cellHeight.round()} px',
-            value: ui.cellHeight,
-            min: 44,
-            max: 96,
-            divisions: 26,
-            onChanged: ui.autoFitHeight
-                ? (_) {}
-                : (v) => apply(ui.copyWith(cellHeight: v)),
-          ),
-          _SliderRow(
-            label: '格子圆角半径',
-            valueText: '${ui.cornerRadius.round()} px',
-            value: ui.cornerRadius,
-            min: 0,
-            max: 20,
-            divisions: 20,
-            onChanged: (v) => apply(ui.copyWith(cornerRadius: v)),
-          ),
-          SwitchListTile(
-            title: const Text(
-              '显示网格线',
-              style: TextStyle(fontWeight: FontWeight.w500),
-            ),
-            value: ui.showGridLines,
-            onChanged: (v) => apply(ui.copyWith(showGridLines: v)),
-          ),
-          _SliderRow(
-            label: '格子边框粗细',
-            valueText: ui.borderWidth <= 0
-                ? '无边框'
-                : '${ui.borderWidth.toStringAsFixed(1)} px',
-            value: ui.borderWidth,
-            min: UiSettings.borderWidthMin,
-            max: UiSettings.borderWidthMax,
-            divisions: 30,
-            onChanged: (v) => apply(ui.copyWith(borderWidth: v)),
-          ),
-          SwitchListTile(
-            title: const _InfoTitle(
-              title: '节数栏显示时间',
-              message: '关掉后左侧只显示节次数字',
-            ),
-            value: ui.axisShowTime,
-            onChanged: (v) => apply(ui.copyWith(axisShowTime: v)),
-          ),
-          SwitchListTile(
-            title: const _InfoTitle(
-              title: '标题显示单双周',
-              message: '开时左上角显示「第 X 周 · 单周/双周」，关时只显示「第 X 周」，默认关',
-            ),
-            value: ui.showWeekParity,
-            onChanged: (v) => apply(ui.copyWith(showWeekParity: v)),
-          ),
-          SwitchListTile(
-            title: const _InfoTitle(
-              title: '今天整列边框高亮',
-              message: '给今天这一整天加一圈主题色边框，默认关',
-            ),
-            value: ui.highlightTodayColumn,
-            onChanged: (v) => apply(ui.copyWith(highlightTodayColumn: v)),
-          ),
-        ]),
-        const _Header('卡片显示'),
-        ..._divideRows([
-          _SliderRow(
-            label: '卡片文字大小',
-            valueText: '${(ui.cardTextScale * 100).round()}%',
-            value: ui.cardTextScale,
-            min: UiSettings.textScaleMin,
-            max: UiSettings.textScaleMax,
-            divisions: 50,
-            onChanged: (v) => apply(ui.copyWith(cardTextScale: v)),
-          ),
-          SwitchListTile(
-            title: const Text(
-              '显示教室',
-              style: TextStyle(fontWeight: FontWeight.w500),
-            ),
-            value: ui.showClassroom,
-            onChanged: (v) => apply(ui.copyWith(showClassroom: v)),
-          ),
-          SwitchListTile(
-            title: const Text(
-              '显示老师',
-              style: TextStyle(fontWeight: FontWeight.w500),
-            ),
-            value: ui.showTeacher,
-            onChanged: (v) => apply(ui.copyWith(showTeacher: v)),
-          ),
-          SwitchListTile(
-            title: const _InfoTitle(
-              title: '显示备注',
-              message: '备注以小字显示在卡片上',
-            ),
-            value: ui.showNote,
-            onChanged: (v) => apply(ui.copyWith(showNote: v)),
-          ),
-        ]),
-        const _Header('课程配色'),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: DropdownButtonFormField<String>(
-            key: ValueKey('scheme_${ui.colorSchemeId}'),
-            initialValue: ui.colorSchemeId,
-            decoration: const InputDecoration(
-              labelText: '课程配色',
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              for (final scheme in kCourseColorSchemes)
-                DropdownMenuItem(
-                  value: scheme.id,
-                  child: Row(
-                    children: [
-                      _ColorStrip(colors: scheme.colors),
-                      const SizedBox(width: 10),
-                      Text(scheme.name),
-                    ],
-                  ),
-                ),
-            ],
-            onChanged: (v) {
-              if (v != null) apply(ui.copyWith(colorSchemeId: v));
-            },
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              icon: const Icon(Icons.palette_outlined, size: 18),
-              label: Text(
-                '顺带应用推荐主题色「${themePresetById(ui.colorScheme.recommendedThemeId).name}」',
-              ),
-              onPressed: () => apply(
-                ui.copyWith(
-                  themePresetId: ui.colorScheme.recommendedThemeId,
-                  clearThemeCustomColor: true,
-                ),
-              ),
-            ),
-          ),
-        ),
-        const _Header('主题颜色'),
+        // 2. 界面主题色：7 预置色块＋自定义取色器＋清除自定义，原样
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Wrap(
@@ -1158,18 +983,57 @@ class _AppearanceGroup extends ConsumerWidget {
               ),
             ),
           ),
-        _FontSection(ui: ui, apply: apply),
-        ..._divideRows([
-          SwitchListTile(
-            secondary: const Icon(Icons.visibility_outlined),
-            title: const _InfoTitle(
-              title: '显示非本周课程',
-              message: '开启后其他周次的课程置灰显示，方便全局查看',
+        // 3. 课程卡片配色：下拉选方案（此时共 10 套，原样）＋同步按钮
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: DropdownButtonFormField<String>(
+            key: ValueKey('scheme_${ui.colorSchemeId}'),
+            initialValue: ui.colorSchemeId,
+            decoration: const InputDecoration(
+              labelText: '课程配色',
+              border: OutlineInputBorder(),
             ),
-            value: showOther,
-            onChanged: (v) =>
-                ref.read(showOtherWeeksProvider.notifier).toggle(v),
+            items: [
+              for (final scheme in kCourseColorSchemes)
+                DropdownMenuItem(
+                  value: scheme.id,
+                  child: Row(
+                    children: [
+                      _ColorStrip(colors: scheme.colors),
+                      const SizedBox(width: 10),
+                      Text(scheme.name),
+                    ],
+                  ),
+                ),
+            ],
+            onChanged: (v) {
+              if (v != null) apply(ui.copyWith(colorSchemeId: v));
+            },
           ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              icon: const Icon(Icons.palette_outlined, size: 18),
+              // WB_SPEC_219：按钮文案改名，行为不变
+              // （应用当前方案 recommendedThemeId 并清除自定义色）
+              label: const Text('同步应用推荐界面主题色'),
+              onPressed: () => apply(
+                ui.copyWith(
+                  themePresetId: ui.colorScheme.recommendedThemeId,
+                  clearThemeCustomColor: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // ── 第 2 组「课表网格与表头」────────────────────────────
+        const _Header('课表网格与表头'),
+        ..._divideRows([
+          // 1. 周末无课时自动收起周六日（从页底移入）
           SwitchListTile(
             secondary: const Icon(Icons.weekend_outlined),
             title: const _InfoTitle(
@@ -1180,53 +1044,197 @@ class _AppearanceGroup extends ConsumerWidget {
             onChanged: (v) =>
                 ref.read(autoCollapseWeekendProvider.notifier).toggle(v),
           ),
-          ListTile(
-            leading: const Icon(Icons.widgets_outlined),
+          // 2. 行高自适应一屏
+          SwitchListTile(
             title: const _InfoTitle(
-              title: '立即刷新桌面小部件',
-              message: '把最新课程重新推送到桌面小部件',
+              title: '行高自适应一屏',
+              message: '按屏幕高度均分行高，整张课表不用上下滚',
             ),
-            onTap: () async {
-              await WidgetService.instance.refreshWidgets();
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已推送。若桌面仍不显示，长按小部件删除后重新添加一次即可')),
-              );
-            },
+            value: ui.autoFitHeight,
+            onChanged: (v) => apply(ui.copyWith(autoFitHeight: v)),
           ),
-          // 部件自检状态（1.2.7）：Provider 回写的上次更新记录
-          FutureBuilder<({int ts, int ids, String? error})>(
-            future: WidgetService.instance.debugStatus(),
-            builder: (ctx, snap) {
-              final d = snap.data;
-              if (d == null || d.ts == 0) {
-                return const ListTile(
-                  leading: Icon(Icons.info_outline),
-                  title: Text(
-                    '部件状态',
-                    style: TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  subtitle: Text('还没有收到小部件的更新记录（先添加一个桌面小部件）'),
-                );
-              }
-              final t = DateTime.fromMillisecondsSinceEpoch(d.ts);
-              final hh = t.hour.toString().padLeft(2, '0');
-              final mm = t.minute.toString().padLeft(2, '0');
-              return ListTile(
-                leading: const Icon(Icons.info_outline),
-                title: const Text(
-                  '部件状态',
-                  style: TextStyle(fontWeight: FontWeight.w500),
-                ),
-                subtitle: Text(
-                  d.error == null
-                      ? '上次更新 $hh:$mm · 共 ${d.ids} 个小部件 · 无异常'
-                      : '上次更新 $hh:$mm · 共 ${d.ids} 个小部件 · 异常：${d.error}',
-                ),
-              );
-            },
+          // 3. 课程格子高度滑杆（自适应开启时置灰，行为与现状一致）
+          _SliderRow(
+            label: '课程格子高度',
+            valueText: ui.autoFitHeight
+                ? '自适应中'
+                : '${ui.cellHeight.round()} px',
+            value: ui.cellHeight,
+            min: 44,
+            max: 96,
+            divisions: 26,
+            onChanged: ui.autoFitHeight
+                ? (_) {}
+                : (v) => apply(ui.copyWith(cellHeight: v)),
+          ),
+          // 4. 显示网格线
+          SwitchListTile(
+            title: const Text(
+              '显示网格线',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+            value: ui.showGridLines,
+            onChanged: (v) => apply(ui.copyWith(showGridLines: v)),
+          ),
+          // 5. 格子边框粗细滑杆（行为与现状一致，不新增联动）
+          _SliderRow(
+            label: '格子边框粗细',
+            valueText: ui.borderWidth <= 0
+                ? '无边框'
+                : '${ui.borderWidth.toStringAsFixed(1)} px',
+            value: ui.borderWidth,
+            min: UiSettings.borderWidthMin,
+            max: UiSettings.borderWidthMax,
+            divisions: 30,
+            onChanged: (v) => apply(ui.copyWith(borderWidth: v)),
+          ),
+          // 6. 今天整列边框高亮
+          SwitchListTile(
+            title: const _InfoTitle(
+              title: '今天整列边框高亮',
+              message: '给今天这一整天加一圈主题色边框，默认关',
+            ),
+            value: ui.highlightTodayColumn,
+            onChanged: (v) => apply(ui.copyWith(highlightTodayColumn: v)),
+          ),
+          // 7. 节数栏显示时间
+          SwitchListTile(
+            title: const _InfoTitle(
+              title: '节数栏显示时间',
+              message: '关掉后左侧只显示节次数字',
+            ),
+            value: ui.axisShowTime,
+            onChanged: (v) => apply(ui.copyWith(axisShowTime: v)),
+          ),
+          // 8. 标题显示单双周
+          SwitchListTile(
+            title: const _InfoTitle(
+              title: '标题显示单双周',
+              message: '开时左上角显示「第 X 周 · 单周/双周」，关时只显示「第 X 周」，默认关',
+            ),
+            value: ui.showWeekParity,
+            onChanged: (v) => apply(ui.copyWith(showWeekParity: v)),
+          ),
+          // 9. 显示非本周课程（从页底移入）
+          SwitchListTile(
+            secondary: const Icon(Icons.visibility_outlined),
+            title: const _InfoTitle(
+              title: '显示非本周课程',
+              message: '开启后其他周次的课程置灰显示，方便全局查看',
+            ),
+            value: showOther,
+            onChanged: (v) =>
+                ref.read(showOtherWeeksProvider.notifier).toggle(v),
           ),
         ]),
+
+        // ── 第 3 组「课程卡片样式与字体」────────────────────────
+        const _Header('课程卡片样式与字体'),
+        ..._divideRows([
+          // 1. 卡片圆角大小（规格书 2.2 命名，即原「格子圆角半径」滑杆，
+          //    从第 2 组移入此处；控件本身不动）
+          _SliderRow(
+            label: '格子圆角半径',
+            valueText: '${ui.cornerRadius.round()} px',
+            value: ui.cornerRadius,
+            min: 0,
+            max: 20,
+            divisions: 20,
+            onChanged: (v) => apply(ui.copyWith(cornerRadius: v)),
+          ),
+          // 2. 卡片文字大小
+          _SliderRow(
+            label: '卡片文字大小',
+            valueText: '${(ui.cardTextScale * 100).round()}%',
+            value: ui.cardTextScale,
+            min: UiSettings.textScaleMin,
+            max: UiSettings.textScaleMax,
+            divisions: 50,
+            onChanged: (v) => apply(ui.copyWith(cardTextScale: v)),
+          ),
+          // 3. 显示教室
+          SwitchListTile(
+            title: const Text(
+              '显示教室',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+            value: ui.showClassroom,
+            onChanged: (v) => apply(ui.copyWith(showClassroom: v)),
+          ),
+          // 4. 显示老师
+          SwitchListTile(
+            title: const Text(
+              '显示老师',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+            value: ui.showTeacher,
+            onChanged: (v) => apply(ui.copyWith(showTeacher: v)),
+          ),
+          // 5. 显示备注
+          SwitchListTile(
+            title: const _InfoTitle(
+              title: '显示备注',
+              message: '备注以小字显示在卡片上',
+            ),
+            value: ui.showNote,
+            onChanged: (v) => apply(ui.copyWith(showNote: v)),
+          ),
+        ]),
+        // 6. 全局显示字体（_FontSection，从原位置整体移入，控件本身不动）
+        _FontSection(ui: ui, apply: apply),
+
+        // ── 第 4 组「导航与交互动效」（沉底）────────────────────
+        const _Header('导航与交互动效'),
+        // 1. 显示底部导航栏（原页首「底部栏显示」开关，移到底部；
+        //    开关文案与行为不变）
+        // （219 复审优化：外层已 watch 同一 provider，内层 Consumer 多余，
+        //  复用外层 ui/apply，行为不变）
+        SwitchListTile(
+          secondary: const Icon(Icons.smartphone_outlined),
+          title: const Text(
+            '底部栏显示',
+            style: TextStyle(fontWeight: FontWeight.w500),
+          ),
+          subtitle: const Text(
+            '开启后主页底部显示底部栏，可一键切换课表与设置；关闭后设置改从右上角菜单进入',
+          ),
+          value: ui.showBottomBar,
+          onChanged: (v) => apply(ui.copyWith(showBottomBar: v)),
+        ),
+        // 2. 页面切换动效（原「切换动效」三选一，原样）
+        // （219 复审优化：同上，复用外层 ui/apply）
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const ListTile(
+              leading: Icon(Icons.animation_outlined),
+              title: Text(
+                '切换动效',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
+              subtitle: Text('课表与设置之间切换时的动效，默认柔和'),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(56, 0, 16, 12),
+              child: Wrap(
+                spacing: AppSpacing.s,
+                runSpacing: AppSpacing.s,
+                children: [
+                  for (final style in ShellTransitionStyle.values)
+                    ChoiceChip(
+                      key: shellTransitionChipKey(style),
+                      label: Text(style.label),
+                      selected: ui.shellTransitionStyle == style,
+                      visualDensity: VisualDensity.compact,
+                      onSelected: (_) => apply(
+                        ui.copyWith(shellTransitionStyle: style),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }

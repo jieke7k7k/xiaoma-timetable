@@ -6,6 +6,7 @@ import 'package:xiaoma_timetable/database/dao.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
 import 'package:xiaoma_timetable/pages/settings_sections.dart';
+import 'package:xiaoma_timetable/utils/color_schemes.dart';
 import 'package:xiaoma_timetable/widgets/app_dialog.dart';
 
 /// 设置分类子页测试（2.0.5，WB_SPEC_205 第 1 / 6 / 9 节；2.0.7，WB_SPEC_208 第 3 节加分隔线断言）
@@ -100,6 +101,9 @@ void main() {
     );
 
     // 点击切换 → 即时生效（无需重启）；apply 走真实 FFI 异步落库，放 runAsync 里等它写完
+    // WB_SPEC_219：开关已移到第 4 组（页底），先滚进视口再点，避免命中失败
+    await tester.ensureVisible(tile);
+    await tester.pumpAndSettle();
     await tester.tap(tile);
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 400)),
@@ -151,9 +155,12 @@ void main() {
     );
 
     // 点「疾速」→ 即时切换并持久化（apply 走真实 FFI 异步落库）
-    await tester.tap(
-      find.byKey(shellTransitionChipKey(ShellTransitionStyle.quickFade)),
-    );
+    // WB_SPEC_219：三选一已移到第 4 组（页底），先滚进视口再点
+    final quickChip =
+        find.byKey(shellTransitionChipKey(ShellTransitionStyle.quickFade));
+    await tester.ensureVisible(quickChip);
+    await tester.pumpAndSettle();
+    await tester.tap(quickChip);
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 400)),
     );
@@ -292,4 +299,146 @@ void main() {
     expect(find.text('数据管理'), findsOneWidget);
     expect(find.byType(Divider), findsNWidgets(5));
   });
+
+  group('WB_SPEC_219：外观二级页重组', () {
+    Future<void> pumpAppearance(WidgetTester tester) async {
+      // 拉高画布：4 组条目全部在树里且坐标可比较（y 坐标用于归组断言）
+      tester.view.physicalSize = const Size(1200, 6000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.runAsync(() async {
+        await tester.pumpWidget(
+          const ProviderScope(
+            child: MaterialApp(home: AppearanceSettingsPage()),
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+      });
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    double y(WidgetTester tester, String text) =>
+        tester.getTopLeft(find.text(text)).dy;
+
+    testWidgets('4 个新分组标题齐全，且顺序为色彩→网格→卡片→导航', (tester) async {
+      await pumpAppearance(tester);
+      const groups = [
+        '色彩与主题',
+        '课表网格与表头',
+        '课程卡片样式与字体',
+        '导航与交互动效',
+      ];
+      for (final g in groups) {
+        expect(find.text(g), findsOneWidget, reason: '分组「$g」应出现在外观页');
+      }
+      final ys = groups.map((g) => y(tester, g)).toList();
+      for (var i = 1; i < ys.length; i++) {
+        expect(ys[i], greaterThan(ys[i - 1]),
+            reason: '分组须按规格书 2.2 顺序自上而下');
+      }
+      // 旧分组标题（格子外观 / 卡片显示 / 主题颜色）已被标准分组取代；
+      // 「课程配色」字样仍在，为课程配色下拉的 label（非分组标题），不断言消失。
+      for (final old in ['格子外观', '卡片显示', '主题颜色']) {
+        expect(find.text(old), findsNothing);
+      }
+    });
+
+    testWidgets('关键条目在正确组内（底部栏/圆角/周末收起/显示非本周）', (tester) async {
+      await pumpAppearance(tester);
+      final g2 = y(tester, '课表网格与表头');
+      final g3 = y(tester, '课程卡片样式与字体');
+      final g4 = y(tester, '导航与交互动效');
+
+      // 规格书称「显示底部导航栏」＝原「底部栏显示」开关（2.2 明确文案不变），
+      // 与「切换动效」一起沉到第 4 组。
+      expect(y(tester, '底部栏显示'), greaterThan(g4));
+      expect(y(tester, '切换动效'), greaterThan(g4));
+      expect(find.byType(ChoiceChip), findsNWidgets(3));
+
+      // 规格书称「卡片圆角大小」＝原「格子圆角半径」滑杆（控件本身不动），
+      // 从第 2 组移入第 3 组；卡片文字大小 / 显示教室 / 显示老师 / 显示备注同组。
+      expect(y(tester, '格子圆角半径'), greaterThan(g3));
+      expect(y(tester, '格子圆角半径'), lessThan(g4));
+      for (final t in [
+        '卡片文字大小',
+        '显示教室',
+        '显示老师',
+        '显示备注',
+      ]) {
+        expect(y(tester, t), greaterThan(g3), reason: '$t 应在第 3 组');
+        expect(y(tester, t), lessThan(g4), reason: '$t 应在第 3 组');
+      }
+
+      // 第 2 组：周末收起（页底移入）、行高自适应、显示非本周课程（页底移入）等 9 项
+      for (final t in [
+        '周末无课时自动收起周六日',
+        '行高自适应一屏',
+        '课程格子高度',
+        '显示网格线',
+        '格子边框粗细',
+        '今天整列边框高亮',
+        '节数栏显示时间',
+        '标题显示单双周',
+        '显示非本周课程',
+      ]) {
+        expect(y(tester, t), greaterThan(g2), reason: '$t 应在第 2 组');
+        expect(y(tester, t), lessThan(g3), reason: '$t 应在第 2 组');
+      }
+
+      // 第 1 组：三段深浅模式 + 界面主题色 + 课程卡片配色下拉与同步按钮
+      expect(find.text('跟随系统'), findsOneWidget);
+      expect(find.text('同步应用推荐界面主题色'), findsOneWidget);
+      expect(find.textContaining('顺带应用推荐主题色'), findsNothing);
+      expect(y(tester, '同步应用推荐界面主题色'), lessThan(g2));
+      // 课程配色下拉此时共 10 套（方案集合本身在 color_schemes_test 逐字校验）；
+      // 外观页仍能找到课程配色下拉与显示字体下拉两个 DropdownButtonFormField。
+      expect(kCourseColorSchemes.length, 10);
+      expect(find.byType(DropdownButtonFormField<String>), findsNWidgets(2));
+    });
+
+    testWidgets('节次时间设置 / 立即刷新桌面小部件 / 部件状态 已移出外观页', (tester) async {
+      await pumpAppearance(tester);
+      expect(find.text('节次时间设置'), findsNothing);
+      expect(find.text('立即刷新桌面小部件'), findsNothing);
+      expect(find.text('部件状态'), findsNothing);
+      expect(find.byIcon(Icons.schedule_outlined), findsNothing);
+    });
+
+    testWidgets('实时预览位于页首（页面第 1 项，不吸顶退化）', (tester) async {
+      await pumpAppearance(tester);
+      expect(find.byType(Preview), findsOneWidget);
+      expect(find.text('实时预览'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.byType(Preview)).dy,
+        lessThan(y(tester, '色彩与主题')),
+        reason: '预览应在第 1 组标题之前（页首）',
+      );
+    });
+  });
+
+  group('WB_SPEC_219：桌面小组件页承接移入的两项', () {
+    testWidgets('立即刷新桌面小部件、部件状态出现在 WidgetSettingsPage 且用 Divider 隔开', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: WidgetSettingsPage()),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('今日课程小组件'), findsOneWidget);
+      expect(find.text('立即刷新桌面小部件'), findsOneWidget);
+      expect(find.text('部件状态'), findsOneWidget);
+      expect(find.byType(Divider), findsNWidgets(2));
+
+      final yGuide = tester.getTopLeft(find.text('今日课程小组件')).dy;
+      final yRefresh = tester.getTopLeft(find.text('立即刷新桌面小部件')).dy;
+      final yStatus = tester.getTopLeft(find.text('部件状态')).dy;
+      expect(yRefresh, greaterThan(yGuide),
+          reason: '两项应追加在「今日课程小组件」说明行之后');
+      expect(yStatus, greaterThan(yRefresh));
+    });
+  });
+
 }

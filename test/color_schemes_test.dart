@@ -182,4 +182,107 @@ void main() {
           reason: '7 个预置的深色 primary 必须各不相同');
     });
   });
+
+  group('WB_SPEC_219：新增 4 套多彩课程配色', () {
+    // 逐字抄自规格书 1.2：4 套 × 16 色。任何一位色值写错都在这里被抓到。
+    const expectedColors = <String, List<int>>{
+      'spring-fair': [
+        0xFFFFCDD2, 0xFFB8E8E2, 0xFFFFE5B4, 0xFFD4C8F0,
+        0xFFC5E8B7, 0xFFFFCFB8, 0xFFBDD9F5, 0xFFF4C4E0,
+        0xFFE8F0B6, 0xFFB6CBE8, 0xFFF5D5C0, 0xFFB4E2CB,
+        0xFFE2C6EC, 0xFFFCEBA8, 0xFFB8DFEE, 0xFFF2BDC7,
+      ],
+      'cream-soda': [
+        0xFFB6E3EE, 0xFFFFC8BD, 0xFFCCEBC5, 0xFFCBC9F2,
+        0xFFFFEAB6, 0xFFADE2D4, 0xFFF9C6D8, 0xFFB8D2F2,
+        0xFFFFD8B4, 0xFFE4C4EA, 0xFFDFF0B8, 0xFFAEC8E4,
+        0xFFF7CBC4, 0xFFBBEAD8, 0xFFD8C6E8, 0xFFF7E5A9,
+      ],
+      'dopamine-candy': [
+        0xFFFFA6A8, 0xFF94C2F4, 0xFFFFDB85, 0xFFC2AAEE,
+        0xFFA2E0A8, 0xFFFFB58A, 0xFF88DCE0, 0xFFF4A6D0,
+        0xFFD2E88E, 0xFF9AB4E6, 0xFFF9A88C, 0xFF8CD9BC,
+        0xFFDAA8EC, 0xFFFBE48E, 0xFF8ECDE6, 0xFFF2A2B8,
+      ],
+      'retro-film': [
+        0xFFE8B4A6, 0xFFA6C4DC, 0xFFF0D69E, 0xFFAECBB8,
+        0xFFDDB2C4, 0xFF9ECED2, 0xFFEEC29E, 0xFFC2B6DC,
+        0xFFC8D8A8, 0xFFE6AAA6, 0xFF9EB6D4, 0xFFF2DFB2,
+        0xFF9EC8B8, 0xFFD8B2D4, 0xFFE8C8B0, 0xFF98BECA,
+      ],
+    };
+    const expectedTheme = <String, String>{
+      'spring-fair': 'forest',
+      'cream-soda': 'ocean',
+      'dopamine-candy': 'graphite',
+      'retro-film': 'cocoa',
+    };
+    const expectedName = <String, String>{
+      'spring-fair': '春日·游园会',
+      'cream-soda': '奶油·苏打水',
+      'dopamine-candy': '多巴胺·糖果盒',
+      'retro-film': '复古·胶片馆',
+    };
+
+    test('共 10 套；4 个新 id 唯一、与现有 6 套无冲突，且按规格书顺序追加在末尾', () {
+      expect(kCourseColorSchemes.length, 10);
+      final ids = kCourseColorSchemes.map((s) => s.id).toList();
+      expect(ids.length, ids.toSet().length, reason: '所有方案 id 不得重复');
+      for (final id in expectedColors.keys) {
+        expect(ids.where((e) => e == id).length, 1,
+            reason: '$id 应恰好出现一次');
+      }
+      // 现有 6 套 id 与顺序一字不动
+      expect(ids.sublist(0, 6), const [
+        'morandi', 'macaron', 'seasalt', 'mint', 'grape', 'sunset',
+      ]);
+      // 新 4 套按规格书顺序追加在末尾
+      expect(ids.sublist(6), expectedColors.keys.toList());
+    });
+
+    test('每套恰好 16 色，且逐字等于规格书色值', () {
+      for (final id in expectedColors.keys) {
+        final s = courseSchemeById(id);
+        expect(s.name, expectedName[id], reason: '$id 名称');
+        expect(s.colors.length, 16, reason: '$id 应恰好 16 色');
+        expect(s.colors, expectedColors[id], reason: '$id 色值须逐字一致');
+      }
+    });
+
+    test('recommendedThemeId 均为现有 7 个主题预置之一', () {
+      for (final id in expectedColors.keys) {
+        final s = courseSchemeById(id);
+        expect(s.recommendedThemeId, expectedTheme[id]);
+        expect(
+          kThemePresets.any((p) => p.id == s.recommendedThemeId),
+          isTrue,
+          reason: '$id 的推荐主题必须存在于 kThemePresets',
+        );
+      }
+    });
+
+    test('courseSchemeById 能按新 id 取到对应方案（未知 id 回退语义不变）', () {
+      for (final id in expectedColors.keys) {
+        expect(courseSchemeById(id).id, id);
+        expect(courseSchemeById(id).colors, expectedColors[id]);
+      }
+      expect(courseSchemeById('nope').id, 'morandi');
+    });
+
+    test('mapCourseColor 对新方案抽查 3 个下标映射正确，自定义色原样', () {
+      for (final id in expectedColors.keys) {
+        final s = courseSchemeById(id);
+        for (final idx in const [0, 7, 15]) {
+          expect(
+            mapCourseColor(MorandiPalette.colors[idx], s),
+            s.colors[idx],
+            reason: '$id 下标 $idx 应取同下标颜色',
+          );
+        }
+        const custom = 0xFF010203;
+        expect(mapCourseColor(custom, s), custom,
+            reason: '$id 下自定义色不参与映射');
+      }
+    });
+  });
 }

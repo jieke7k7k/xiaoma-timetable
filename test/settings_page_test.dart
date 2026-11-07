@@ -13,10 +13,11 @@ import 'package:xiaoma_timetable/utils/route_observer.dart';
 /// 2.1.7 起设置首页按 Argon 方案从「9 个分类行 + 更多工具平铺」收拢为
 /// 「3 大分组 + AppBar ⋮ 更多菜单」，断言：
 /// 1. 三个分组标题齐全（课表与学期 / 展示与桌面 / 数据与安全）；
-/// 2. 六个入口行齐全（当前学期与周次、课表工具箱、外观与底栏、桌面小组件、
-///    上课提醒、数据备份与换机）；
+/// 2. 七个入口行齐全（当前学期与周次、课表工具箱、节次时间设置、外观与底栏、
+///    桌面小组件、上课提醒、数据备份与换机）；
 /// 3. 首页**不存在** Switch / Slider（开关只在子页，首页不放开关）；
-/// 4. 入口集合固定：6 行入口，不再有「菜单管理」「权限」「关于」独立入口行，
+/// 4. 入口集合：WB_SPEC_219 前为 6 行，现于「课表与学期」组追加节次时间设置
+///    共 7 行；不再有「菜单管理」「权限」「关于」独立入口行，
 ///    也没有「更多工具」平铺——它们分别并入课表工具箱 / ⋮ 更多菜单。
 void main() {
   setUpAll(() {
@@ -70,6 +71,7 @@ void main() {
     const entries = [
       '当前学期与周次',
       '课表工具箱',
+      '节次时间设置',
       '外观与底栏',
       '桌面小组件',
       '上课提醒',
@@ -79,9 +81,9 @@ void main() {
       expect(find.text(e), findsOneWidget, reason: '入口「$e」应出现在设置首页');
     }
 
-    // 2.1.7：入口集合固定——6 行入口（权限自检条在测试环境权限查询失败时隐藏，
-    // 不额外占一行；「菜单管理」「权限」「关于」独立入口行已移除）
-    expect(find.byType(ListTile), findsNWidgets(6));
+    // 2.1.7 三大分组与入口行不动；WB_SPEC_219 在「课表与学期」组追加
+    // 「节次时间设置」一行，入口集合由 6 行变 7 行。
+    expect(find.byType(ListTile), findsNWidgets(7));
 
     // 首页不出现任何开关 / 滑杆（开关只在子页）
     expect(find.byType(Switch), findsNothing);
@@ -92,6 +94,27 @@ void main() {
     expect(find.text('搜索、空闲时段、考试倒计时'), findsOneWidget);
     expect(find.text('今日课程小组件的添加说明'), findsOneWidget);
     expect(find.text('本地导出、恢复与换机迁移（纯本地存储）'), findsOneWidget);
+  });
+
+  testWidgets('节次时间设置入口从外观页移入设置首页「课表与学期」组（WB_SPEC_219）', (tester) async {
+    await pumpPage(tester);
+
+    expect(find.text('节次时间设置'), findsOneWidget);
+    expect(find.text('自定义每节课上下课时间'), findsOneWidget);
+    expect(find.byIcon(Icons.schedule_outlined), findsOneWidget);
+
+    // 位置：落在「课表与学期」标题之后、「展示与桌面」标题之前 → 第 1 组
+    final yGroup = tester.getTopLeft(find.text('课表与学期')).dy;
+    final yNext = tester.getTopLeft(find.text('展示与桌面')).dy;
+    final yEntry = tester.getTopLeft(find.text('节次时间设置')).dy;
+    expect(yEntry, greaterThan(yGroup), reason: '入口应在「课表与学期」标题下方');
+    expect(yEntry, lessThan(yNext), reason: '入口应在「展示与桌面」标题上方');
+
+    // 三大分组与其余入口保持不动
+    expect(find.text('展示与桌面'), findsOneWidget);
+    expect(find.text('数据与安全'), findsOneWidget);
+    expect(find.text('外观与底栏'), findsOneWidget);
+    expect(find.text('课表工具箱'), findsOneWidget);
   });
 
   testWidgets('设置首页：权限自检与关于移入 AppBar ⋮ 菜单（不再占列表行）', (tester) async {
