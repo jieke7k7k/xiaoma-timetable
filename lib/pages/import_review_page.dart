@@ -22,6 +22,13 @@ import '../widgets/draft_edit_dialog.dart';
 import '../widgets/empty_state.dart';
 import 'import_conflicts_page.dart';
 
+/// 导入预览页的作息选择：二选一（WB_SPEC_227，架构 A+：全局作息、零迁移）。
+///
+/// 不设单独的「设为默认」勾选框：全局作息模型下「选用文件作息」与
+/// 「设为默认」是同一件事，分开给会造出「选了文件作息、又取消设为默认」
+/// 的逻辑死角。两个单选项本身即承载这个二选一。
+enum _ScheduleChoice { useFile, keepGlobal }
+
 /// 导入人工核对页
 ///
 /// 展示导入解析出的草稿课程，逐条可编辑字段、删除误识别项、手动补录漏识别项。
@@ -56,6 +63,22 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
   // 周次超出学期总周数时，是否顺手把总周数扩到推断值（默认勾选）
   bool _extendTotalWeeks = true;
 
+  // —— 导入作息选择（WB_SPEC_227）——
+  /// 是否渲染作息选择卡片：仅 timeBlocks 非空且预演 diff 非空时为 true
+  bool _hasScheduleChoice = false;
+  /// 当前选中项；卡片出现时按 3.3「是否有差异 + 目标学期是否已有课程」定默认值
+  _ScheduleChoice _scheduleChoice = _ScheduleChoice.useFile;
+  /// 预演差异逐条描述（卡片展开区展示，也用于完成弹窗一句话汇总的计数）
+  List<String> _previewDiffs = const [];
+  /// 预演中有变化的节次（新增或起止变化）：写库只写这些，不写原样带出的节次
+  /// （复审 Bug 2：写库口径与弹窗计数口径对齐）。
+  List<TimeSlot> _previewChangedSlots = const [];
+  /// 预演 Future：[_importAll] 开头 await 它，关掉「预演完成前点确认导入静默
+  /// 跳过作息」的时序窗口（复审 Bug 1）。预演内部已 catch 全部异常，await 永不抛。
+  late final Future<void> _schedulePreviewFuture;
+  /// 「查看 N 处差异 ▾」展开开关
+  bool _showScheduleDiffs = false;
+
   /// 草稿最晚周次超过目标学期总周数时，建议调整到的总周数；否则 null（不展示任何提示）
   ///
   /// 钳到 1~30（2.0.0 复审 C7）：与学期表单校验、[Semester.fromMap] 同一区间。
@@ -85,6 +108,79 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
   void initState() {
     super.initState();
     _drafts = List.of(widget.drafts);
+    // 存下预演 Future 供 _importAll 开头 await（复审 Bug 1 的门禁）；
+    // 存字段即是处理，不用再包 unawaited（复审优化 3 顺带解决）。
+    _schedulePreviewFuture = _prepareSchedulePreview();
+  }
+
+  /// 进页时做纯计算预演：直接调已是纯函数的 [SlotCalibrator.calibrate]，
+  /// 只算结果与 diff，不写 Dao、不写回 provider（坑点 ①）。calibrate 本身
+  /// 不改入参，无需拆「预演 + 落盘」两步；只有用户确认导入且选中
+  /// 「使用读取到的作息」时才在 [_importAll] 里逐节落库。
+  Future<void> _prepareSchedulePreview() async {
+    // 图片/PDF 路径 timeBlocks 为空：完全隐藏卡片（3.4）
+    if (widget.timeBlocks.isEmpty) return;
+    try {
+      final currentSlots = await ref.read(timeSlotsProvider.future);
+      final newSlots =
+          SlotCalibrator.calibrate(currentSlots, widget.timeBlocks);
+      final change = _previewScheduleChange(currentSlots, newSlots);
+      final diffs = change.diffs;
+      // 预演 diff 为空 → 不渲染卡片、完成弹窗也不提作息（3.3）
+      if (diffs.isEmpty) return;
+      // 防误伤：目标学期已有课程时默认「保持现有作息」，避免已有课显示时间突变
+      final hasCourses = await _targetSemesterHasCourses();
+      if (!mounted) return;
+      setState(() {
+        _previewDiffs = diffs;
+        _previewChangedSlots = change.changedSlots;
+        _hasScheduleChoice = true;
+        _scheduleChoice =
+            hasCourses ? _ScheduleChoice.keepGlobal : _ScheduleChoice.useFile;
+      });
+    } catch (e) {
+      // 预演读作息/查课程失败都不拖垮核对页，静默跳过作息选择
+      debugPrint('作息预演失败，跳过作息选择：$e');
+    }
+  }
+
+  /// 预演变化：一次遍历同时算出「有变化的节次」与「差异逐条描述」。
+  /// 未被文件触及的节次保留原值、不计入；用 Map 查旧值，避免 O(n²)
+  /// （复审优化 4；写库口径也取这里的 changedSlots，复审 Bug 2）。
+  ({List<TimeSlot> changedSlots, List<String> diffs}) _previewScheduleChange(
+    List<TimeSlot> currentSlots,
+    List<TimeSlot> newSlots,
+  ) {
+    final currentBySection = {
+      for (final s in currentSlots) s.section: s,
+    };
+    final changedSlots = <TimeSlot>[];
+    final diffs = <String>[];
+    for (final ns in newSlots) {
+      final old = currentBySection[ns.section];
+      if (old == null) {
+        changedSlots.add(ns);
+        diffs.add('第 ${ns.section} 节：新增 ${ns.startTime}–${ns.endTime}');
+      } else if (old.startTime != ns.startTime || old.endTime != ns.endTime) {
+        changedSlots.add(ns);
+        diffs.add('第 ${ns.section} 节：'
+            '${old.startTime}–${old.endTime} → ${ns.startTime}–${ns.endTime}');
+      }
+    }
+    return (changedSlots: changedSlots, diffs: diffs);
+  }
+
+  /// 目标学期是否已有课程（3.3 防误伤分支唯一用的现成信号，不发明字段）。
+  /// 查不到或异常都按「空学期」处理，退回「使用读取到的作息」默认。
+  Future<bool> _targetSemesterHasCourses() async {
+    final id = widget.targetSemester.id;
+    if (id == null) return false;
+    try {
+      return (await Dao.instance.getCoursesBySemester(id)).isNotEmpty;
+    } catch (e) {
+      debugPrint('读取目标学期课程失败，按空学期处理：$e');
+      return false;
+    }
   }
 
   void _editDraft(int index) async {
@@ -133,6 +229,10 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
         return;
       }
     }
+    // 复审 Bug 1：等预演完成再往下走，否则 _hasScheduleChoice 仍为 false、
+    // 选了文件作息也会静默跳过写库。预演内部已 catch，await 永不抛。
+    await _schedulePreviewFuture;
+    if (!mounted) return;
     setState(() => _importing = true);
     try {
       final dao = Dao.instance;
@@ -224,38 +324,34 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
         }
       }
 
-      // 课程全部导入成功后，按课表文件校准作息时间。
+      // 课程全部导入成功后，按用户选择决定是否用文件作息更新全局作息表。
+      // 架构 A+（全局作息、零迁移）：仅选中「使用读取到的作息」才逐节写库；
+      // 选「仅导入课程」时作息表纹丝不动。写库沿用逐节
+      // for (final ns in newSlots) await notifier.updateSlot(ns)（Dao 无
+      // saveTimeSlots，只有 getTimeSlots + 逐节 updateTimeSlot）。
       // 校准失败（异常）不回滚已导入的课程，仅静默记录日志。
-      // 1.2.0：校准差异逐条记下，随完成弹窗一起给用户看，不再只有一句笼统提示。
-      final calibrationDiffs = <String>[];
-      if (widget.timeBlocks.isNotEmpty) {
+      // 复审 Bug 2：只写有变化的节次（_previewChangedSlots），不写原样带出的节次，
+      // 写库口径与弹窗计数口径对齐。复审 Bug 3：逐节计数，中途异常保留已写入数，
+      // 不清零（弹窗不与事实矛盾）；写过任何一节就重排提醒。
+      var syncedSections = 0;
+      var schedulePartial = false;
+      if (_hasScheduleChoice &&
+          _scheduleChoice == _ScheduleChoice.useFile &&
+          _previewChangedSlots.isNotEmpty) {
         try {
-          final currentSlots = ref.read(timeSlotsProvider).value ?? const [];
-          final newSlots =
-              SlotCalibrator.calibrate(currentSlots, widget.timeBlocks);
           final notifier = ref.read(timeSlotsProvider.notifier);
-          for (final ns in newSlots) {
-            TimeSlot? old;
-            for (final s in currentSlots) {
-              if (s.section == ns.section) {
-                old = s;
-                break;
-              }
-            }
-            if (old == null) {
-              calibrationDiffs
-                  .add('新增第 ${ns.section} 节 ${ns.startTime}–${ns.endTime}');
-              await notifier.updateSlot(ns);
-            } else if (old.startTime != ns.startTime ||
-                old.endTime != ns.endTime) {
-              calibrationDiffs.add('第 ${ns.section} 节 '
-                  '${old.startTime}–${old.endTime} → ${ns.startTime}–${ns.endTime}');
-              await notifier.updateSlot(ns);
-            }
+          for (final ns in _previewChangedSlots) {
+            await notifier.updateSlot(ns);
+            syncedSections++;
           }
         } catch (e) {
           debugPrint('作息时间校准失败：$e');
-          calibrationDiffs.clear();
+          schedulePartial = true;
+        }
+        if (syncedSections > 0) {
+          // 作息变了：提醒按新时间重排。沿用本页 _notifyDataChanged()
+          // （其内即 NotificationService.instance.rescheduleAll()）
+          _notifyDataChanged();
         }
       }
 
@@ -277,12 +373,12 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
                     Text('《${target.name}》的总周数已调整为 $extendedTo 周'
                         '（原 ${target.totalWeeks} 周）'),
                   ],
-                  if (calibrationDiffs.isNotEmpty) ...[
+                  // 选「仅导入课程」时 syncedSections 为 0，完全不提作息；
+                  // 选「使用读取到的作息」时只用一句话汇总，不再逐条罗列（3.5）
+                  if (syncedSections > 0) ...[
                     const SizedBox(height: 12),
-                    const Text('作息已按课表文件校准：',
-                        style: TextStyle(fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 4),
-                    for (final d in calibrationDiffs) Text('· $d'),
+                    Text('已同步更新 $syncedSections 个节次的默认上下课时间'
+                        '${schedulePartial ? '（部分同步失败）' : ''}'),
                   ],
                 ],
               ),
@@ -348,6 +444,181 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
     );
   }
 
+  /// 作息选择卡片（3.6）：圆角 AppRadii.card；标题「检测到课表自带作息时间」
+  /// 右侧「查看 N 处差异 ▾」；两个单选项；AnimatedSize 差异展开区（3.5）。
+  /// 两个单选项本身即二选一，不另设「设为默认」勾选框（3.2）。
+  Widget _scheduleChoiceCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.m,
+        AppSpacing.s,
+        AppSpacing.m,
+        0,
+      ),
+      padding: const EdgeInsets.all(AppSpacing.m),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(AppRadii.card),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.schedule_outlined, size: 18, color: cs.primary),
+              const SizedBox(width: AppSpacing.s),
+              const Expanded(
+                child: Text(
+                  '检测到课表自带作息时间',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+              ),
+              // 「查看 N 处差异 ▾」：切换差异区展开/收起；选「仅导入课程」时
+              // 差异区永不显示，切换器也禁用（复审优化 1：消除无效点击）。
+              InkWell(
+                onTap: _scheduleChoice == _ScheduleChoice.useFile
+                    ? () => setState(
+                        () => _showScheduleDiffs = !_showScheduleDiffs)
+                    : null,
+                borderRadius: BorderRadius.circular(AppRadii.chip),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '查看 ${_previewDiffs.length} 处差异',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: _scheduleChoice == _ScheduleChoice.useFile
+                                ? cs.primary
+                                : cs.outline),
+                      ),
+                      Icon(
+                        _showScheduleDiffs
+                            ? Icons.expand_less
+                            : Icons.expand_more,
+                        size: 18,
+                        color: _scheduleChoice == _ScheduleChoice.useFile
+                            ? cs.primary
+                            : cs.outline,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.m),
+          Row(
+            children: [
+              Expanded(
+                child: _scheduleChoiceChip(
+                  context,
+                  label: '使用读取到的作息',
+                  selected: _scheduleChoice == _ScheduleChoice.useFile,
+                  onTap: () =>
+                      setState(() => _scheduleChoice = _ScheduleChoice.useFile),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.s),
+              Expanded(
+                child: _scheduleChoiceChip(
+                  context,
+                  label: '仅导入课程（保持现有作息）',
+                  selected: _scheduleChoice == _ScheduleChoice.keepGlobal,
+                  onTap: () => setState(
+                      () => _scheduleChoice = _ScheduleChoice.keepGlobal),
+                ),
+              ),
+            ],
+          ),
+          // 选中项语义说明（相当于 3.2 的副标题），随二选一切换
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.s),
+            child: Text(
+              _scheduleChoice == _ScheduleChoice.useFile
+                  ? '同步更新全局节次时间'
+                  : '保持现有全局作息，上下课时间不作改动',
+              style: TextStyle(fontSize: 12, color: cs.outline),
+            ),
+          ),
+          // 差异区：选「使用读取到的作息」且点开「查看 N 处差异」时
+          // AnimatedSize 展开逐条列出；切到「仅导入课程」时收起（3.5）。
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: _scheduleChoice == _ScheduleChoice.useFile &&
+                    _showScheduleDiffs
+                ? Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.s),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final d in _previewDiffs)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Text('· $d',
+                                style: const TextStyle(fontSize: 12)),
+                          ),
+                      ],
+                    ),
+                  )
+                : const SizedBox(width: double.infinity, height: 0),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 单个作息选择芯片：高 36dp、圆角 AppRadii.chip（10.0）、选中带
+  /// 1.5dp cs.primary 描边与 0.12 浅底色（3.6）。长文案用 FittedBox
+  /// 缩到单行，保证两个芯片等高且文案完整可见。
+  Widget _scheduleChoiceChip(
+    BuildContext context, {
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadii.chip),
+      child: Container(
+        height: 36,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? cs.primary.withValues(alpha: 0.12)
+              : cs.surfaceContainerHighest.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(AppRadii.chip),
+          border: Border.all(
+            color: selected ? cs.primary : cs.outlineVariant,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+              color: selected ? cs.primary : cs.onSurface,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // 防误触返回：草稿非空时先弹窗确认，避免辛苦核对的成果被一次滑动丢掉
@@ -396,6 +667,8 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
             ),
             // 周次溢出提示：不改动任何数据，只在用户勾选时随保存一起生效
             if (inferred != null) _weekOverflowBanner(context, inferred),
+            // 作息选择卡片：仅 ICS（timeBlocks 非空）且预演 diff 非空时渲染
+            if (_hasScheduleChoice) _scheduleChoiceCard(context),
             Expanded(
               child: _drafts.isEmpty
                   // 统一空状态占位（阶段五·视觉打磨）：图标 + 文案 + 手动补录入口
