@@ -28,6 +28,7 @@ import '../widgets/app_dialog.dart';
 import '../widgets/course_card.dart';
 import '../widgets/course_detail_sheet.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/semester_form_dialog.dart';
 
 /// 周视图主页
 ///
@@ -286,10 +287,62 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
                 Navigator.pushNamed(context, '/import');
               },
             ),
+            // WB_SPEC_224：不用再绕到学期管理里新建——这里直接建一个学期并切过去
+            ListTile(
+              leading: const Icon(Icons.event_available_outlined),
+              title: const Text('新建课表'),
+              subtitle: const Text('新建一个学期，建好直接切换'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _createSemesterFromMenu();
+              },
+            ),
             const SizedBox(height: 8),
           ],
         ),
       ),
+    );
+  }
+
+  /// ＋ 菜单里的「新建课表」（WB_SPEC_224 第 3.1 节）
+  ///
+  /// 照导入页 `_createNewSemester` 的路子走，**不能照抄学期管理页**：那边只
+  /// `addSemester` 然后提示「点击卡片可切换过去」，根本不切。这里依次
+  /// `addSemester`（返回新 id）→ `switchTo`（内调 Dao.setCurrentSemester 并刷新
+  /// 下游 Provider）→ 提示。切学期后回第 1 周由 `currentSemesterProvider` 的既有
+  /// listen 联动完成，不另写。
+  /// 入库与切换分开提示（复审 Bug 1）：入库失败才说「新建失败」，切换失败说
+  /// 「已新建、请手动切换」——学期已入库时绝不能说新建失败，否则用户会重复创建。
+  Future<void> _createSemesterFromMenu() async {
+    final created = await showSemesterFormDialog(context);
+    if (created == null || !mounted) return;
+    final notifier = ref.read(semestersProvider.notifier);
+    late final int id;
+    try {
+      id = await notifier.addSemester(created);
+    } catch (e) {
+      debugPrint('新建学期入库失败：$e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('新建学期失败，请重试')),
+      );
+      return;
+    }
+    try {
+      await notifier.switchTo(id);
+    } catch (e) {
+      debugPrint('新建学期后切换失败：$e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已新建「${created.name}」，但切换失败，请去学期管理里手动切换'),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已新建并切换到「${created.name}」')),
     );
   }
 
