@@ -18,10 +18,6 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      # Kotlin 单测：常驻通知纯逻辑（WB_SPEC_229 第 4.4 节，Kimi 复审后补的硬门槛执行入口）——
-      # 纯 JVM，不引 Robolectric；跑在构建之前，红了就别浪费时间打包
-      - name: Kotlin 单测（常驻通知纯逻辑）
-        run: cd android && ./gradlew :app:testDebugUnitTest --tests "com.jieke.xiaomakebiao.OngoingFocusCalculatorTest"
       - name: 下载内置字体（不随仓库分发，见 assets/fonts/README.md）
         run: |
           curl -sL --retry 3 -o assets/fonts/LXGWWenKai-Regular.ttf "https://github.com/lxgw/LxgwWenKai/releases/download/v1.530/LXGWWenKai-Regular.ttf"
@@ -34,6 +30,12 @@ jobs:
           test $(stat -c%s assets/fonts/SmileySans.ttf) -gt 2000000
           test $(stat -c%s assets/fonts/NotoSansSC.ttf) -gt 10000000
           ls -la assets/fonts
+      # Kotlin 单测：常驻通知纯逻辑（WB_SPEC_229 第 4.4 节，Kimi 复审后补的硬门槛执行入口）——
+      # 纯 JVM，不引 Robolectric；跑在构建之前，红了就别浪费时间打包。
+      # 注意顺序：testDebugUnitTest 会先编译 Flutter debug 包，pubspec 声明的字体须已下载，
+      # 所以「下载内置字体」必须排在单测前面，否则 compileFlutterBuildDebug 找不到字体文件。
+      - name: Kotlin 单测（常驻通知纯逻辑）
+        run: cd android && ./gradlew :app:testDebugUnitTest --tests "com.jieke.xiaomakebiao.OngoingFocusCalculatorTest"
       - name: 解码并校验正式签名钥匙
         run: |
           printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/xiaoma-release.jks"
