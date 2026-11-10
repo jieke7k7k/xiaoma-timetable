@@ -48,14 +48,25 @@ final currentSemesterProvider =
       CurrentSemesterNotifier.new,
     );
 
-/// 数据变更后的统一联动（提醒重排 + 今日课程常驻通知 + 桌面小组件）。
+/// 数据变更后的统一联动（提醒重排 → 今日课程常驻通知 + 排链 → 桌面小组件）。
 ///
-/// 课程增删改、单次调课、切换学期、编辑当前学期都走这一份——三处散落各写一遍
-/// 迟早会漏挂某一项。三个服务内部都已捕获异常，fire-and-forget 不阻塞 UI。
-void _notifyDataChanged() {
-  unawaited(NotificationService.instance.rescheduleAll());
-  unawaited(OngoingNoticeService.instance.refresh());
+/// 课程增删改、单次调课、切换学期、编辑当前学期都走这一份——散落各写一遍
+/// 迟早会漏挂某一项。各服务内部都已捕获异常，fire-and-forget 不阻塞 UI。
+void _notifyDataChanged() => unawaited(_refreshAfterDataChange());
+
+/// 顺序有讲究（WB_SPEC_229 第 6.3 节，228 的 C5 教训）：
+/// `rescheduleAll()` 第一步是 `_plugin.cancelAll()`，会把课程常驻通知（id 1001）
+/// 一起清掉。三项若并行 fire-and-forget，谁后到谁说了算，常驻通知会被误清而没人
+/// 重建。所以必须等 rescheduleAll 排完，再 refresh（重建通知 + 重排闹钟链）。
+/// 小组件与通知互不相关，仍可与整串并行。
+Future<void> _refreshAfterDataChange() async {
   unawaited(WidgetService.instance.refreshWidgets());
+  try {
+    await NotificationService.instance.rescheduleAll();
+    await OngoingNoticeService.instance.refresh();
+  } catch (e) {
+    debugPrint('数据变更联动刷新失败：$e');
+  }
 }
 
 /// 全部学期列表（学期管理页使用）
@@ -280,33 +291,23 @@ class CoursesNotifier extends AsyncNotifier<List<Course>> {
       course.copyWith(semesterId: semester.id!),
     );
     await reload();
-    // 新增课程后重排当天提醒（内部已捕获异常）
-    unawaited(NotificationService.instance.rescheduleAll());
-    // 新增课程后刷新今日课程常驻通知
-    unawaited(OngoingNoticeService.instance.refresh());
-    // 新增课程后刷新桌面小组件
-    unawaited(WidgetService.instance.refreshWidgets());
+    // 新增课程后重排提醒、重建常驻通知并重排闹钟链、刷新桌面小组件
+    _notifyDataChanged();
     return id;
   }
 
   Future<void> updateCourse(Course course) async {
     await Dao.instance.updateCourse(course);
     await reload();
-    unawaited(NotificationService.instance.rescheduleAll());
-    // 改课时间/教室后刷新常驻通知
-    unawaited(OngoingNoticeService.instance.refresh());
-    // 改课后刷新桌面小组件
-    unawaited(WidgetService.instance.refreshWidgets());
+    // 改课时间/教室后重排提醒、重建常驻通知并重排闹钟链、刷新桌面小组件
+    _notifyDataChanged();
   }
 
   Future<void> deleteCourse(int id) async {
     await Dao.instance.deleteCourse(id);
     await reload();
-    unawaited(NotificationService.instance.rescheduleAll());
-    // 删课后刷新常驻通知
-    unawaited(OngoingNoticeService.instance.refresh());
-    // 删课后刷新桌面小组件
-    unawaited(WidgetService.instance.refreshWidgets());
+    // 删课后重排提醒、重建常驻通知并重排闹钟链、刷新桌面小组件
+    _notifyDataChanged();
   }
 
   Future<void> reload() async {
@@ -573,7 +574,10 @@ class OngoingNoticeSettingsNotifier extends AsyncNotifier<bool> {
     return Dao.instance.getSettingBool('ongoing_enabled', true);
   }
 
-  /// 开/关常驻通知。开启时立即重算下发；关闭时清通知停服务。
+  /// 开/关常驻通知。开启时立即重算下发 + 重排闹钟链；关闭时清通知 + 停链。
+  ///
+  /// 2.2.0（WB_SPEC_229）起不再有前台 Service：refresh() 内部既重建通知也排链，
+  /// stop() 内部既取消通知也取消链闹钟，开关语义对用户一字未改。
   Future<void> setEnabled(bool value) async {
     await Dao.instance.setSetting('ongoing_enabled', value ? '1' : '0');
     state = AsyncData(value);

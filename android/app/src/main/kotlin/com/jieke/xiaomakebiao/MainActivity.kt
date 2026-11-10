@@ -8,15 +8,17 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 /**
  * 主 Activity：注册两个 MethodChannel——
- * 1. 「今日课程常驻通知」：把 Flutter 端 OngoingNoticeService 的 update/stop
- *    转发给前台 Service；
+ * 1. 「今日课程常驻通知排链」（com.jieke.xiaomakebiao/ongoing_course）：WB_SPEC_229 起
+ *    它不再负责渲染通知（前台 Service 已退役），只负责两件事——按 Dart 算好的边界点
+ *    排下一个精确闹钟、以及取消已排的链闹钟。通知本身由 Dart 侧
+ *    flutter_local_notifications 直接发（App 活着）或由 OngoingCourseReceiver 自己画
+ *    （App 被杀），两条通道共用一个渠道 + 一个 id，用户只看到一条通知在翻页；
  * 2. 「设备设置」：给权限页/首次引导查三项权限状态并跳对应的系统页面
  *    （通知设置、闹钟和提醒、电池优化、应用详情）。
  *
@@ -30,15 +32,19 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "update" -> {
-                        val title = call.argument<String>("title")
-                            ?: OngoingCourseService.DEFAULT_TITLE
-                        val lines = call.argument<List<String>>("lines") ?: emptyList()
-                        startOngoingService(title, lines)
-                        result.success(null)
+                    // 排下一个链闹钟：边界点由 Dart 的 computeClassFocus 算好传过来
+                    "scheduleNext" -> {
+                        val triggerAtMillis = call.argument<Number>("triggerAtMillis")?.toLong()
+                        if (triggerAtMillis == null) {
+                            result.error("bad_args", "缺少 triggerAtMillis", null)
+                        } else {
+                            OngoingCourseReceiver.scheduleAt(this, triggerAtMillis)
+                            result.success(null)
+                        }
                     }
-                    "stop" -> {
-                        stopOngoingService()
+                    // 取消链闹钟（开关关闭 / 无当前学期 / 排链前幂等清理）
+                    "cancelScheduled" -> {
+                        OngoingCourseReceiver.cancelScheduled(this)
                         result.success(null)
                     }
                     else -> result.notImplemented()
@@ -153,25 +159,6 @@ class MainActivity : FlutterActivity() {
         startActivity(intent)
         true
     }.getOrDefault(false)
-
-    /** 启动前台 Service 渲染常驻通知 */
-    private fun startOngoingService(title: String, lines: List<String>) {
-        val intent = Intent(this, OngoingCourseService::class.java).apply {
-            action = OngoingCourseService.ACTION_UPDATE
-            putExtra(OngoingCourseService.EXTRA_TITLE, title)
-            putStringArrayListExtra(OngoingCourseService.EXTRA_LINES, ArrayList(lines))
-        }
-        ContextCompat.startForegroundService(this, intent)
-    }
-
-    /** 停止前台 Service 并移除常驻通知 */
-    private fun stopOngoingService() {
-        val intent = Intent(this, OngoingCourseService::class.java).apply {
-            action = OngoingCourseService.ACTION_STOP
-        }
-        // stop 无需前台启动，直接 startService 触发 onStartCommand 的 STOP 分支
-        startService(intent)
-    }
 
     companion object {
         private const val CHANNEL = "com.jieke.xiaomakebiao/ongoing_course"

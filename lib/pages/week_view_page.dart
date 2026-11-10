@@ -89,7 +89,8 @@ bool weekDataNotReady<T>(AsyncValue<T> async) =>
 int weekViewInitialPage(int displayWeek, int totalWeeks) =>
     WeekCalc.clampForPage(displayWeek, totalWeeks) - 1;
 
-class _WeekViewPageState extends ConsumerState<WeekViewPage> {
+class _WeekViewPageState extends ConsumerState<WeekViewPage>
+    with WidgetsBindingObserver {
   PageController? _pageController;
 
   /// 周数跳转条统一收起入口（WB_SPEC_223）：开关由 provider 持有
@@ -123,6 +124,10 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
   final SundayDialogGate _sundayDialogGate = SundayDialogGate();
 
   /// 状态条分钟级刷新计时器（下一节课倒计时/上下课切换靠它推进）
+  ///
+  /// 2.2.0（WB_SPEC_229 第 6.4 节）：加了生命周期守卫——App 切后台就停表，
+  /// 回前台再起。切后台后界面不重绘、build 也不跑，这口表只是在空转（每 30 秒
+  /// 白唤醒一次 CPU），停掉不影响任何可见行为。
   Timer? _focusTimer;
 
   /// 上次下发常驻通知时的焦点签名；焦点（当前课/下一节）变了才刷新通知
@@ -218,9 +223,9 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
   @override
   void initState() {
     super.initState();
-    _focusTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) setState(() {});
-    });
+    // 监听 App 前后台切换：后台停表、前台重新起表（见 _stopFocusTimer 注释）
+    WidgetsBinding.instance.addObserver(this);
+    _startFocusTimer();
     // WB-202 第 3 项补充：PageController 不在这里创建了——initState 时刻
     // 学期通常还没加载完（todayWeek 读成 0、总周数读成 0），initialPage 只能
     // 瞎猜成 0；改为学期就绪后的首次 build 里按显示周懒创建（见 build）。
@@ -232,7 +237,43 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _stopFocusTimer();
+    } else if (state == AppLifecycleState.resumed) {
+      // 回前台立刻重绘一次（后台期间可能已经上下课好几次），再恢复定时器：
+      // 焦点签名比较在 build 里，重绘会把常驻通知一并对齐
+      _startFocusTimer();
+      if (mounted) setState(() {});
+    }
+  }
+
+  /// 起 30 秒状态条刷新表（幂等：已存在就不重复起，避免回前台时叠出两条表）
+  void _startFocusTimer() {
+    if (_focusTimer != null) return;
+    _focusTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      setState(() {});
+    });
+    debugPrint('周视图状态条刷新已启动（30 秒一次）');
+  }
+
+  /// 停表：切后台时调用。
+  ///
+  /// 启停各打一条日志（不是每 30 秒打）——真机验收「切后台 5 分钟不再空转」时，
+  /// logcat 里只应看到进入后台的这一条，之后 5 分钟没有任何周期日志。
+  void _stopFocusTimer() {
+    if (_focusTimer == null) return;
+    _focusTimer?.cancel();
+    _focusTimer = null;
+    debugPrint('周视图状态条刷新已暂停（App 进入后台）');
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _focusTimer?.cancel();
     _pageController?.dispose();
     super.dispose();

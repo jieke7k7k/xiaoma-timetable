@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -70,13 +71,24 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
     ref.invalidate(themeSettingsProvider);
     ref.invalidate(reminderSettingsProvider);
     ref.invalidate(onboardingDoneProvider);
-    NotificationService.instance.rescheduleAll();
-    OngoingNoticeService.instance.refresh();
-    WidgetService.instance.refreshWidgets();
+    // 顺序有讲究（WB_SPEC_229 第 6.3 节）：rescheduleAll 的 cancelAll 会连课程
+    // 常驻通知一起清掉，必须等它排完再重建通知 + 重排闹钟链，不能并行
+    unawaited(_refreshNoticesAfterDataChange());
+    unawaited(WidgetService.instance.refreshWidgets());
     setState(() {
       _sizes = _loadSizes();
       _lastAuto = AutoBackupService.lastBackupAt();
     });
+  }
+
+  /// 提醒重排 → 常驻通知重建 + 排链（串行，见调用处注释）
+  Future<void> _refreshNoticesAfterDataChange() async {
+    try {
+      await NotificationService.instance.rescheduleAll();
+      await OngoingNoticeService.instance.refresh();
+    } catch (e) {
+      debugPrint('数据变更后刷新通知失败：$e');
+    }
   }
 
   Future<void> _exportBackup() async {

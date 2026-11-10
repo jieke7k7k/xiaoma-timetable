@@ -1,0 +1,180 @@
+{
+  "_doc": [
+    "今日课程常驻通知的共享夹具（WB_SPEC_229 第 4.4 节）：唯一事实来源。",
+    "Dart 侧 test/ongoing_focus_fixture_test.dart 把它们喂给 buildOngoingNotice + computeNextBoundary；",
+    "Kotlin 侧 android/app/src/test/.../OngoingFocusCalculatorTest.kt 把它们喂给 OngoingFocusCalculator。",
+    "两边断言的 expected 逐字相同——谁改了文案或规则，另一边的测试立刻红。",
+    "时间格式一律 'yyyy-MM-dd HH:mm'（东八区墙上时间），边界点同理。"
+  ],
+  "semester": { "name": "默认学期", "startDate": "2026-09-07", "totalWeeks": 20 },
+  "timeSlots": [
+    { "section": 1, "startTime": "08:00", "endTime": "08:40" },
+    { "section": 2, "startTime": "08:50", "endTime": "09:30" },
+    { "section": 3, "startTime": "09:40", "endTime": "10:20" },
+    { "section": 4, "startTime": "10:30", "endTime": "11:10" },
+    { "section": 5, "startTime": "11:20", "endTime": "12:00" },
+    { "section": 6, "startTime": "14:00", "endTime": "14:40" },
+    { "section": 7, "startTime": "14:50", "endTime": "15:30" },
+    { "section": 8, "startTime": "15:40", "endTime": "16:20" },
+    { "section": 9, "startTime": "16:30", "endTime": "17:10" },
+    { "section": 10, "startTime": "18:00", "endTime": "18:40" },
+    { "section": 11, "startTime": "18:50", "endTime": "19:30" },
+    { "section": 12, "startTime": "19:40", "endTime": "20:20" },
+    { "section": 13, "startTime": "20:30", "endTime": "21:10" }
+  ],
+  "courses": [
+    { "id": 1, "name": "高等数学", "classroom": "A101", "dayOfWeek": 1, "startSection": 1, "endSection": 2, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 0 },
+    { "id": 2, "name": "大学物理", "classroom": "B202", "dayOfWeek": 1, "startSection": 3, "endSection": 4, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 0 },
+    { "id": 3, "name": "线性代数", "classroom": "C303", "dayOfWeek": 1, "startSection": 6, "endSection": 7, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 0 },
+    { "id": 4, "name": "大学英语", "classroom": null, "dayOfWeek": 1, "startSection": 10, "endSection": 11, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 0 },
+    { "id": 5, "name": "数据结构", "classroom": "D404", "dayOfWeek": 2, "startSection": 1, "endSection": 2, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 0 },
+    { "id": 6, "name": "体育", "classroom": "操场", "dayOfWeek": 6, "startSection": 3, "endSection": 4, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 0 },
+    { "id": 7, "name": "单周实验", "classroom": "E505", "dayOfWeek": 3, "startSection": 8, "endSection": 8, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 1 },
+    { "id": 8, "name": "双周实验", "classroom": "F606", "dayOfWeek": 3, "startSection": 8, "endSection": 8, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 2 },
+    { "id": 9, "name": "停课课", "classroom": "G707", "dayOfWeek": 4, "startSection": 5, "endSection": 5, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 0 },
+    { "id": 10, "name": "调课课", "classroom": "H808", "dayOfWeek": 5, "startSection": 9, "endSection": 9, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 0 }
+  ],
+  "overrides": [
+    { "courseId": 9, "originalWeek": 1, "targetWeek": -1, "targetDayOfWeek": null, "targetStartSection": null, "targetEndSection": null, "targetClassroom": null },
+    { "courseId": 10, "originalWeek": 1, "targetWeek": 1, "targetDayOfWeek": 4, "targetStartSection": 12, "targetEndSection": 12, "targetClassroom": "I909" }
+  ],
+  "cases": [
+    {
+      "name": "上课中：标题是正在上的课，第二行预告下一节",
+      "now": "2026-09-07 08:20",
+      "expected": {
+        "title": "正在上课：高等数学",
+        "lines": ["08:00–09:30 · A101", "下一节：大学物理 · 今天 09:40 · B202"],
+        "boundary": "2026-09-07 09:30"
+      }
+    },
+    {
+      "name": "课间：标题是下一节课，行给时间地点 + 今天剩余节数",
+      "now": "2026-09-07 09:35",
+      "expected": {
+        "title": "下一节：大学物理",
+        "lines": ["09:40–11:10 · B202", "今天后面还有 2 节课"],
+        "boundary": "2026-09-07 09:40"
+      }
+    },
+    {
+      "name": "午休：下一节是下午第一节课",
+      "now": "2026-09-07 12:30",
+      "expected": {
+        "title": "下一节：线性代数",
+        "lines": ["14:00–15:30 · C303", "今天后面还有 1 节课"],
+        "boundary": "2026-09-07 14:00"
+      }
+    },
+    {
+      "name": "晚上课已上完：下一节是明天第一节，行内带「明天」",
+      "now": "2026-09-07 20:00",
+      "expected": {
+        "title": "下一节：数据结构",
+        "lines": ["明天 08:00–09:30 · D404"],
+        "boundary": "2026-09-08 08:00"
+      }
+    },
+    {
+      "name": "周末上课中：下一节跨到下周一，带「周X（M月D日）」",
+      "now": "2026-09-12 10:00",
+      "expected": {
+        "title": "正在上课：体育",
+        "lines": ["09:40–11:10 · 操场", "下一节：高等数学 · 周一（9月14日） 08:00 · A101"],
+        "boundary": "2026-09-12 11:10"
+      }
+    },
+    {
+      "name": "假期（这几周课表里没课）：兜底文案 + 次日 00:05 的闲置 tick",
+      "now": "2026-10-01 10:00",
+      "courses": [
+        { "id": 1, "name": "高等数学", "classroom": "A101", "dayOfWeek": 1, "startSection": 1, "endSection": 2, "weeks": [1,2], "weekType": 0 }
+      ],
+      "expected": {
+        "title": "暂无课程安排",
+        "lines": ["近期没有要上的课，好好休息"],
+        "boundary": "2026-10-02 00:05"
+      }
+    },
+    {
+      "name": "停课当天：被停掉的课不再出现在通知里",
+      "now": "2026-09-10 11:25",
+      "expected": {
+        "title": "下一节：调课课",
+        "lines": ["19:40–20:20 · I909"],
+        "boundary": "2026-09-10 19:40"
+      }
+    },
+    {
+      "name": "调课当天：按调课后的时间与教室展示，且已在上课中",
+      "now": "2026-09-10 19:45",
+      "expected": {
+        "title": "正在上课：调课课",
+        "lines": ["19:40–20:20 · I909", "下一节：体育 · 周六（9月12日） 09:40 · 操场"],
+        "boundary": "2026-09-10 20:20"
+      }
+    },
+    {
+      "name": "单周：奇数周上单周课",
+      "now": "2026-09-09 15:45",
+      "expected": {
+        "title": "正在上课：单周实验",
+        "lines": ["15:40–16:20 · E505", "下一节：调课课 · 明天 19:40 · I909"],
+        "boundary": "2026-09-09 16:20"
+      }
+    },
+    {
+      "name": "双周：偶数周换成双周课",
+      "now": "2026-09-16 15:45",
+      "expected": {
+        "title": "正在上课：双周实验",
+        "lines": ["15:40–16:20 · F606", "下一节：停课课 · 明天 11:20 · G707"],
+        "boundary": "2026-09-16 16:20"
+      }
+    },
+    {
+      "name": "学期外（开学前）：兜底文案",
+      "now": "2026-08-20 09:00",
+      "expected": {
+        "title": "暂无课程安排",
+        "lines": ["近期没有要上的课，好好休息"],
+        "boundary": "2026-08-21 00:05"
+      }
+    },
+    {
+      "name": "学期外（学期已结束）：兜底文案",
+      "now": "2027-02-01 08:00",
+      "expected": {
+        "title": "暂无课程安排",
+        "lines": ["近期没有要上的课，好好休息"],
+        "boundary": "2027-02-02 00:05"
+      }
+    },
+    {
+      "name": "课表为空：兜底文案",
+      "now": "2026-09-07 08:20",
+      "courses": [],
+      "expected": {
+        "title": "暂无课程安排",
+        "lines": ["近期没有要上的课，好好休息"],
+        "boundary": "2026-09-08 00:05"
+      }
+    },
+    {
+      "name": "当天最后一节课在上且 9 天内无课：第二行是「今天没有其他课了」",
+      "now": "2026-09-11 18:30",
+      "courses": [
+        { "id": 101, "name": "大学英语", "classroom": null, "dayOfWeek": 5, "startSection": 10, "endSection": 11, "weeks": [1], "weekType": 0 }
+      ],
+      "expected": {
+        "title": "正在上课：大学英语",
+        "lines": ["18:00–19:30", "今天没有其他课了"],
+        "boundary": "2026-09-11 19:30"
+      }
+    }
+  ],
+  "guards": [
+    { "name": "开关关闭：两个通道都停", "enabled": false, "now": "2026-09-07 08:20", "decision": "disabled" },
+    { "name": "无当前学期（或读库失败）：取消通知、不排链", "enabled": true, "now": "2026-09-07 08:20", "noSemester": true, "decision": "no_semester" }
+  ]
+}

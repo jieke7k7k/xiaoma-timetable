@@ -623,6 +623,16 @@ class DataSettingsPage extends ConsumerWidget {
     }
   }
 
+  /// 恢复备份后：提醒重排 → 常驻通知重建 + 排链（串行，理由见调用处注释）
+  Future<void> _refreshNoticesAfterRestore() async {
+    try {
+      await NotificationService.instance.rescheduleAll();
+      await OngoingNoticeService.instance.refresh();
+    } catch (e) {
+      debugPrint('恢复备份后刷新通知失败：$e');
+    }
+  }
+
   /// 从备份恢复：选文件 → 内存校验 → 二次确认（覆盖现有数据）→ 单事务恢复。
   /// 校验发生在确认弹窗之前，因此格式错误时数据库完全没被碰过，现有数据无损。
   Future<void> _restoreBackup(BuildContext context, WidgetRef ref) async {
@@ -692,10 +702,11 @@ class DataSettingsPage extends ConsumerWidget {
       ref.invalidate(segmentSettingsProvider);
       ref.invalidate(uiSettingsProvider);
       ref.read(displayWeekProvider.notifier).goToday();
-      // 通知/常驻通知/小组件基于恢复后的数据重排刷新（内部均已捕获异常）
-      unawaited(NotificationService.instance.rescheduleAll());
-      unawaited(OngoingNoticeService.instance.refresh());
+      // 通知/常驻通知/小组件基于恢复后的数据重排刷新（内部均已捕获异常）。
+      // 提醒重排与常驻通知重建必须串行：rescheduleAll 的 cancelAll 会连课程常驻
+      // 通知一起清掉，并行时谁后到谁说了算（WB_SPEC_229 第 6.3 节）
       unawaited(WidgetService.instance.refreshWidgets());
+      unawaited(_refreshNoticesAfterRestore());
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

@@ -23,6 +23,18 @@ const String kNoteChannelId = 'note_ongoing_channel';
 const String kNoteChannelName = '备注';
 const int kNoteNotificationId = 0x7FFFFFFE;
 
+/// 今日课程常驻通知的渠道 / 通知 id（WB_SPEC_229 起由 flutter_local_notifications
+/// 与原生 OngoingCourseReceiver 共用）。
+///
+/// 三个值必须与原生侧 OngoingCourseReceiver.kt 的同名常量逐字一致：两个更新通道
+/// （App 活着时这里 show()、App 被杀时 Receiver notify()）靠「同渠道 + 同 id」互相覆盖，
+/// 用户才只看到一条通知在翻页。渠道名会出现在系统通知设置里，改名等于改用户可见行为。
+/// id 取 1001：远离提醒滚动窗口的 1~360，也远离备注常驻通知的 0x7FFFFFFE。
+const String kOngoingCourseChannelId = 'ongoing_course_channel';
+const String kOngoingCourseChannelName = '今日课程';
+const String kOngoingCourseChannelDesc = '今日剩余 / 明日课程常驻通知';
+const int kOngoingCourseNotificationId = 1001;
+
 /// 上课本地通知提醒服务（阶段四·第 1 项）
 ///
 /// 设计说明（精确闹钟「每日重排」模型的落地方式）：
@@ -82,6 +94,7 @@ class NotificationService {
       await _plugin.initialize(settings: settings);
       await _ensureChannel();
       await _ensureNoteChannel();
+      await _ensureOngoingCourseChannel();
     } catch (e) {
       debugPrint('通知插件初始化失败：$e');
     }
@@ -116,6 +129,84 @@ class NotificationService {
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
   }
+
+  /// 确保「今日课程」低重要性渠道已创建（WB_SPEC_229）。
+  ///
+  /// 与原生侧 ensureChannel() 同名同参：哪个通道先到都能把渠道建好，
+  /// 渠道已存在时 createNotificationChannel 是幂等的，不会重置用户改过的设置。
+  Future<void> _ensureOngoingCourseChannel() async {
+    const channel = AndroidNotificationChannel(
+      kOngoingCourseChannelId,
+      kOngoingCourseChannelName,
+      description: kOngoingCourseChannelDesc,
+      importance: Importance.low,
+      enableVibration: false,
+      showBadge: false,
+    );
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+  }
+
+  /// 刷新「今日课程」常驻通知（通道 A：App 活着时由 Dart 直接下发）。
+  ///
+  /// 文案由纯逻辑 [buildOngoingNotice] 算好传进来，本方法只负责画：
+  /// 低重要性、不响铃不震动、ongoing（不可滑掉）、InboxStyle 可折叠多行。
+  /// 通知 id 与原生通道共用 [kOngoingCourseNotificationId]，两边互相覆盖。
+  Future<void> showOngoingCourseNotice({
+    required String title,
+    required List<String> lines,
+  }) async {
+    try {
+      await initialize();
+      await _plugin.show(
+        id: kOngoingCourseNotificationId,
+        title: title,
+        body: lines.isEmpty ? '暂无课程' : lines.first,
+        notificationDetails: _ongoingCourseDetails(title, lines),
+      );
+    } catch (e) {
+      debugPrint('下发今日课程常驻通知失败：$e');
+    }
+  }
+
+  /// 取消「今日课程」常驻通知（开关关闭 / 无当前学期时用）。
+  Future<void> cancelOngoingCourseNotice() async {
+    try {
+      await initialize();
+      await _plugin.cancel(id: kOngoingCourseNotificationId);
+    } catch (e) {
+      debugPrint('取消今日课程常驻通知失败：$e');
+    }
+  }
+
+  /// 今日课程常驻通知样式：与退役前的前台 Service 保持一致的 InboxStyle。
+  ///
+  /// 收起时正文是第一行，展开后每行一条——与旧 Service 的 InboxStyle 逐字一致；
+  /// 原生通道（OngoingCourseReceiver）同样用 InboxStyle，两边展开后长相一致。
+  /// 点按行为、不可滑掉、静默更新也逐项对齐。
+  NotificationDetails _ongoingCourseDetails(String title, List<String> lines) =>
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          kOngoingCourseChannelId,
+          kOngoingCourseChannelName,
+          channelDescription: kOngoingCourseChannelDesc,
+          importance: Importance.low,
+          priority: Priority.low,
+          playSound: false,
+          enableVibration: false,
+          channelShowBadge: false,
+          ongoing: true,
+          autoCancel: false,
+          onlyAlertOnce: true,
+          styleInformation: InboxStyleInformation(
+            lines.isEmpty ? const ['暂无课程'] : lines,
+            contentTitle: title,
+            summaryText: kOngoingCourseChannelName,
+          ),
+        ),
+      );
 
   /// 刷新备注常驻通知（有今天/明天备注就常驻显示，都没有就取消）。
   ///

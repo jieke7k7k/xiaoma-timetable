@@ -13,9 +13,6 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <!-- 开机自启：重启后恢复已排提醒 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-    <!-- 阶段四：今日课程常驻通知前台服务所需权限（Android 14+ specialUse） -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <!-- 1.2.1：关闭安卓 14+ 预见式返回动画（侧滑预窥上一页），回到经典即时返回 -->
     <!-- 2.1.3（WB_SPEC_214 第 1 节）复核 usesCleartextTraffic：保留 true，理由如下——
          版本/公告通道全部走 https，不再需要明文；但「教务官网导入」
@@ -61,15 +58,13 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
             </intent-filter>
         </receiver>
-        <!-- 今日课程常驻通知前台服务（specialUse，Android 14+ 需声明类型与用途） -->
-        <service
-            android:name=".OngoingCourseService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="展示今日剩余 / 明日课程常驻通知" />
-        </service>
+        <!-- 今日课程常驻通知的「单闹钟接力」接收器（WB_SPEC_229）。
+             退役前台 Service 后，App 被杀时由精确闹钟唤醒它读库重算并刷新同一条通知，
+             刷完自己排下一个闹钟。只接显式 Intent，故不注册任何 intent-filter，
+             exported=false 即可。 -->
+        <receiver
+            android:name=".OngoingCourseReceiver"
+            android:exported="false" />
         <!-- 阶段四：今日课程桌面小组件（home_widget，Android only）。
              仅注册 APPWIDGET_UPDATE 广播；数据刷新靠 App 推送（见 CourseWidgetProvider）。 -->
         <receiver

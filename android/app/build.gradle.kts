@@ -71,4 +71,7 @@ dependencies {
     implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
     // 核心库脱糖运行时（配合上面的 isCoreLibraryDesugaringEnabled）
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // 今日课程常驻通知的纯逻辑单测（WB_SPEC_229 第 4.4 节）：android/app/src/test/
+    // 下的 JVM 单测需要 JUnit4。仅测试期依赖，不进 APK，也不改变运行时行为。
+    testImplementation("junit:junit:4.13.2")
 }

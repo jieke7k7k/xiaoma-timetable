@@ -458,8 +458,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         AutoBackupService.runIfDue(),
       ]);
       // 今日课程常驻通知必须排在 rescheduleAll 之后：rescheduleAll 的 cancelAll
-      // 会连原生常驻通知一起清掉，并发执行时谁后到谁说了算，常驻通知会被误清
+      // 会连常驻通知（id 1001）一起清掉，并发执行时谁后到谁说了算，常驻通知会被误清
       // （复审 C5）。顺序执行保证它是在 cancelAll 之后重建的。
+      // 2.2.0（WB_SPEC_229）起 refresh() 还负责重排「单闹钟接力」的链：
+      // 前台 Service 已退役，App 被杀后由精确闹钟唤醒原生 Receiver 自己翻页，
+      // 所以这里一次 refresh 就同时完成了「重建通知」与「把链接上」。
       await OngoingNoticeService.instance.refresh();
     } catch (e) {
       debugPrint('启动联动刷新失败：$e');
