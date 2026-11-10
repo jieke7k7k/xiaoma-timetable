@@ -203,7 +203,6 @@ class NotificationService {
           styleInformation: InboxStyleInformation(
             lines.isEmpty ? const ['暂无课程'] : lines,
             contentTitle: title,
-            summaryText: kOngoingCourseChannelName,
           ),
         ),
       );

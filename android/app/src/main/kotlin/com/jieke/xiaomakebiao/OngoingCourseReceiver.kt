@@ -31,83 +31,9 @@ class OngoingCourseReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         // 闹钟触发：任何一步失败都只记日志——Receiver 里抛异常会直接闪退
         try {
-            refreshAndReschedule(context)
+            refreshAndReschedule(context, notify = true)
         } catch (t: Throwable) {
             Log.w(TAG, "常驻通知闹钟处理失败", t)
-        }
-    }
-
-    /** 读库 → 算焦点 → 刷新通知 → 接力排下一个闹钟 */
-    private fun refreshAndReschedule(context: Context) {
-        val snapshot = OngoingDbReader.read(context)
-        if (snapshot == null) {
-            // 读库失败 / 库不存在：取消通知、不排链，等下次 App 打开重建
-            cancelNotification(context)
-            cancelScheduled(context)
-            return
-        }
-        val now = LocalDateTime.now(SHANGHAI)
-        when (
-            val decision = OngoingFocusCalculator.decide(
-                enabled = snapshot.enabled,
-                semester = snapshot.semester,
-                now = now,
-                courses = snapshot.courses,
-                timeSlots = snapshot.slots,
-                overrides = snapshot.overrides,
-            )
-        ) {
-            OngoingFocusCalculator.Decision.Disabled,
-            OngoingFocusCalculator.Decision.NoSemester -> {
-                cancelNotification(context)
-                cancelScheduled(context)
-            }
-
-            is OngoingFocusCalculator.Decision.Show -> {
-                showNotification(context, decision.notice)
-                scheduleAt(context, toEpochMillis(decision.notice.boundary))
-            }
-        }
-    }
-
-    /** 把纯逻辑算出的文案画成常驻通知（样式与退役前的 Service 逐项对齐） */
-    private fun showNotification(context: Context, notice: OngoingFocusCalculator.Notice) {
-        ensureChannel(context)
-        // 点按通知回到 App 主界面
-        val contentIntent = context.packageManager
-            .getLaunchIntentForPackage(context.packageName)
-            ?.let { launch ->
-                PendingIntent.getActivity(
-                    context,
-                    0,
-                    launch,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                )
-            }
-
-        val inbox = NotificationCompat.InboxStyle()
-        if (notice.lines.isEmpty()) {
-            inbox.addLine("暂无课程")
-        } else {
-            for (line in notice.lines) inbox.addLine(line)
-        }
-
-        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            // 纯白日历剪影：应用彩色图标在通知栏会变白块/模糊，深浅色通知栏下剪影都清晰
-            .setSmallIcon(R.drawable.ic_stat_course)
-            .setContentTitle(notice.title)
-            .setContentText(notice.lines.firstOrNull() ?: "暂无课程")
-            .setStyle(inbox)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setSilent(true)
-        if (contentIntent != null) builder.setContentIntent(contentIntent)
-
-        try {
-            // Android 13+ 没给 POST_NOTIFICATIONS 时这里会静默失败，不抛异常
-            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, builder.build())
-        } catch (t: Throwable) {
-            Log.w(TAG, "刷新常驻通知失败", t)
         }
     }
 
@@ -133,6 +59,86 @@ class OngoingCourseReceiver : BroadcastReceiver() {
         /** 边界点（东八区墙上时间）→ 绝对时间戳，交给 AlarmManager */
         fun toEpochMillis(boundary: LocalDateTime): Long =
             boundary.atZone(SHANGHAI).toInstant().toEpochMilli()
+
+        /**
+         * 读库 → 算焦点 →（notify 时）刷新通知 → 接力排下一个闹钟 / 停链。
+         *
+         * 闹钟触发（onReceive）与开机恢复（scheduleNext）共用同一条逻辑，
+         * 只差开机恢复不刷新通知——避免两条链演化出差异（Kimi 复审优化建议 1）。
+         * 读库失败 / 开关关 / 无学期时：notify=true 撤通知并停链，notify=false 只停链。
+         */
+        private fun refreshAndReschedule(context: Context, notify: Boolean) {
+            val snapshot = OngoingDbReader.read(context)
+            if (snapshot == null) {
+                // 读库失败 / 库不存在：取消通知、不排链，等下次 App 打开重建
+                if (notify) cancelNotification(context)
+                cancelScheduled(context)
+                return
+            }
+            val now = LocalDateTime.now(SHANGHAI)
+            when (
+                val decision = OngoingFocusCalculator.decide(
+                    enabled = snapshot.enabled,
+                    semester = snapshot.semester,
+                    now = now,
+                    courses = snapshot.courses,
+                    timeSlots = snapshot.slots,
+                    overrides = snapshot.overrides,
+                )
+            ) {
+                OngoingFocusCalculator.Decision.Disabled,
+                OngoingFocusCalculator.Decision.NoSemester -> {
+                    if (notify) cancelNotification(context)
+                    cancelScheduled(context)
+                }
+
+                is OngoingFocusCalculator.Decision.Show -> {
+                    if (notify) showNotification(context, decision.notice)
+                    scheduleAt(context, toEpochMillis(decision.notice.boundary))
+                }
+            }
+        }
+
+        /** 把纯逻辑算出的文案画成常驻通知（样式与退役前的 Service 逐项对齐） */
+        private fun showNotification(context: Context, notice: OngoingFocusCalculator.Notice) {
+            ensureChannel(context)
+            // 点按通知回到 App 主界面
+            val contentIntent = context.packageManager
+                .getLaunchIntentForPackage(context.packageName)
+                ?.let { launch ->
+                    PendingIntent.getActivity(
+                        context,
+                        0,
+                        launch,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                    )
+                }
+
+            val inbox = NotificationCompat.InboxStyle()
+            if (notice.lines.isEmpty()) {
+                inbox.addLine("暂无课程")
+            } else {
+                for (line in notice.lines) inbox.addLine(line)
+            }
+
+            val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+                // 纯白日历剪影：应用彩色图标在通知栏会变白块/模糊，深浅色通知栏下剪影都清晰
+                .setSmallIcon(R.drawable.ic_stat_course)
+                .setContentTitle(notice.title)
+                .setContentText(notice.lines.firstOrNull() ?: "暂无课程")
+                .setStyle(inbox)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setSilent(true)
+            if (contentIntent != null) builder.setContentIntent(contentIntent)
+
+            try {
+                // Android 13+ 没给 POST_NOTIFICATIONS 时这里会静默失败，不抛异常
+                NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, builder.build())
+            } catch (t: Throwable) {
+                Log.w(TAG, "刷新常驻通知失败", t)
+            }
+        }
 
         /**
          * 在 [triggerAtMillis] 排下一个链闹钟（幂等：先撤同 requestCode 的旧闹钟再排）。
@@ -189,31 +195,11 @@ class OngoingCourseReceiver : BroadcastReceiver() {
         /**
          * 自行读库算边界点后排链（开机恢复用；Flutter 侧则通过 MethodChannel 传
          * 精确时刻调 [scheduleAt]）。读库失败 / 开关关 / 无学期时停链。
+         * 与闹钟触发共用 [refreshAndReschedule]，只差不刷新通知。
          */
         fun scheduleNext(context: Context) {
             try {
-                val snapshot = OngoingDbReader.read(context)
-                if (snapshot == null) {
-                    cancelScheduled(context)
-                    return
-                }
-                val now = LocalDateTime.now(SHANGHAI)
-                when (
-                    val decision = OngoingFocusCalculator.decide(
-                        enabled = snapshot.enabled,
-                        semester = snapshot.semester,
-                        now = now,
-                        courses = snapshot.courses,
-                        timeSlots = snapshot.slots,
-                        overrides = snapshot.overrides,
-                    )
-                ) {
-                    OngoingFocusCalculator.Decision.Disabled,
-                    OngoingFocusCalculator.Decision.NoSemester -> cancelScheduled(context)
-
-                    is OngoingFocusCalculator.Decision.Show ->
-                        scheduleAt(context, toEpochMillis(decision.notice.boundary))
-                }
+                refreshAndReschedule(context, notify = false)
             } catch (t: Throwable) {
                 Log.w(TAG, "开机恢复常驻通知链失败", t)
             }

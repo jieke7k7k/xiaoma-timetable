@@ -172,9 +172,5 @@
         "boundary": "2026-09-11 19:30"
       }
     }
-  ],
-  "guards": [
-    { "name": "开关关闭：两个通道都停", "enabled": false, "now": "2026-09-07 08:20", "decision": "disabled" },
-    { "name": "无当前学期（或读库失败）：取消通知、不排链", "enabled": true, "now": "2026-09-07 08:20", "noSemester": true, "decision": "no_semester" }
   ]
 }

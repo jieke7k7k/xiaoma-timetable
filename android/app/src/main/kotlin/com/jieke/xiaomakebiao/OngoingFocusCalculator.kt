@@ -86,10 +86,21 @@ object OngoingFocusCalculator {
         overrides: List<FocusOverride>,
     ): Notice {
         val today = now.toLocalDate()
+        // 开学日期只解析一次（解析失败回退到 today 所在周一），9 天复用——
+        // 与 Dart 的 Semester.startDateParsed 一致（一次求值、DateTime.now() 为基准）。
+        // 绝不能在 sessionsOnDay 里按被评估日逐日回退：那样 offset>0 的日期恒算第 1 周。
+        val semesterStart = startDate(semester, today)
         val sessions = ArrayList<FocusSession>()
         for (offset in 0 until LOOKAHEAD_DAYS) {
             sessions.addAll(
-                sessionsOnDay(today.plusDays(offset.toLong()), semester, courses, timeSlots, overrides)
+                sessionsOnDay(
+                    today.plusDays(offset.toLong()),
+                    semester,
+                    courses,
+                    timeSlots,
+                    overrides,
+                    semesterStart,
+                )
             )
         }
         sessions.sortBy { it.start }
@@ -163,15 +174,21 @@ object OngoingFocusCalculator {
         return now.toLocalDate().plusDays(1).atTime(IDLE_TICK_HOUR, IDLE_TICK_MINUTE)
     }
 
-    /** 某一天的具体课次：已应用单次调课与单双周 / 周次过滤，按开始时间排序 */
+    /** 某一天的具体课次：已应用单次调课与单双周 / 周次过滤，按开始时间排序
+     *
+     * @param semesterStart 已解析好的开学日期，由调用方（[computeNotice]）按计算时刻
+     * （today）一次解析后传入，9 天复用；不要在这里按被评估日逐日解析回退，
+     * 否则开学日期脏数据时 offset>0 的日期恒算第 1 周（Kimi 复审 Bug 2）。
+     */
     fun sessionsOnDay(
         date: LocalDate,
         semester: FocusSemester,
         courses: List<FocusCourse>,
         timeSlots: List<FocusTimeSlot>,
         overrides: List<FocusOverride>,
+        semesterStart: LocalDate,
     ): List<FocusSession> {
-        val week = currentWeek(startDate(semester, date), date)
+        val week = currentWeek(semesterStart, date)
         if (week < 1 || week > semester.totalWeeks) return emptyList()
         val slotMap = HashMap<Int, FocusTimeSlot>(timeSlots.size)
         for (slot in timeSlots) slotMap[slot.section] = slot
@@ -190,7 +207,14 @@ object OngoingFocusCalculator {
         return out
     }
 
-    /** 开学日期解析；失败回退到「参考日所在周一」（Dart 用「今天所在周一」，同一时刻等价） */
+    /**
+     * 开学日期解析；失败回退到「参考日所在周一」。
+     *
+     * 注意：回退基准必须由调用方按计算时刻（[computeNotice] 的 today）一次解析、
+     * 9 天复用——与 Dart 的 Semester.startDateParsed（一次求值、DateTime.now() 为基准）
+     * 同口径。不要对 sessionsOnDay 的每一天各传各的 reference，否则开学日期脏数据时
+     * offset>0 的日期恒算第 1 周（Kimi 复审 Bug 2）。
+     */
     fun startDate(semester: FocusSemester, reference: LocalDate): LocalDate {
         val raw = semester.startDate.trim()
         try {

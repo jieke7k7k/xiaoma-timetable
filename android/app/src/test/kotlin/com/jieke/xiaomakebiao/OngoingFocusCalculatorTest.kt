@@ -121,8 +121,31 @@ class OngoingFocusCalculatorTest {
         val slots = listOf(FocusTimeSlot(1, "08:00", "08:40"))
         val sessions = OngoingFocusCalculator.sessionsOnDay(
             java.time.LocalDate.parse("2026-09-07"), semester, courses, slots, emptyList(),
+            OngoingFocusCalculator.startDate(semester, java.time.LocalDate.parse("2026-09-07")),
         )
         assertEquals(0, sessions.size)
+    }
+
+    @Test
+    fun `开学日期脏数据时回退到本周一且 9 天复用`() {
+        // Kimi 复审 Bug 2 的回归测试：startDate 解析失败时，Dart 回退到「今天所在周一」
+        // 一次求值、9 天复用；旧 Kotlin 代码按被评估日逐日回退，offset>0 的日期恒算第 1 周，
+        // 第 2 周才有的课永远算不出来（会误判成「暂无课程安排」）。
+        val semester = FocusSemester("脏数据学期", "", 20)
+        val courses = listOf(
+            FocusCourse(1, "高等数学", "A101", 1, 1, 2, listOf(2), 0),
+        )
+        val notice = OngoingFocusCalculator.computeNotice(
+            now = LocalDateTime.parse("2026-09-07T08:20"),
+            semester = semester,
+            courses = courses,
+            timeSlots = fixture.timeSlots,
+            overrides = emptyList(),
+        )
+        // 2026-09-07 是周一：回退到本周一后，本周是第 1 周，下周一（9 月 14 日）是第 2 周
+        assertEquals("下一节：高等数学", notice.title)
+        assertEquals(listOf("周一（9月14日） 08:00–09:30 · A101"), notice.lines)
+        assertEquals("2026-09-14 08:00", Fixture.format(notice.boundary))
     }
 
     // ---------- 夹具读取 ----------

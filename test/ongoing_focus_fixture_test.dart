@@ -9,6 +9,7 @@ import 'package:xiaoma_timetable/models/time_slot.dart';
 import 'package:xiaoma_timetable/utils/next_class.dart';
 import 'package:xiaoma_timetable/utils/ongoing_boundary.dart';
 import 'package:xiaoma_timetable/utils/ongoing_notice.dart';
+import 'package:xiaoma_timetable/utils/week_calc.dart';
 
 /// 今日课程常驻通知的共享夹具测试（WB_SPEC_229 第 4.4 节）
 ///
@@ -72,6 +73,43 @@ void main() {
         computeNextBoundary(now: now, focus: const ClassFocus()),
         DateTime(2026, 10, 1, 0, 5),
       );
+    });
+  });
+
+  group('开学日期脏数据回退（与 Kotlin 侧一致，Kimi 复审 Bug 2）', () {
+    test('startDate 解析失败时回退到本周一、9 天复用，下周一的第 2 周课能算出来', () {
+      // 期望按运行时真实今天推导，不写死日期：startDateParsed 用真实 DateTime.now() 回退。
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final thisMonday = WeekCalc.alignToMonday(today);
+      final nextMonday = thisMonday.add(const Duration(days: 7));
+      final semester = Semester(name: '脏数据学期', startDate: '', totalWeeks: 20);
+      final course = Course(
+        id: 1,
+        semesterId: 1,
+        name: '高等数学',
+        classroom: 'A101',
+        colorValue: 0xFF6B8E7B,
+        dayOfWeek: nextMonday.weekday,
+        startSection: 1,
+        endSection: 2,
+        weeks: const [2],
+        weekType: 0,
+      );
+      const slots = [
+        TimeSlot(section: 1, startTime: '08:00', endTime: '08:40'),
+        TimeSlot(section: 2, startTime: '08:50', endTime: '09:30'),
+      ];
+      final focus = computeClassFocus(
+        now: now,
+        semester: semester,
+        courses: [course],
+        timeSlots: slots,
+      );
+      // 回退到本周一：第 1 周是本周，下周一是第 2 周，课应出现
+      expect(focus.next, isNotNull);
+      expect(focus.next!.date, nextMonday);
+      expect(focus.next!.course.name, '高等数学');
     });
   });
 }
