@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xiaoma_timetable/pages/week_view_page.dart'
-    show categoryForMenuId;
 import 'package:xiaoma_timetable/ui/app_choice_chip.dart';
 import 'package:xiaoma_timetable/ui/app_popup_menu.dart';
 import 'package:xiaoma_timetable/ui/app_styles.dart';

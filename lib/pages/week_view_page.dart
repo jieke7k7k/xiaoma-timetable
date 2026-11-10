@@ -2461,26 +2461,3 @@ class _ClassFocusBar extends StatelessWidget {
     );
   }
 }
-
-/// 主页「更多」菜单 id → 图标语义色（WB_SPEC_230 第 3.4 节）。
-///
-/// 纯映射、无副作用，只决定菜单项前面那块 32×32 彩色底块取哪套色；
-/// 未知 id（理论上不会，[visibleMenuItems] 已用默认 spec 兜底）回落课表蓝。
-///
-/// 公开而非私有：第 9 节要求单测覆盖「7 项 + 未知 id 回落」全表，私有符号
-/// 跨库不可见，故以顶层函数暴露（命名保留 `ForMenuId` 语义，便于检索）。
-SettingsIconCategory categoryForMenuId(String id) {
-  return switch (id) {
-    // 课程搜索、学期管理：课表蓝
-    'course-search' || 'semester-manage' => SettingsIconCategory.schedule,
-    // 空闲时段、导入课表：数据绿
-    'free-time' || 'import' => SettingsIconCategory.data,
-    // 导出课表图片：外观紫
-    'share-image' => SettingsIconCategory.appearance,
-    // 考试倒计时：提醒橙
-    'exam-countdown' => SettingsIconCategory.reminder,
-    // 固定末尾的「设置」：系统灰
-    'settings' => SettingsIconCategory.system,
-    _ => SettingsIconCategory.schedule,
-  };
-}
