@@ -6,6 +6,7 @@ import 'package:xiaoma_timetable/database/dao.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
 import 'package:xiaoma_timetable/pages/settings_sections.dart';
+import 'package:xiaoma_timetable/ui/app_choice_chip.dart';
 import 'package:xiaoma_timetable/utils/color_schemes.dart';
 import 'package:xiaoma_timetable/widgets/app_dialog.dart';
 
@@ -129,7 +130,7 @@ void main() {
 
     // 三种动效都做，做成开关让用户自己选；默认柔和（官方淡入）
     expect(find.text('切换动效'), findsOneWidget);
-    expect(find.byType(ChoiceChip), findsNWidgets(3));
+    expect(find.byType(AppChoiceChip), findsNWidgets(3));
     // 复查 Bug 6：断言字面量「灵动/柔和/疾速」与三个 id 的映射，不与实现
     // 共用同一枚举 label（否则改名写错仍全绿）。
     const expectedLabels = {
@@ -145,7 +146,7 @@ void main() {
     }
     expect(
       tester
-          .widget<ChoiceChip>(
+          .widget<AppChoiceChip>(
             find.byKey(
               shellTransitionChipKey(ShellTransitionStyle.fadeThroughOfficial),
             ),
@@ -169,7 +170,7 @@ void main() {
     }
     expect(
       tester
-          .widget<ChoiceChip>(
+          .widget<AppChoiceChip>(
             find.byKey(
               shellTransitionChipKey(ShellTransitionStyle.quickFade),
             ),
@@ -179,7 +180,7 @@ void main() {
     );
     expect(
       tester
-          .widget<ChoiceChip>(
+          .widget<AppChoiceChip>(
             find.byKey(
               shellTransitionChipKey(ShellTransitionStyle.fadeThroughOfficial),
             ),
@@ -213,12 +214,12 @@ void main() {
 
     // 2.1.7 同版本修复：胶囊形态删除，底部栏只有新标签栏一种，
     // 外观页不再有「底部栏样式」二选一；底部栏开关本身仍在。
-    // 注意：页面上仍有 ChoiceChip——那是 2026-11-05 新增的「切换动效」
+    // 注意：页面上仍有单选芯片——那是 2026-11-05 新增的「切换动效」
     // 三选项（灵动/柔和/疾速），不是底部栏样式。
     expect(find.text('底部栏样式'), findsNothing);
     expect(find.text('新标签栏'), findsNothing);
     expect(find.text('胶囊贴底'), findsNothing);
-    expect(find.byType(ChoiceChip), findsNWidgets(3));
+    expect(find.byType(AppChoiceChip), findsNWidgets(3));
     expect(
       find.widgetWithText(SwitchListTile, '底部栏显示'),
       findsOneWidget,
@@ -355,7 +356,7 @@ void main() {
       // 与「切换动效」一起沉到第 4 组。
       expect(y(tester, '底部栏显示'), greaterThan(g4));
       expect(y(tester, '切换动效'), greaterThan(g4));
-      expect(find.byType(ChoiceChip), findsNWidgets(3));
+      expect(find.byType(AppChoiceChip), findsNWidgets(3));
 
       // 规格书称「卡片圆角大小」＝原「格子圆角半径」滑杆（控件本身不动），
       // 从第 2 组移入第 3 组；卡片文字大小 / 显示教室 / 显示老师 / 显示备注同组。

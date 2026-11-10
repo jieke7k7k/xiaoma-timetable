@@ -166,16 +166,17 @@ void main() {
     // 也不能离顶栏太远：菜单顶 ≤ 64（第一项顶 ≤ 72）
     expect(firstItemTop, lessThan(72), reason: '菜单应紧贴顶栏下方，不要留大空隙');
 
-    // 圆角 16 与背景/阴影随主题（浅色 surfaceContainerHigh、深色 surfaceContainer）
+    // WB_SPEC_230 第 3.1 节：圆角 16、米白底、阴影已收进 main.dart 的全局
+    // popupMenuTheme，顶栏菜单不再自带外壳参数，只留 offset 负责定位；
+    // 三处 ⋮ 菜单因此长得一模一样（这里锁住「不自带外壳」这个架构约束）。
     final menu = tester.widget<PopupMenuButton<String>>(
       find.byType(PopupMenuButton<String>),
     );
-    expect(menu.shape, isA<RoundedRectangleBorder>());
-    final radius =
-        (menu.shape as RoundedRectangleBorder).borderRadius as BorderRadius;
-    expect(radius.topLeft.x, 16);
+    expect(menu.shape, isNull, reason: '外壳应由全局 popupMenuTheme 提供');
+    expect(menu.color, isNull, reason: '底色应由全局 popupMenuTheme 提供');
+    expect(menu.elevation, isNull, reason: '阴影应由全局 popupMenuTheme 提供');
     expect(menu.offset.dx, -8);
-    expect(menu.elevation, 6); // 浅色
+    expect(menu.offset.dy, 48);
   });
 
   group('上课提醒徽标三态（复查 Bug 3/7）', () {

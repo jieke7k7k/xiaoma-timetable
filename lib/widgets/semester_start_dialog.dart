@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_dialog.dart';
+
 /// 开学日期确认弹窗（1.2.1）
 ///
 /// 开学日期错一位，全表周次全错。新学期创建与课程导入两个入口共用：
@@ -64,8 +66,9 @@ class _StartConfirmDialogState extends State<_StartConfirmDialog> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final weekEnd = _date.add(const Duration(days: 6));
-    return AlertDialog(
-      title: const Text('确认开学日期'),
+    // WB_SPEC_230 第 4.2 节第 5 类：只换外层壳（标题/正文/按钮文案一字不动）
+    return AppDialog(
+      title: '确认开学日期',
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

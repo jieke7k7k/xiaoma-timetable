@@ -16,6 +16,7 @@ import '../ui/app_styles.dart';
 import '../utils/ics_parser.dart';
 import '../utils/morandi_palette.dart';
 import '../database/dao.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/semester_form_dialog.dart';
 import '../widgets/semester_start_dialog.dart';
 import '../utils/web_schedule_parser.dart';
@@ -444,18 +445,11 @@ class _ImportPageState extends ConsumerState<ImportPage> {
   }) {
     // 先提示解析失败条目
     if (errors.isNotEmpty && context.mounted) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('部分条目解析失败'),
-          content: Text(errors.take(5).join('\n')),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('知道了'),
-            ),
-          ],
-        ),
+      // WB_SPEC_230 第 4.2 节第 4 类：纯信息提示，走统一信息弹窗
+      showAppInfoDialog(
+        context,
+        title: '部分条目解析失败',
+        message: errors.take(5).join('\n'),
       );
     }
     Navigator.push(
@@ -485,8 +479,10 @@ class _ImportPageState extends ConsumerState<ImportPage> {
         '错误信息：$message';
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('导入失败'),
+      // WB_SPEC_230 第 4.2 节第 4 类：多按钮展示弹窗嵌 AppDialog，
+      // 原本的 SingleChildScrollView 原样传入 content
+      builder: (ctx) => AppDialog(
+        title: '导入失败',
         content: SingleChildScrollView(child: Text(message)),
         actions: [
           TextButton(

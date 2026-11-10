@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../models/semester.dart';
 import '../providers/providers.dart';
 import '../utils/week_calc.dart';
+import 'app_dialog.dart';
 import 'semester_start_dialog.dart';
 
 /// 开学日期日历的可选区间（与 [SemesterFormDialog] 里的日期选择器同一份口径）。
@@ -219,11 +220,14 @@ class SemesterFormDialogState extends ConsumerState<SemesterFormDialog> {
     final dateText = _startDate == null
         ? '默认从本周开始'
         : '${DateFormat('yyyy-MM-dd').format(_startDate!)}（周一）';
-    return AlertDialog(
-      title: Text(editing ? '编辑学期' : '新建学期'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+    // WB_SPEC_230 第 4.2 节第 5 类：含表单的弹窗只换外层壳；content 的 Column
+    // 外包 SingleChildScrollView，避免小屏软键盘顶起时 autofocus 输入框溢出。
+    return AppDialog(
+      title: editing ? '编辑学期' : '新建学期',
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
           TextField(
             controller: _nameController,
             autofocus: true,
@@ -273,7 +277,8 @@ class SemesterFormDialogState extends ConsumerState<SemesterFormDialog> {
               suffixText: '周',
             ),
           ),
-        ],
+          ],
+        ),
       ),
       actions: [
         TextButton(

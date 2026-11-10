@@ -5,10 +5,12 @@ import 'app_styles.dart';
 /// 设置页入口行图标：语义化分组柔和彩色底块（WB_SPEC_222，Argon 方案形态 C）。
 ///
 /// 形态：32×32 圆角方块底（圆角走 [AppRadii.chip]=10）＋ 20dp 描边图标。
-/// 颜色：全站只用 5 个语义色；方块底色＝基色经 `Color.lerp(base, primary, 0.15)`
-/// 注入 15% 当前主题色，再按深浅取透明度（浅色 0.18／深色 0.22，system 组浅色 0.12／
-/// 深色 0.18）；图标本身用深色系（浅色）／浅色系（深色），绝对不用纯白
-/// （描边图标配纯白显得空心）。
+/// 颜色：全站只用 6 个语义色（WB_SPEC_230 新增 destructive）；方块底色＝基色经
+/// `Color.lerp(base, primary, 0.15)` 注入 15% 当前主题色，再按深浅取透明度
+/// （浅色 0.18／深色 0.22，system 与 destructive 组浅色 0.12／深色 0.18）；
+/// 图标本身用深色系（浅色）／浅色系（深色），绝对不用纯白
+/// （描边图标配纯白显得空心）。destructive 是唯一例外：底色与图标都直接取
+/// `scheme.error`，不混主色（混了会把红带偏）。
 ///
 /// 色值一律写进枚举，业务页面不许写死 `Color(0xFF...)`（换主题翻车）。
 enum SettingsIconCategory {
@@ -45,6 +47,18 @@ enum SettingsIconCategory {
     base: Color(0xFF7F8C8D),
     lightIcon: Color(0xFF616A6B),
     darkIcon: Color(0xFFAEB6BF),
+  ),
+
+  /// 高危不可逆操作：红（WB_SPEC_230 第 3.3 节）。
+  ///
+  /// 删除类菜单项专用——用 system 冷淡灰易误触，这里走 M3 error 色系。
+  /// 三个字段只作声明（值为 M3 error 红），实际渲染走 [SettingsIconBox.build]
+  /// 里的 scheme.error 分支，不参与 `Color.lerp(base, primary, 0.15)` 混色
+  /// （混了会把红带偏成砖红）。
+  destructive(
+    base: Color(0xFFB3261E),
+    lightIcon: Color(0xFFB3261E),
+    darkIcon: Color(0xFFF2B8B5),
   );
 
   const SettingsIconCategory({
@@ -68,9 +82,11 @@ enum SettingsIconCategory {
   static const double _alphaSystemLight = 0.12;
   static const double _alphaSystemDark = 0.18;
 
-  /// 方块底透明度：浅色 0.18／深色 0.22，system 组浅色 0.12／深色 0.18。
+  /// 方块底透明度：浅色 0.18／深色 0.22，system 与 destructive 组
+  /// 浅色 0.12／深色 0.18。
   double backgroundAlpha(bool isDark) {
-    if (this == SettingsIconCategory.system) {
+    if (this == SettingsIconCategory.system ||
+        this == SettingsIconCategory.destructive) {
       return isDark ? _alphaSystemDark : _alphaSystemLight;
     }
     return isDark ? _alphaStandardDark : _alphaStandardLight;
@@ -97,18 +113,25 @@ class SettingsIconBox extends StatelessWidget {
     final isDark = scheme.brightness == Brightness.dark;
     // 注入 15% 当前主题色：换主题时 5 组色跟着带一点主题色调，
     // 既有区分又像同一套调色盘出品（Argon 避坑清单第 2 条）。
-    final blended = Color.lerp(category.base, scheme.primary, 0.15)!;
+    // destructive 例外（WB_SPEC_230 第 3.3 节）：高危操作必须稳定是红，
+    // 不走 lerp，底色与图标都直接取 scheme.error 色系。
+    final destructive = category == SettingsIconCategory.destructive;
+    final baseColor = destructive
+        ? scheme.error
+        : Color.lerp(category.base, scheme.primary, 0.15)!;
     return Container(
       width: 32,
       height: 32,
       decoration: BoxDecoration(
-        color: blended.withValues(alpha: category.backgroundAlpha(isDark)),
+        color: baseColor.withValues(alpha: category.backgroundAlpha(isDark)),
         borderRadius: BorderRadius.circular(AppRadii.chip),
       ),
       child: Icon(
         icon,
         size: 20,
-        color: isDark ? category.darkIcon : category.lightIcon,
+        color: destructive
+            ? scheme.error
+            : (isDark ? category.darkIcon : category.lightIcon),
       ),
     );
   }

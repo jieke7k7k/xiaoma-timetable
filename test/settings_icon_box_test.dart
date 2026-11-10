@@ -26,6 +26,8 @@ void main() {
     SettingsIconCategory.reminder: Color(0xFFD35400),
     SettingsIconCategory.data: Color(0xFF1E8449),
     SettingsIconCategory.system: Color(0xFF616A6B),
+    // WB_SPEC_230 第 3.3 节：destructive 走 M3 error 红
+    SettingsIconCategory.destructive: Color(0xFFB3261E),
   };
   const darkIcons = {
     SettingsIconCategory.schedule: Color(0xFF7AB3F0),
@@ -33,6 +35,7 @@ void main() {
     SettingsIconCategory.reminder: Color(0xFFF5A623),
     SettingsIconCategory.data: Color(0xFF58D68D),
     SettingsIconCategory.system: Color(0xFFAEB6BF),
+    SettingsIconCategory.destructive: Color(0xFFF2B8B5),
   };
   const bases = {
     SettingsIconCategory.schedule: Color(0xFF4A90D9),
@@ -40,6 +43,7 @@ void main() {
     SettingsIconCategory.reminder: Color(0xFFF39C12),
     SettingsIconCategory.data: Color(0xFF27AE60),
     SettingsIconCategory.system: Color(0xFF7F8C8D),
+    SettingsIconCategory.destructive: Color(0xFFB3261E),
   };
 
   // 222 复审优化建议 3：枚举字面值直达断言——实现方手滑改错枚举色值时，
@@ -92,19 +96,27 @@ void main() {
         );
         final decoration = container.decoration as BoxDecoration;
         expect(decoration.borderRadius, BorderRadius.circular(10));
-        final expectedAlpha =
-            category == SettingsIconCategory.system ? 0.12 : 0.18;
-        final expectedBg = Color.lerp(
-          bases[category]!,
-          const Color(0xFF8C6246),
-          0.15,
-        )!.withValues(alpha: expectedAlpha);
+        final scheme = Theme.of(tester.element(box)).colorScheme;
+        // WB_SPEC_230 第 3.3 节：destructive 与 system 同档透明度，且底色
+        // 直接取 scheme.error（不混 primary），图标也用 scheme.error。
+        final destructive = category == SettingsIconCategory.destructive;
+        final expectedAlpha = (category == SettingsIconCategory.system ||
+                destructive)
+            ? 0.12
+            : 0.18;
+        final expectedBg = destructive
+            ? scheme.error.withValues(alpha: expectedAlpha)
+            : Color.lerp(
+                bases[category]!,
+                scheme.primary,
+                0.15,
+              )!.withValues(alpha: expectedAlpha);
         expect(decoration.color, expectedBg);
         final icon = tester.widget<Icon>(
           find.descendant(of: box, matching: find.byType(Icon)),
         );
         expect(icon.size, 20);
-        expect(icon.color, lightIcons[category]);
+        expect(icon.color, destructive ? scheme.error : lightIcons[category]);
       });
 
       testWidgets('深色：$category 图标色与透明度符合规格', (tester) async {
@@ -114,18 +126,24 @@ void main() {
           find.descendant(of: box, matching: find.byType(Container)),
         );
         final decoration = container.decoration as BoxDecoration;
-        final expectedAlpha =
-            category == SettingsIconCategory.system ? 0.18 : 0.22;
-        final expectedBg = Color.lerp(
-          bases[category]!,
-          const Color(0xFF8C6246),
-          0.15,
-        )!.withValues(alpha: expectedAlpha);
+        final scheme = Theme.of(tester.element(box)).colorScheme;
+        final destructive = category == SettingsIconCategory.destructive;
+        final expectedAlpha = (category == SettingsIconCategory.system ||
+                destructive)
+            ? 0.18
+            : 0.22;
+        final expectedBg = destructive
+            ? scheme.error.withValues(alpha: expectedAlpha)
+            : Color.lerp(
+                bases[category]!,
+                scheme.primary,
+                0.15,
+              )!.withValues(alpha: expectedAlpha);
         expect(decoration.color, expectedBg);
         final icon = tester.widget<Icon>(
           find.descendant(of: box, matching: find.byType(Icon)),
         );
-        expect(icon.color, darkIcons[category]);
+        expect(icon.color, destructive ? scheme.error : darkIcons[category]);
       });
     }
 
@@ -149,6 +167,52 @@ void main() {
         primary: const Color(0xFF3B6E9C),
       );
       expect(bgOf(), isNot(first), reason: '换主题时底色应跟着 primary 走');
+    });
+
+    // WB_SPEC_230 第 3.3 节：destructive 必须稳定是「错误红」，不走
+    // Color.lerp(base, primary, 0.15)——混了主色会把红带偏成砖红。
+    testWidgets('destructive：换 primary 底色不变、图标始终取 scheme.error',
+        (tester) async {
+      Color bgOf() {
+        final container = tester.widget<Container>(
+          find.descendant(
+            of: find.byType(SettingsIconBox),
+            matching: find.byType(Container),
+          ),
+        );
+        return (container.decoration as BoxDecoration).color!;
+      }
+
+      Color iconOf() => tester
+          .widget<Icon>(
+            find.descendant(
+              of: find.byType(SettingsIconBox),
+              matching: find.byType(Icon),
+            ),
+          )
+          .color!;
+
+      await pumpBox(tester, SettingsIconCategory.destructive, dark: false);
+      final firstBg = bgOf();
+      final firstIcon = iconOf();
+      final lightError = Theme.of(tester.element(find.byType(SettingsIconBox)))
+          .colorScheme
+          .error;
+      expect(firstIcon, lightError);
+      expect(
+        firstBg,
+        lightError.withValues(alpha: 0.12),
+        reason: 'destructive 底色应为 scheme.error 12%（浅色）',
+      );
+
+      await pumpBox(
+        tester,
+        SettingsIconCategory.destructive,
+        dark: false,
+        primary: const Color(0xFF3B6E9C),
+      );
+      expect(bgOf(), firstBg, reason: 'destructive 底色不应跟随 primary 变化');
+      expect(iconOf(), firstIcon);
     });
   });
 

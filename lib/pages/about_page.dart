@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/channel_service.dart';
 import '../ui/app_styles.dart';
+import '../widgets/app_dialog.dart';
 
 /// 关于页（1.2.4）：版本号、检查更新、公告入口、更新日志、开源许可、
 /// 使用帮助、问题反馈与开发者信息——完整应用该有的收尾都在这一页。
@@ -86,8 +87,9 @@ class _AboutPageState extends State<AboutPage> {
   Future<void> _showUpdateDialog(LatestInfo latest) async {
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('新版本 ${latest.versionName}'),
+      // WB_SPEC_230 第 4.2 节第 4 类：展示弹窗嵌 AppDialog（Column 保持 min）
+      builder: (ctx) => AppDialog(
+        title: '新版本 ${latest.versionName}',
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -131,8 +133,9 @@ class _AboutPageState extends State<AboutPage> {
   void _showPrivacy() {
     showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('隐私说明'),
+      // WB_SPEC_230 第 4.2 节第 4 类：长文隐私说明保留 SingleChildScrollView
+      builder: (ctx) => AppDialog(
+        title: '隐私说明',
         content: const SingleChildScrollView(
           child: Text(
             '小马课表是一款完全本地运行的应用：\n\n'

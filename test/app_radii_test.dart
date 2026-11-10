@@ -11,14 +11,17 @@ void main() {
     test('分档圆角值', () {
       expect(AppRadii.chip, 10);
       expect(AppRadii.card, 14);
+      // WB_SPEC_230 第 3.3 节：菜单圆角 16（三处 ⋮ 菜单与全局 popupMenuTheme 共用）
+      expect(AppRadii.menu, 16);
       expect(AppRadii.sheet, 20);
       expect(AppRadii.dialog, 24);
       expect(AppRadii.logo, 28);
     });
 
-    test('层级递进：chip < card < sheet < dialog < logo', () {
+    test('层级递进：chip < card < menu < sheet < dialog < logo', () {
       expect(AppRadii.chip, lessThan(AppRadii.card));
-      expect(AppRadii.card, lessThan(AppRadii.sheet));
+      expect(AppRadii.card, lessThan(AppRadii.menu));
+      expect(AppRadii.menu, lessThan(AppRadii.sheet));
       expect(AppRadii.sheet, lessThan(AppRadii.dialog));
       expect(AppRadii.dialog, lessThan(AppRadii.logo));
     });

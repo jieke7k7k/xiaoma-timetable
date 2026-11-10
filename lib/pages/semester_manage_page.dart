@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/semester.dart';
 import '../providers/providers.dart';
+import '../ui/app_popup_menu.dart';
 import '../ui/app_styles.dart';
+import '../ui/settings_icon_box.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/semester_form_dialog.dart';
 
@@ -95,7 +98,12 @@ class SemesterManagePage extends ConsumerWidget {
                     style: const TextStyle(fontSize: 12),
                   ),
                   // 当前学期只给「编辑学期」入口；切换与删除仍然不给（从源头杜绝误操作）
+                  // WB_SPEC_230 第 3.1/3.2 节：菜单项改走共用构造（彩色小底块），
+                  // 外壳吃全局 popupMenuTheme；列表行内嵌菜单用 under 紧贴 ⋮ 下方
+                  // 展开（距按钮底沿 8dp），并删掉 dense，行高与顶栏菜单拉齐（56dp）。
                   trailing: PopupMenuButton<String>(
+                          offset: const Offset(-8, 8),
+                          position: PopupMenuPosition.under,
                           onSelected: (action) {
                             if (action == 'edit') {
                               _editSemester(context, ref, s);
@@ -106,33 +114,24 @@ class SemesterManagePage extends ConsumerWidget {
                             }
                           },
                           itemBuilder: (ctx) => [
-                            const PopupMenuItem(
+                            buildAppPopupMenuItem<String>(
                               value: 'edit',
-                              child: ListTile(
-                                dense: true,
-                                contentPadding: EdgeInsets.zero,
-                                leading: Icon(Icons.edit_outlined),
-                                title: Text('编辑学期'),
-                              ),
+                              icon: Icons.edit_outlined,
+                              category: SettingsIconCategory.schedule,
+                              title: '编辑学期',
                             ),
                             if (!isCurrent) ...[
-                              const PopupMenuItem(
+                              buildAppPopupMenuItem<String>(
                                 value: 'switch',
-                                child: ListTile(
-                                  dense: true,
-                                  contentPadding: EdgeInsets.zero,
-                                  leading: Icon(Icons.swap_horiz),
-                                  title: Text('切换到该学期'),
-                                ),
+                                icon: Icons.swap_horiz,
+                                category: SettingsIconCategory.data,
+                                title: '切换到该学期',
                               ),
-                              const PopupMenuItem(
+                              buildAppPopupMenuItem<String>(
                                 value: 'delete',
-                                child: ListTile(
-                                  dense: true,
-                                  contentPadding: EdgeInsets.zero,
-                                  leading: Icon(Icons.delete_outline),
-                                  title: Text('删除该学期'),
-                                ),
+                                icon: Icons.delete_outline,
+                                category: SettingsIconCategory.destructive,
+                                title: '删除该学期',
                               ),
                             ],
                           ],
@@ -208,22 +207,15 @@ class SemesterManagePage extends ConsumerWidget {
   }
 
   /// 切换激活学期（二次确认）
+  ///
+  /// WB_SPEC_230 第 4.2 节第 1 类：标准二次确认（非破坏性）走统一确认弹窗。
   Future<void> _confirmSwitch(
       BuildContext context, WidgetRef ref, Semester s) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('切换学期'),
-        content: Text('确定切换到「${s.name}」吗？\n课表与周次将显示该学期的内容。'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('切换')),
-        ],
-      ),
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '切换学期',
+      message: '确定切换到「${s.name}」吗？\n课表与周次将显示该学期的内容。',
+      confirmLabel: '切换',
     );
     if (ok != true) return;
     try {
@@ -249,25 +241,13 @@ class SemesterManagePage extends ConsumerWidget {
           const SnackBar(content: Text('不能删除当前正在使用的学期，请先切换到其他学期')));
       return;
     }
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除学期'),
-        content: Text('确定删除「${s.name}」吗？\n该学期下的所有课程也会一并删除，且不可恢复。'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-              foregroundColor: Theme.of(ctx).colorScheme.onError,
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '删除学期',
+      message: '确定删除「${s.name}」吗？\n该学期下的所有课程也会一并删除，且不可恢复。',
+      confirmLabel: '删除',
+      // 破坏性确认：确认按钮统一由 AppDialog 渲染 error 色，不再手写 styleFrom
+      destructive: true,
     );
     if (ok != true) return;
     try {

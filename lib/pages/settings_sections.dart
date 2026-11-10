@@ -17,6 +17,7 @@ import '../services/notification_service.dart';
 import '../services/ongoing_notice_service.dart';
 import '../services/permission_service.dart';
 import '../services/widget_service.dart';
+import '../ui/app_choice_chip.dart';
 import '../ui/app_styles.dart';
 import '../ui/grid_metrics.dart';
 import '../ui/settings_icon_box.dart';
@@ -1101,7 +1102,6 @@ class _AppearanceGroup extends ConsumerWidget {
             initialValue: ui.colorSchemeId,
             decoration: const InputDecoration(
               labelText: '课程配色',
-              border: OutlineInputBorder(),
             ),
             items: [
               for (final scheme in kCourseColorSchemes)
@@ -1335,12 +1335,13 @@ class _AppearanceGroup extends ConsumerWidget {
                 runSpacing: AppSpacing.s,
                 children: [
                   for (final style in ShellTransitionStyle.values)
-                    ChoiceChip(
+                    // WB_SPEC_230 第 6.1 节：系统 ChoiceChip（选中态左侧插勾、
+                    // 宽度跳动）统一换成手搓 AppChoiceChip
+                    AppChoiceChip(
                       key: shellTransitionChipKey(style),
-                      label: Text(style.label),
+                      label: style.label,
                       selected: ui.shellTransitionStyle == style,
-                      visualDensity: VisualDensity.compact,
-                      onSelected: (_) => apply(
+                      onSelected: () => apply(
                         ui.copyWith(shellTransitionStyle: style),
                       ),
                     ),
@@ -2052,7 +2053,6 @@ class _FontSectionState extends State<_FontSection> {
             initialValue: ui.fontId,
             decoration: const InputDecoration(
               labelText: '显示字体',
-              border: OutlineInputBorder(),
             ),
             items: [
               for (final f in builtins)

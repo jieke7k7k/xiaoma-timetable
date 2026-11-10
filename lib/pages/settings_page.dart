@@ -5,6 +5,7 @@ import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../services/permission_service.dart';
 import '../utils/route_observer.dart';
+import '../ui/app_popup_menu.dart';
 import '../ui/app_styles.dart';
 import '../ui/bottom_bar_metrics.dart';
 import '../ui/settings_icon_box.dart';
@@ -151,48 +152,29 @@ class SettingsPage extends ConsumerWidget {
   /// AppBar 右上角 ⋮ 更多菜单（WB_SPEC_218 第 ④ 节）：
   /// 权限自检、关于小马课表——原路由不动，仅触发按钮从 ListView 移到菜单。
   ///
-  /// 位置与圆角（Argon 方案 Q7 + 复查 Bug 2）：offset 左移 8dp、下沉 48dp，
-  /// 菜单顶落在顶栏底（toolbarHeight 48）之下，打开后仍能看到顶栏；
-  /// 圆角 16dp；背景浅色 surfaceContainerHigh／深色 surfaceContainer，
-  /// 阴影浅 6／深 8。
+  /// WB_SPEC_230 第 3.1 节：外壳（圆角 16、米白底、阴影）改由 `main.dart` 的
+  /// 全局 `popupMenuTheme` 统一给，这里只留 position 相关的 offset；菜单项
+  /// 走共用 [buildAppPopupMenuItem]，与主页、学期行三处长相一致。
   Widget _buildMoreMenu(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final dark = scheme.brightness == Brightness.dark;
     return PopupMenuButton<String>(
       tooltip: '更多',
       icon: const Icon(Icons.more_vert),
-      // 复查 Bug 2：M3 下菜单顶 = ⋮ 按钮顶 + offset.dy；按钮贴顶栏顶，
-      // dy=10 时菜单顶才 10，盖住顶栏约 34dp。dy 取顶栏高 48，菜单顶
-      // 正好落在顶栏底之下（见 settings_page_test「⋮ 菜单」位置断言）。
+      // 复查 Bug 2 口径沿用：M3 下菜单顶 = ⋮ 按钮顶 + offset.dy；按钮贴顶栏顶，
+      // dy 取顶栏高 48，菜单顶正好落在顶栏底之下（与原设置页位置一致）。
       offset: const Offset(-8, 48),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      color: dark ? scheme.surfaceContainer : scheme.surfaceContainerHigh,
-      elevation: dark ? 8 : 6,
       onSelected: (route) => Navigator.pushNamed(context, route),
-      itemBuilder: (ctx) => const [
-        PopupMenuItem(
+      itemBuilder: (ctx) => [
+        buildAppPopupMenuItem<String>(
           value: '/settings-permissions',
-          child: ListTile(
-            leading: SettingsIconBox(
-              icon: Icons.shield_outlined,
-              category: SettingsIconCategory.schedule,
-            ),
-            title: Text('权限自检'),
-            contentPadding: EdgeInsets.zero,
-          ),
+          icon: Icons.shield_outlined,
+          category: SettingsIconCategory.schedule,
+          title: '权限自检',
         ),
-        PopupMenuItem(
+        buildAppPopupMenuItem<String>(
           value: '/about',
-          child: ListTile(
-            leading: SettingsIconBox(
-              icon: Icons.info_outline,
-              category: SettingsIconCategory.system,
-            ),
-            title: Text('关于小马课表'),
-            contentPadding: EdgeInsets.zero,
-          ),
+          icon: Icons.info_outline,
+          category: SettingsIconCategory.system,
+          title: '关于小马课表',
         ),
       ],
     );

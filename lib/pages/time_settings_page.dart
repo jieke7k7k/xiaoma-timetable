@@ -5,6 +5,7 @@ import '../models/course.dart';
 import '../models/time_slot.dart';
 import '../providers/providers.dart';
 import '../ui/grid_metrics.dart';
+import '../widgets/app_dialog.dart';
 
 /// 作息时间设置页
 ///
@@ -49,21 +50,13 @@ class TimeSettingsPage extends ConsumerWidget {
   }
 
   Future<void> _applyPreset(BuildContext context, WidgetRef ref) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('套用常用大节时间'),
-        content: const Text(
-            '将前 4 节课设置为：\n\n第 1 节 09:40-10:40\n第 2 节 10:40-12:00\n第 3 节 14:00-15:10\n第 4 节 15:10-16:20\n\n确定套用吗？'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('套用')),
-        ],
-      ),
+    // WB_SPEC_230 第 4.2 节第 1 类：标准二次确认走统一确认弹窗
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '套用常用大节时间',
+      message: '将前 4 节课设置为：\n\n第 1 节 09:40-10:40\n第 2 节 10:40-12:00\n'
+          '第 3 节 14:00-15:10\n第 4 节 15:10-16:20\n\n确定套用吗？',
+      confirmLabel: '套用',
     );
     if (ok != true) return;
     try {
@@ -175,21 +168,13 @@ class TimeSettingsPage extends ConsumerWidget {
     } else if (target < current) {
       final affected = courses.where((c) => c.endSection > target).length;
       if (affected > 0) {
-        final ok = await showDialog<bool>(
-          context: context,
-          builder: (d) => AlertDialog(
-            title: const Text('减少节次'),
-            content: Text('第 ${target + 1} 节及之后还有 $affected 门课程，'
-                '减少后这些课程将没有对应的上课时间。确定要减少吗？'),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(d, false),
-                  child: const Text('取消')),
-              FilledButton(
-                  onPressed: () => Navigator.pop(d, true),
-                  child: const Text('确定减少')),
-            ],
-          ),
+        // WB_SPEC_230 第 4.2 节第 1 类：标准二次确认
+        final ok = await showAppConfirmDialog(
+          context,
+          title: '减少节次',
+          message: '第 ${target + 1} 节及之后还有 $affected 门课程，'
+              '减少后这些课程将没有对应的上课时间。确定要减少吗？',
+          confirmLabel: '确定减少',
         );
         if (ok != true) return;
       }

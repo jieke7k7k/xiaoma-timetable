@@ -192,7 +192,6 @@ class _WebImportPageState extends State<WebImportPage> {
                     controller: _urlCtrl,
                     decoration: const InputDecoration(
                       isDense: true,
-                      border: OutlineInputBorder(),
                       hintText: '教务系统网址（可改成自己学校的）',
                     ),
                     keyboardType: TextInputType.url,

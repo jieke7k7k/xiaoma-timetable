@@ -245,6 +245,49 @@ class SimpleTimetableApp extends ConsumerWidget {
             borderRadius: BorderRadius.all(Radius.circular(AppRadii.card)),
           ),
         ),
+        // WB_SPEC_230 第 3.1 节：全 App 弹出菜单外壳统一（三处 ⋮ 菜单共用）。
+        // 只管外壳三项，position/offset 由各调用点单独传（顶栏与列表行内不同）。
+        popupMenuTheme: PopupMenuThemeData(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadii.menu),
+          ),
+          color: colorScheme.surfaceContainerHigh,
+          elevation: 6,
+        ),
+        // WB_SPEC_230 第 5.1 节：输入框统一成圆角灰阶填充框，一次管全 App
+        // （废除 M3 默认下划线样式——多字段表单里横线与 Divider 分不清）。
+        // 圆角走 AppRadii.chip，与全站圆润黑白灰统一；不设高度约束，
+        // 多行输入框（备注 maxLines: 3）不会被压扁成一行。
+        inputDecorationTheme: InputDecorationThemeData(
+          filled: true,
+          fillColor: colorScheme.surfaceContainerHighest,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadii.chip),
+            borderSide: BorderSide(color: colorScheme.outlineVariant),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadii.chip),
+            borderSide: BorderSide(color: colorScheme.outlineVariant),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadii.chip),
+            borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadii.chip),
+            borderSide: BorderSide(color: colorScheme.error),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadii.chip),
+            borderSide: BorderSide(color: colorScheme.error, width: 1.5),
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
+          // 多行框的 label 贴顶，不悬空压在中间
+          alignLabelWithHint: true,
+        ),
         bottomSheetTheme: const BottomSheetThemeData(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(
@@ -277,6 +320,45 @@ class SimpleTimetableApp extends ConsumerWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(AppRadii.card)),
           ),
+        ),
+        // WB_SPEC_230 第 3.1 节：深色菜单外壳（底色比浅色低一档、阴影略重，
+        // 深色下靠阴影分层更自然）。
+        popupMenuTheme: PopupMenuThemeData(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadii.menu),
+          ),
+          color: darkColorScheme.surfaceContainer,
+          elevation: 8,
+        ),
+        // WB_SPEC_230 第 5.1 节：深色输入框与浅色同 token、同圆角、同描边宽度。
+        inputDecorationTheme: InputDecorationThemeData(
+          filled: true,
+          fillColor: darkColorScheme.surfaceContainerHighest,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadii.chip),
+            borderSide: BorderSide(color: darkColorScheme.outlineVariant),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadii.chip),
+            borderSide: BorderSide(color: darkColorScheme.outlineVariant),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadii.chip),
+            borderSide: BorderSide(color: darkColorScheme.primary, width: 1.5),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadii.chip),
+            borderSide: BorderSide(color: darkColorScheme.error),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadii.chip),
+            borderSide: BorderSide(color: darkColorScheme.error, width: 1.5),
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
+          alignLabelWithHint: true,
         ),
         bottomSheetTheme: const BottomSheetThemeData(
           shape: RoundedRectangleBorder(

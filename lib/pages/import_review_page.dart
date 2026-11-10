@@ -10,6 +10,7 @@ import '../models/time_slot.dart';
 import '../providers/providers.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
+import '../ui/app_choice_chip.dart';
 import '../ui/app_styles.dart';
 import '../utils/conflict_detector.dart';
 import '../utils/ics_parser.dart';
@@ -18,6 +19,7 @@ import '../utils/morandi_palette.dart';
 import '../utils/slot_calibrator.dart';
 import '../utils/week_infer.dart';
 import '../utils/week_parser.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/draft_edit_dialog.dart';
 import '../widgets/empty_state.dart';
 import 'import_conflicts_page.dart';
@@ -359,8 +361,10 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
         _done = true; // 导入完成，弹窗关闭后直接返回，不再弹「放弃核对」
         await showDialog<void>(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('导入完成'),
+          // WB_SPEC_230 第 4.2 节第 4 类：展示弹窗嵌 AppDialog，
+          // 原本的 SingleChildScrollView 原样传入 content
+          builder: (ctx) => AppDialog(
+            title: '导入完成',
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -517,24 +521,22 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
           const SizedBox(height: AppSpacing.m),
           Row(
             children: [
-              Expanded(
-                child: _scheduleChoiceChip(
-                  context,
-                  label: '使用读取到的作息',
-                  selected: _scheduleChoice == _ScheduleChoice.useFile,
-                  onTap: () =>
-                      setState(() => _scheduleChoice = _ScheduleChoice.useFile),
-                ),
+              // WB_SPEC_230 第 6.1 节：手搓芯片提为共用 AppChoiceChip，
+              // expanded: true 等价于原来外层包 Expanded（并排两枚等宽）
+              AppChoiceChip(
+                label: '使用读取到的作息',
+                selected: _scheduleChoice == _ScheduleChoice.useFile,
+                onSelected: () =>
+                    setState(() => _scheduleChoice = _ScheduleChoice.useFile),
+                expanded: true,
               ),
               const SizedBox(width: AppSpacing.s),
-              Expanded(
-                child: _scheduleChoiceChip(
-                  context,
-                  label: '仅导入课程（保持现有作息）',
-                  selected: _scheduleChoice == _ScheduleChoice.keepGlobal,
-                  onTap: () => setState(
-                      () => _scheduleChoice = _ScheduleChoice.keepGlobal),
-                ),
+              AppChoiceChip(
+                label: '仅导入课程（保持现有作息）',
+                selected: _scheduleChoice == _ScheduleChoice.keepGlobal,
+                onSelected: () => setState(
+                    () => _scheduleChoice = _ScheduleChoice.keepGlobal),
+                expanded: true,
               ),
             ],
           ),
@@ -577,48 +579,6 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
     );
   }
 
-  /// 单个作息选择芯片：高 36dp、圆角 AppRadii.chip（10.0）、选中带
-  /// 1.5dp cs.primary 描边与 0.12 浅底色（3.6）。长文案用 FittedBox
-  /// 缩到单行，保证两个芯片等高且文案完整可见。
-  Widget _scheduleChoiceChip(
-    BuildContext context, {
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadii.chip),
-      child: Container(
-        height: 36,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        decoration: BoxDecoration(
-          color: selected
-              ? cs.primary.withValues(alpha: 0.12)
-              : cs.surfaceContainerHighest.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(AppRadii.chip),
-          border: Border.all(
-            color: selected ? cs.primary : cs.outlineVariant,
-            width: selected ? 1.5 : 1,
-          ),
-        ),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-              color: selected ? cs.primary : cs.onSurface,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     // 防误触返回：草稿非空时先弹窗确认，避免辛苦核对的成果被一次滑动丢掉
@@ -627,20 +587,12 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
       canPop: _drafts.isEmpty || _done,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-        final leave = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('放弃本次导入？'),
-            content: const Text('确定放弃本次导入核对吗？草稿不会被保存。'),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('继续核对')),
-              FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('放弃')),
-            ],
-          ),
+        final leave = await showAppConfirmDialog(
+          context,
+          title: '放弃本次导入？',
+          message: '确定放弃本次导入核对吗？草稿不会被保存。',
+          confirmLabel: '放弃',
+          cancelLabel: '继续核对',
         );
         if (leave == true && context.mounted) {
           _done = true;

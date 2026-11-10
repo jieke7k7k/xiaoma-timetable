@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/permission_service.dart';
+import 'app_dialog.dart';
 
 /// 首次启动的权限引导（**只在第一次打开 App 时走一遍**）
 ///
@@ -62,29 +63,23 @@ Future<void> runPermissionGuide(BuildContext context) async {
 }
 
 /// 一步引导的说明对话框；返回 true 表示用户点了「去设置」
+///
+/// WB_SPEC_230 第 4.2 节第 3 类：显式传 `barrierDismissible: false`（点遮罩
+/// 不消失，保持原有强制阅读体验）。本文件没有 PopScope，也不新增——返回键
+/// 行为维持现状（Argon 说「保留原有 PopScope」是错的，见规格第 11 节）。
 Future<bool> _ask(
   BuildContext context, {
   required String title,
   required String body,
   required String actionLabel,
 }) async {
-  final go = await showDialog<bool>(
-    context: context,
+  final go = await showAppConfirmDialog(
+    context,
+    title: title,
+    message: body,
+    confirmLabel: actionLabel,
+    cancelLabel: '跳过',
     barrierDismissible: false,
-    builder: (ctx) => AlertDialog(
-      title: Text(title),
-      content: Text(body),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('跳过'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(ctx, true),
-          child: Text(actionLabel),
-        ),
-      ],
-    ),
   );
   return go == true;
 }

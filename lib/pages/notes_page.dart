@@ -6,6 +6,7 @@ import '../models/note.dart';
 import '../providers/providers.dart';
 import '../ui/app_styles.dart';
 import '../utils/note_notice.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/empty_state.dart';
 
 /// 星期几的中文简称（weekday 1=周一 … 7=周日）
@@ -95,10 +96,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           onAction: () => ref.read(notesProvider.notifier).reload(),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      // WB_SPEC_230 第 7 节 a：全站三处 FAB 统一为 extended（带文字长条）
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showEditor(),
-        tooltip: '新增备注',
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add),
+        label: const Text('新增备注'),
       ),
     );
   }
@@ -127,40 +129,45 @@ class _NotesPageState extends ConsumerState<NotesPage> {
 
     final saved = await showDialog<bool>(
       context: context,
+      // WB_SPEC_230 第 4.2 节第 5 类：只换外层壳（StatefulBuilder 仍在外层），
+      // content 的 Column 外包 SingleChildScrollView——小屏软键盘顶起时
+      // 多行备注输入框不会 RenderFlex overflowed。
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: Text(isEdit ? '编辑备注' : '新增备注'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.event_outlined),
-                title: Text(_dateTitle(noteDayKey(pickedDate))),
-                subtitle: Text(noteDayKey(pickedDate)),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () async {
-                  final d = await showDatePicker(
-                    context: ctx,
-                    initialDate: pickedDate,
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime(2035),
-                    helpText: '选择备注日期',
-                  );
-                  if (d != null) setState(() => pickedDate = d);
-                },
-              ),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                maxLines: 3,
-                textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(
-                  hintText: '要记点什么？',
-                  border: OutlineInputBorder(),
+        builder: (ctx, setState) => AppDialog(
+          title: isEdit ? '编辑备注' : '新增备注',
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.event_outlined),
+                  title: Text(_dateTitle(noteDayKey(pickedDate))),
+                  subtitle: Text(noteDayKey(pickedDate)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: pickedDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2035),
+                      helpText: '选择备注日期',
+                    );
+                    if (d != null) setState(() => pickedDate = d);
+                  },
                 ),
-              ),
-            ],
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  maxLines: 3,
+                  textInputAction: TextInputAction.done,
+                  // WB_SPEC_230 第 5.2 节：手写圆角框删掉，统一吃全局 inputDecorationTheme
+                  decoration: const InputDecoration(
+                    hintText: '要记点什么？',
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -213,22 +220,13 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   /// 删除二次确认：备注删掉就找不回来了，必须点一下确认
   Future<void> _confirmDelete(Note note) async {
     if (note.id == null) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除这条备注？'),
-        content: Text(note.content),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    // WB_SPEC_230 第 4.2 节第 2 类：破坏性删除确认（确认按钮 error 色）
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '删除这条备注？',
+      message: note.content,
+      confirmLabel: '删除',
+      destructive: true,
     );
     if (ok != true || !mounted) return;
     try {

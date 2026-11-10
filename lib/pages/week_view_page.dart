@@ -21,9 +21,11 @@ import '../utils/override_effect.dart';
 import '../utils/slot_layout.dart';
 import '../utils/sunday_dialog.dart';
 import '../utils/week_calc.dart';
+import '../ui/app_popup_menu.dart';
 import '../ui/app_styles.dart';
 import '../ui/bottom_bar_metrics.dart';
 import '../ui/grid_metrics.dart';
+import '../ui/settings_icon_box.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/course_card.dart';
 import '../widgets/course_detail_sheet.dart';
@@ -311,7 +313,11 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
           children: [
             const SizedBox(height: 8),
             ListTile(
-              leading: const Icon(Icons.edit_outlined),
+              // WB_SPEC_230 第 7 节 b：leading 换语义色底块，行高/副标题/去向不动
+              leading: const SettingsIconBox(
+                icon: Icons.edit_outlined,
+                category: SettingsIconCategory.schedule,
+              ),
               title: const Text('手动新建课程'),
               subtitle: const Text('逐项填写课程信息'),
               onTap: () {
@@ -320,7 +326,10 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.upload_file_outlined),
+              leading: const SettingsIconBox(
+                icon: Icons.upload_file_outlined,
+                category: SettingsIconCategory.data,
+              ),
               title: const Text('导入课表'),
               subtitle: const Text('ICS / 图片 OCR / PDF，支持冲突检测'),
               onTap: () {
@@ -330,7 +339,10 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
             ),
             // WB_SPEC_224：不用再绕到学期管理里新建——这里直接建一个学期并切过去
             ListTile(
-              leading: const Icon(Icons.event_available_outlined),
+              leading: const SettingsIconBox(
+                icon: Icons.event_available_outlined,
+                category: SettingsIconCategory.appearance,
+              ),
               title: const Text('新建课表'),
               subtitle: const Text('新建一个学期，建好直接切换'),
               onTap: () {
@@ -391,10 +403,16 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
   ///
   /// 弹出动画 180ms（2.1.0 返修定版）；[items] 为空时由调用方先兜底为
   /// 全部六项工具，绝不渲染空菜单。
+  ///
+  /// WB_SPEC_230 第 3.1/3.4 节：菜单项改走共用 [buildAppPopupMenuItem]（彩色
+  /// 小底块 + 文字），外壳统一吃 `main.dart` 的 `popupMenuTheme`；offset 与
+  /// 设置页顶栏同口径（-8, 48），菜单顶落在顶栏底之下。菜单项的显隐、顺序、
+  /// 去向（item.route）全部沿用 [MenuItemSpec]，逻辑一字未改。
   Widget _buildMoreMenu(BuildContext context, List<MenuItemSpec> items) {
     return PopupMenuButton<String>(
       tooltip: '更多',
       icon: const Icon(Icons.more_vert),
+      offset: const Offset(-8, 48),
       // 2.1.0 返修：菜单弹出动画显式卡在 150–200ms（取 180ms），即点即出
       popUpAnimationStyle: const AnimationStyle(
         duration: Duration(milliseconds: 180),
@@ -402,13 +420,11 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
       onSelected: (route) => Navigator.pushNamed(context, route),
       itemBuilder: (ctx) => [
         for (final item in items)
-          PopupMenuItem(
+          buildAppPopupMenuItem<String>(
             value: item.route,
-            child: ListTile(
-              leading: Icon(item.icon),
-              title: Text(item.title),
-              contentPadding: EdgeInsets.zero,
-            ),
+            icon: item.icon,
+            category: categoryForMenuId(item.id),
+            title: item.title,
           ),
       ],
     );
@@ -1168,7 +1184,7 @@ class _DayCell extends StatelessWidget {
         color: isToday
             ? colorScheme.primary
             : colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadii.chip),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1218,7 +1234,7 @@ class _DayCell extends StatelessWidget {
     if (!hasExam || onTap == null) return tile;
     return InkWell(
       onTap: () => onTap!(examCourses!),
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppRadii.chip),
       child: tile,
     );
   }
@@ -1614,7 +1630,8 @@ class _TimeAxis extends StatelessWidget {
                   color: colorScheme.surfaceContainerHighest.withValues(
                     alpha: 0.45,
                   ),
-                  borderRadius: BorderRadius.circular(9),
+                  // WB_SPEC_230 第 7 节 d：9→10 收进 token（1px 之差，视觉无感）
+                  borderRadius: BorderRadius.circular(AppRadii.chip),
                 ),
                 alignment: Alignment.center,
                 // 底边横线由全宽线网层统一绘制（1.2.3），单元格不再自带边框
@@ -2283,10 +2300,12 @@ class _PositionedCourseCard extends StatelessWidget {
           children: [
             if (canOverride)
               ListTile(
-                leading: Icon(
-                  courseOverride == null
+                // WB_SPEC_230 第 7 节 b：只换 leading 容器，条件图标与文案不动
+                leading: SettingsIconBox(
+                  icon: courseOverride == null
                       ? Icons.event_repeat_outlined
                       : Icons.visibility_outlined,
+                  category: SettingsIconCategory.reminder,
                 ),
                 title: Text(courseOverride == null ? '调整本次' : '查看/撤销本次调整'),
                 subtitle: Text(
@@ -2304,7 +2323,10 @@ class _PositionedCourseCard extends StatelessWidget {
                 },
               ),
             ListTile(
-              leading: const Icon(Icons.edit_outlined),
+              leading: const SettingsIconBox(
+                icon: Icons.edit_outlined,
+                category: SettingsIconCategory.schedule,
+              ),
               title: const Text('编辑课程'),
               onTap: () {
                 Navigator.pop(ctx);
@@ -2317,7 +2339,11 @@ class _PositionedCourseCard extends StatelessWidget {
             ),
             Consumer(
               builder: (ctx2, ref, _) => ListTile(
-                leading: const Icon(Icons.delete_outline),
+                // 删除是高危不可逆操作：走 destructive 红（WB_SPEC_230 第 3.3 节）
+                leading: const SettingsIconBox(
+                  icon: Icons.delete_outline,
+                  category: SettingsIconCategory.destructive,
+                ),
                 title: const Text('删除课程'),
                 onTap: () async {
                   Navigator.pop(ctx);
@@ -2434,4 +2460,27 @@ class _ClassFocusBar extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 主页「更多」菜单 id → 图标语义色（WB_SPEC_230 第 3.4 节）。
+///
+/// 纯映射、无副作用，只决定菜单项前面那块 32×32 彩色底块取哪套色；
+/// 未知 id（理论上不会，[visibleMenuItems] 已用默认 spec 兜底）回落课表蓝。
+///
+/// 公开而非私有：第 9 节要求单测覆盖「7 项 + 未知 id 回落」全表，私有符号
+/// 跨库不可见，故以顶层函数暴露（命名保留 `ForMenuId` 语义，便于检索）。
+SettingsIconCategory categoryForMenuId(String id) {
+  return switch (id) {
+    // 课程搜索、学期管理：课表蓝
+    'course-search' || 'semester-manage' => SettingsIconCategory.schedule,
+    // 空闲时段、导入课表：数据绿
+    'free-time' || 'import' => SettingsIconCategory.data,
+    // 导出课表图片：外观紫
+    'share-image' => SettingsIconCategory.appearance,
+    // 考试倒计时：提醒橙
+    'exam-countdown' => SettingsIconCategory.reminder,
+    // 固定末尾的「设置」：系统灰
+    'settings' => SettingsIconCategory.system,
+    _ => SettingsIconCategory.schedule,
+  };
 }

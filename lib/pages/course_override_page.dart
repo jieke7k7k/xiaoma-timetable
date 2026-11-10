@@ -5,6 +5,7 @@ import '../models/course.dart';
 import '../models/course_override.dart';
 import '../utils/override_effect.dart';
 import '../providers/providers.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/empty_state.dart';
 
 /// 单次调课页（阶段五·节假日调课）
@@ -151,11 +152,14 @@ class _CourseOverridePageState extends ConsumerState<CourseOverridePage> {
   }
 
   /// 冲突确认框：列出冲突明细，返回 true 表示用户选择「仍要保存」
+  ///
+  /// WB_SPEC_230 第 4.2 节第 4 类（展示/选择弹窗）：直接嵌 [AppDialog]，
+  /// content 保持 Column + mainAxisSize.min（防无界高度崩溃）。
   Future<bool> _confirmConflicts(List<String> conflicts) async {
     final result = await showDialog<bool>(
       context: context,
-      builder: (d) => AlertDialog(
-        title: const Text('检测到时间冲突'),
+      builder: (d) => AppDialog(
+        title: '检测到时间冲突',
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -189,20 +193,12 @@ class _CourseOverridePageState extends ConsumerState<CourseOverridePage> {
     final existing = _existing;
     final course = _course;
     if (existing?.id == null || course == null) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (d) => AlertDialog(
-        title: const Text('撤销本次调整'),
-        content: Text('撤销后《${course.name}》第 $_week 周将恢复原上课时间，确定吗？'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(d, false),
-              child: const Text('取消')),
-          FilledButton(
-              onPressed: () => Navigator.pop(d, true),
-              child: const Text('撤销')),
-        ],
-      ),
+    // WB_SPEC_230 第 4.2 节第 1 类：标准二次确认（非破坏性）
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '撤销本次调整',
+      message: '撤销后《${course.name}》第 $_week 周将恢复原上课时间，确定吗？',
+      confirmLabel: '撤销',
     );
     if (ok != true) return;
     setState(() => _saving = true);

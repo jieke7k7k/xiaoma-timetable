@@ -8,6 +8,7 @@ import '../ui/app_styles.dart';
 import '../utils/conflict_detector.dart';
 import '../utils/morandi_palette.dart';
 import '../utils/week_parser.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/week_picker.dart';
 
 /// 课程新建/编辑页（阶段二完整版）
@@ -206,11 +207,14 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
   }
 
   /// 冲突确认框：列出冲突课程名与时间，返回 true 表示用户仍要保存
+  ///
+  /// WB_SPEC_230 第 4.2 节第 4 类：直接嵌 [AppDialog]，原本的
+  /// SingleChildScrollView 原样传入 content（不拆）。
   Future<bool?> _showConflictDialog(List<CourseConflict> conflicts) {
     return showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('检测到时间冲突'),
+      builder: (ctx) => AppDialog(
+        title: '检测到时间冲突',
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

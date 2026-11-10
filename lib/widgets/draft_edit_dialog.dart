@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/course.dart';
 import '../utils/week_parser.dart';
+import 'app_dialog.dart';
 
 /// 草稿课程编辑对话框（人工核对页内使用）
 ///
@@ -27,8 +28,10 @@ Future<Course?> showDraftEditDialog(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setDialogState) {
-        return AlertDialog(
-          title: const Text('编辑导入课程'),
+        // WB_SPEC_230 第 4.2 节第 5 类：只换外层壳，表单逻辑与
+        // SingleChildScrollView 全部不动
+        return AppDialog(
+          title: '编辑导入课程',
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,

@@ -5,7 +5,7 @@ import '../ui/app_styles.dart';
 /// 全 App 统一弹窗（WB-202 第 4 项，长期规范）
 ///
 /// 标题、正文、按钮区的圆角 / 内边距 / 排版走同一套规范，与现有主题色一致：
-/// - 形状：圆角固定取 [AppRadii.dialog]（20px），不再各处默认 28；
+/// - 形状：圆角固定取 [AppRadii.dialog]（24px），不再各处默认 28；
 /// - 标题：16 号 w600；正文：正文档字号，左对齐；
 /// - 按钮区：右对齐，「取消/次要」用 TextButton、「确认/主动」用 FilledButton，
 ///   破坏性确认（删除、覆盖恢复等）用 error 色标红。
@@ -90,14 +90,17 @@ class AppDialogText extends StatelessWidget {
 /// 统一信息弹窗（ⓘ 说明、公告等只告知不决策的场景）
 ///
 /// 返回用户点的那个按钮的值（默认只有「知道了」，点哪都是 null）。
+/// [barrierDismissible] 默认 true（点遮罩关闭）；引导类弹窗可显式传 false。
 Future<void> showAppInfoDialog(
   BuildContext context, {
   required String title,
   required String message,
   String actionLabel = '知道了',
+  bool barrierDismissible = true,
 }) {
   return showDialog<void>(
     context: context,
+    barrierDismissible: barrierDismissible,
     builder: (ctx) => AppDialog(
       title: title,
       content: AppDialogText(message),
@@ -116,6 +119,7 @@ Future<void> showAppInfoDialog(
 /// 返回 true = 确认；false / null（点遮罩 dismiss）= 取消。
 /// [destructive] 为 true 时确认按钮用 error 色标红，与旧 AlertDialog 里
 /// 手写 `backgroundColor: scheme.error` 的破坏性确认视觉一致。
+/// [barrierDismissible] 默认 true；「不可点外取消」的引导类弹窗显式传 false。
 Future<bool?> showAppConfirmDialog(
   BuildContext context, {
   required String title,
@@ -123,9 +127,11 @@ Future<bool?> showAppConfirmDialog(
   String confirmLabel = '确定',
   String cancelLabel = '取消',
   bool destructive = false,
+  bool barrierDismissible = true,
 }) {
   return showDialog<bool>(
     context: context,
+    barrierDismissible: barrierDismissible,
     builder: (ctx) {
       final scheme = Theme.of(ctx).colorScheme;
       return AppDialog(

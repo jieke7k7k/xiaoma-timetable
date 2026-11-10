@@ -109,6 +109,12 @@ class _MenuRow extends StatelessWidget {
       ),
       // 右侧：显隐开关（Switch 自带反馈，不加额外动画）
       trailing: Switch(value: visible, onChanged: onVisibleChanged),
+      // WB_SPEC_230 第 7 节 c：优先方案是换 SwitchListTile，但它的 secondary
+      // 只能放在开关对面（LTR 下即右侧），而本行拖拽手柄必须钉在左侧——
+      // 塞进 title 又会和整行点击抢手势（手柄拖拽与 onTap 触摸区打架）。
+      // 故走规格给的退路：保留 ListTile + trailing Switch，补 onTap 让
+      // 点整行文字与点开关行为一致。
+      onTap: () => onVisibleChanged(!visible),
     );
   }
 }

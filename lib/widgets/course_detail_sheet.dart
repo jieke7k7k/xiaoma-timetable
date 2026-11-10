@@ -9,6 +9,7 @@ import '../ui/app_styles.dart';
 import '../utils/color_schemes.dart';
 import '../utils/exam_countdown.dart';
 import '../utils/week_parser.dart';
+import 'app_dialog.dart';
 
 /// 课程详情底部弹窗：完整展示课程信息，提供编辑/删除入口
 ///
@@ -183,20 +184,13 @@ class CourseDetailSheet extends ConsumerWidget {
   }
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除课程'),
-        content: Text('确定删除《${course.name}》吗？删除后不可恢复哦。'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('删除')),
-        ],
-      ),
+    // WB_SPEC_230 第 4.2 节第 2 类：破坏性删除确认（确认按钮 error 色）
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '删除课程',
+      message: '确定删除《${course.name}》吗？删除后不可恢复哦。',
+      confirmLabel: '删除',
+      destructive: true,
     );
     if (ok != true) return;
     try {
