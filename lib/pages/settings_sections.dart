@@ -286,7 +286,8 @@ class RemindersSettingsPage extends ConsumerStatefulWidget {
       _RemindersSettingsPageState();
 }
 
-class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage> {
+class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
+    with WidgetsBindingObserver {
   /// 电池优化轻提示的一次性标记键（只写 '1'）
   static const String _batteryHintKey = 'battery_hint_shown';
 
@@ -296,7 +297,21 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _refreshExactAlarmState();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// 从系统设置页授权回来（经 Home 切回，不经过拨开关/点提示的路径）时补刷一次，
+  /// 否则已授权了降级提示行还残留着（Kimi 复审 Bug 5）。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshExactAlarmState();
   }
 
   /// 查一次精确闹钟状态：进页面时、每次拨动提醒开关后、从系统页返回后

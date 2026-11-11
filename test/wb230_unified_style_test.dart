@@ -205,7 +205,7 @@ void main() {
         ),
       );
 
-      // barrierDismissible: false —— 点遮罩不关闭（permission_guide 的用法）
+      // barrierDismissible: false —— 点遮罩不关闭（旧版首次启动引导的用法）
       final future = showAppConfirmDialog(
         ctx,
         title: '允许小马课表发通知',

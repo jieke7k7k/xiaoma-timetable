@@ -30,6 +30,7 @@ void main() {
     String? teacher,
     String? classroom,
     int colorValue = 0xFF8FA3B0,
+    int? examDate,
   }) {
     return Course(
       semesterId: 1,
@@ -41,6 +42,7 @@ void main() {
       startSection: start,
       endSection: end,
       weeks: const [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+      examDate: examDate,
     );
   }
 
@@ -314,5 +316,105 @@ void main() {
     final list = await allCourses(tester);
     expect(byId(list, ids[0]).teacher, '张老师', reason: '整批回滚，当前时段也不能被写进去');
     expect(byId(list, ids[1]).teacher, '张老师');
+  });
+
+  testWidgets('改考试日期后切时段 → 弹三选框（考试日期也是未保存改动）', (tester) async {
+    // 给周二那条先设一个考试日期，点「清除考试日期」即改动（Kimi 复审 Bug 1）
+    final exam = DateTime(2026, 12, 20).millisecondsSinceEpoch;
+    final a = course(
+      name: '药理学',
+      day: 2,
+      start: 1,
+      end: 2,
+      teacher: '张老师',
+      classroom: '302',
+      examDate: exam,
+    );
+    final b = course(
+      name: '药理学',
+      day: 4,
+      start: 3,
+      end: 4,
+      teacher: '张老师',
+      classroom: '105',
+    );
+    Future<void> seedExamCourse() async {
+      ids = [
+        await Dao.instance.insertCourse(a),
+        await Dao.instance.insertCourse(b),
+      ];
+    }
+
+    await tester.runAsync(seedExamCourse);
+    await openEditor(tester, ids[0]);
+
+    // 考试日期行在表单底部，先滑下去（ListView 只建可见子项）
+    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.pump();
+    expect(find.byTooltip('清除考试日期'), findsOneWidget);
+    await tester.tap(find.byTooltip('清除考试日期'));
+    await tester.pump();
+    // 再滑回顶部，点兄弟时段行
+    await tester.drag(find.byType(ListView), const Offset(0, 600));
+    await tester.pump();
+    await tester.tap(find.text('周四 第3-4节 · 1-16 周'));
+    await drain(tester);
+
+    expect(find.text('当前时段有未保存的改动'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await drain(tester);
+    expect(find.text('302'), findsOneWidget, reason: '取消后留在原时段');
+  });
+
+  testWidgets('改当前时段时间撞别的课 → 保存弹冲突框，点「仍要保存」后整批落库', (tester) async {
+    await tester.runAsync(seedTwoSlots);
+    // 第三门课占着周二 3-4 节
+    await tester.runAsync(
+      () => Dao.instance.insertCourse(
+        course(name: '数学', day: 2, start: 3, end: 4),
+      ),
+    );
+    await openEditor(tester, ids[0]);
+
+    // 开始节次从 1 改成 3（撞上数学），同时改老师（验同步整批落库）
+    await tester.tap(find.text('第 1 节').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('第 3 节'));
+    await tester.pump();
+    await tester.enterText(find.byType(TextFormField).at(1), '李老师');
+    await tester.pump();
+    await tester.tap(find.text('保存'));
+    await drain(tester);
+
+    expect(find.text('检测到时间冲突'), findsOneWidget);
+    await tester.tap(find.text('仍要保存'));
+    await drain(tester);
+
+    final list = await allCourses(tester);
+    expect(byId(list, ids[0]).startSection, 3, reason: '点仍要保存后照常落库');
+    expect(byId(list, ids[0]).teacher, '李老师');
+    expect(byId(list, ids[1]).teacher, '李老师', reason: '兄弟时段一起同步');
+    expect(byId(list, ids[1]).dayOfWeek, 4, reason: '兄弟时段时间不动');
+    await drain(tester, rounds: 4);
+    await tester.pump(const Duration(seconds: 5));
+    await drain(tester, rounds: 2);
+  });
+
+  testWidgets('只改老师不改时间 → 不弹冲突，直接保存', (tester) async {
+    await tester.runAsync(seedTwoSlots);
+    await openEditor(tester, ids[0]);
+
+    await tester.enterText(find.byType(TextFormField).at(1), '李老师');
+    await tester.pump();
+    await tester.tap(find.text('保存'));
+    await drain(tester);
+
+    expect(find.text('检测到时间冲突'), findsNothing);
+    final list = await allCourses(tester);
+    expect(byId(list, ids[0]).teacher, '李老师');
+    expect(byId(list, ids[1]).teacher, '李老师');
+    await drain(tester, rounds: 4);
+    await tester.pump(const Duration(seconds: 5));
+    await drain(tester, rounds: 2);
   });
 }

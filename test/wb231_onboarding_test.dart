@@ -155,4 +155,63 @@ void main() {
     expect(await readDone(tester), '1');
     expect(find.text('IMPORT_PAGE'), findsNothing);
   });
+
+  testWidgets('直达后按返回 → 落在课表主页（不在引导页）', (tester) async {
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            routes: {
+              '/import': (_) => const Scaffold(body: Text('IMPORT_PAGE')),
+              '/course-edit': (_) =>
+                  const Scaffold(body: Text('COURSE_EDIT_PAGE')),
+              '/settings-widget': (_) =>
+                  const Scaffold(body: Text('WIDGET_SETTINGS')),
+              '/settings-data': (_) =>
+                  const Scaffold(body: Text('DATA_SETTINGS')),
+            },
+            home: const _TestGate(),
+          ),
+        ),
+      );
+    });
+    await settle(tester);
+
+    await tester.tap(find.text('导入 ICS 日历文件'));
+    await settle(tester);
+    expect(find.text('IMPORT_PAGE'), findsOneWidget);
+    expect(await readDone(tester), '1');
+
+    // 返回：落在主页，不回引导页（Kimi 复审优化 5 点名的缺口）
+    Navigator.of(tester.element(find.text('IMPORT_PAGE'))).pop();
+    await settle(tester);
+    expect(find.text('HOME_PAGE'), findsOneWidget);
+    expect(find.text('课表从哪来'), findsNothing);
+  });
+}
+
+/// 根门卫替身（模拟 main.dart 的真实链路）：标记未写时显示引导页，
+/// 写完标记后切到主页；直达页 pop 后落在主页，不回引导页。
+class _TestGate extends StatefulWidget {
+  const _TestGate();
+
+  @override
+  State<_TestGate> createState() => _TestGateState();
+}
+
+class _TestGateState extends State<_TestGate> {
+  var _done = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_done) {
+      return const Scaffold(body: Text('HOME_PAGE'));
+    }
+    return OnboardingPage(
+      onDone: () async {
+        await Dao.instance.setSetting('onboarding_done', '1');
+        if (mounted) setState(() => _done = true);
+      },
+    );
+  }
 }

@@ -632,7 +632,12 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
                     Expanded(
                       child: Text(
                         widget.webImportSummary!,
-                        style: const TextStyle(fontSize: 13),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSecondaryContainer,
+                        ),
                       ),
                     ),
                   ],

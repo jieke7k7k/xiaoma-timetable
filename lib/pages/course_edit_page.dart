@@ -89,7 +89,20 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
       // 编辑：加载已有课程。
       // 安全查找（防御性）：课程可能刚被删除或属于别的学期，
       // firstWhere 找不到会抛 StateError 直接崩页，这里改为找不到就提示并退出。
-      final courses = await ref.read(coursesProvider.future);
+      late final List<Course> courses;
+      try {
+        courses = await ref.read(coursesProvider.future);
+      } catch (e) {
+        // provider 层抛错（如数据库异常）时旧代码会 unhandled async error，
+        // 页面永久卡在 loading（Kimi 复审 Bug 4）：给提示并退出页面
+        debugPrint('加载课程失败：$e');
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('课程加载失败，请重试')));
+          Navigator.pop(context);
+        }
+        return;
+      }
       Course? course;
       for (final c in courses) {
         if (c.id == _editId) {
@@ -155,7 +168,9 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
   /// 重新拉一份「其他时段」：同学期、同名（用锁死的 [_originalCourseName]）、
   /// 排除正在编辑的这条；按星期再按开始节次排序
   Future<void> _reloadSiblings() async {
-    final all = ref.read(coursesProvider).value ?? const <Course>[];
+    final all = ref.read(coursesProvider).value;
+    // provider 还在加载时不要拿空列表把已有快照清掉（保存前重拉的场景）
+    if (all == null) return;
     final list = <Course>[
       for (final c in all)
         if (c.name == _originalCourseName && c.id != null && c.id != _editId) c,
@@ -195,6 +210,11 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     if (_endSection != b.endSection) return true;
     if (_weekType != b.weekType) return true;
     if (!listEquals(_weeks, b.weeks)) return true;
+    // 考试日期三字段也是表单状态（Kimi 复审 Bug 1）：漏了它们，改了考试日期
+    // 再切时段不会弹三选框，改动会被 _applyCourseToForm(fresh) 静默丢掉
+    if (_examDate != b.examDate) return true;
+    if (norm(_examEndTime) != norm(b.examEndTime)) return true;
+    if (norm(_examPlace) != norm(b.examPlace)) return true;
     return false;
   }
 
@@ -288,20 +308,27 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
         }
         return true;
       }
+      // 保存前重拉一次兄弟时段：进页面/切换时的快照可能已过期（别的页面删了某时段），
+      // 用快照直接写事务会静默半同步（Kimi 复审 Bug 2）
+      await _reloadSiblings();
       final siblings = _buildSiblingsToSync(course);
       // 一次事务写多行：当前时段整行 + 每个兄弟时段只覆盖 5 个共享字段
-      await ref
+      final written = await ref
           .read(coursesProvider.notifier)
           .updateCourseWithSiblings(course, siblings);
       // 保存成功后把「原课程名」更新为保存后的名字，后续切换/再保存都以它为准
       _originalCourseName = course.name;
-      final total = siblings.length + 1;
+      final expected = siblings.length + 1;
       if (mounted && popOnSuccess) {
         final messenger = ScaffoldMessenger.of(context);
         Navigator.pop(context);
         messenger.showSnackBar(
           SnackBar(
-            content: Text(total > 1 ? '已同步到本课共 $total 个时段' : '课程已更新'),
+            content: Text(
+              written >= expected
+                  ? (expected > 1 ? '已同步到本课共 $expected 个时段' : '课程已更新')
+                  : '已保存，但有 ${expected - written} 个时段未同步',
+            ),
           ),
         );
       }
@@ -623,7 +650,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                     ],
                     // DropdownButtonFormField 只在首帧读 initialValue，切换时段后
                     // 靠 ValueKey 重建来跟上新值（表单其余字段靠控制器刷新）
-                    key: ValueKey('day-$_editId-$_dayOfWeek'),
+                    key: ValueKey('day-$_editId'),
                     onChanged: (v) =>
                         setState(() => _dayOfWeek = v ?? _dayOfWeek),
                   ),
@@ -632,7 +659,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                 Expanded(
                   child: DropdownButtonFormField<int>(
                     initialValue: _startSection,
-                    key: ValueKey('start-$_editId-$_startSection'),
+                    key: ValueKey('start-$_editId'),
                     decoration: const InputDecoration(labelText: '开始节次'),
                     items: [
                       for (var s = 1; s <= sectionCount; s++)
@@ -648,7 +675,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                 Expanded(
                   child: DropdownButtonFormField<int>(
                     initialValue: _endSection,
-                    key: ValueKey('end-$_editId-$_endSection'),
+                    key: ValueKey('end-$_editId'),
                     decoration: const InputDecoration(labelText: '结束节次'),
                     items: [
                       for (var s = 1; s <= sectionCount; s++)

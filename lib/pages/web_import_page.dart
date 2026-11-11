@@ -98,7 +98,7 @@ class _WebImportPageState extends State<WebImportPage> {
       readyState: document.readyState,
       url: location.href,
       title: document.title,
-      hasPassword: document.querySelectorAll('input[type="password"]').length > 0,
+      hasPassword: Array.from(document.querySelectorAll('input[type="password"]')).some(function (el) { var r = el.getClientRects(); if (!r || r.length === 0) return false; var cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden'; }),
       hasCaptcha: /(captcha|geetest|验证码|安全验证)/i.test(allText),
       hasWeekday: /(星期[一二三四五六日天]|周[一二三四五六日天]|节次)/.test(allText),
       tableCount: document.querySelectorAll('table').length
@@ -227,7 +227,7 @@ class _WebImportPageState extends State<WebImportPage> {
       debugPrint('抓取课表失败：$e');
       if (!mounted) return;
       setState(() {
-        _diagnosis = const WebImportDiagnosis(WebImportFailure.layoutUnsupported);
+        _diagnosis = diagnosisForExtractionError(e);
         _fallbackHint = null;
       });
     } finally {

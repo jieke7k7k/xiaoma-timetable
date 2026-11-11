@@ -152,8 +152,12 @@ WebImportDiagnosis? classifyWebImportFailure({
   if (notFinished && !facts.hasWeekdayKeyword) {
     return const WebImportDiagnosis(WebImportFailure.stillLoading);
   }
-  // 3 登录态拦截：页面里还有密码框就按登录页处理（比 URL/标题更可靠）
-  if (facts.hasPasswordInput) {
+  // 3 登录态拦截：页面里还有密码框就按登录页处理（比 URL/标题更可靠）；
+  // URL/标题含 login/cas/auth/「登录」/「统一身份认证」时同样按登录页处理
+  // （规格第 5.1 节：密码框为主，URL/Title 为辅；Kimi 复审补充 Bug 2）。
+  if (facts.hasPasswordInput ||
+      _looksLikeLoginPage(facts.url) ||
+      _looksLikeLoginPage(facts.title)) {
     return const WebImportDiagnosis(WebImportFailure.loginRequired);
   }
   // 4 验证码拦截：有验证码特征且表格极少（课表页不会是这种页面）
@@ -170,3 +174,21 @@ WebImportDiagnosis? classifyWebImportFailure({
   }
   return null;
 }
+
+/// URL/标题是否像登录页（规格第 5.1 节第 3 类的辅助信号）。
+bool _looksLikeLoginPage(String s) {
+  final lower = s.toLowerCase();
+  return lower.contains('login') ||
+      lower.contains('cas') ||
+      lower.contains('auth') ||
+      s.contains('登录') ||
+      s.contains('统一身份认证');
+}
+
+/// 抓取抛异常时的兜底映射（规格第 5.3 节二选一，实现选第 6 类）：
+/// 原始异常只进日志，界面给「已找到课表表格，但暂未适配贵校的网页排版格式」。
+/// 钉住这个选择，今后改回显示原始异常文本时测试会红（Kimi 复审补充 Bug 3）。
+///
+/// [error] 故意不用——任何异常都走同一个兜底，不按异常类型分流。
+WebImportDiagnosis diagnosisForExtractionError(Object error) =>
+    const WebImportDiagnosis(WebImportFailure.layoutUnsupported);

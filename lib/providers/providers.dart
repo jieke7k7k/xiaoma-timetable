@@ -307,13 +307,23 @@ class CoursesNotifier extends AsyncNotifier<List<Course>> {
   /// 在**一个事务**里写完，成功后只刷新一次列表，再走一次与单条更新相同的联动
   /// （重排提醒 → 重建常驻通知并重排闹钟链 → 刷新桌面小部件）。
   /// 循环里不触发任何 provider 刷新，避免 N 次重建课表。
-  Future<void> updateCourseWithSiblings(
+  ///
+  /// 返回实际写进库的总行数（当前时段 + 兄弟时段）；调用方据此核对同步是否写全
+  /// （Kimi 复审 Bug 2 / 优化 3：个别兄弟行在编辑期间被删时 update 只影响 0 行，
+  /// 不抛错，靠返回值才能发现）。
+  Future<int> updateCourseWithSiblings(
     Course current,
     List<Course> siblings,
   ) async {
-    await Dao.instance.updateCourseWithSiblings(current, siblings);
+    final written =
+        await Dao.instance.updateCourseWithSiblings(current, siblings);
+    final expected = siblings.length + 1;
+    if (written < expected) {
+      debugPrint('多时段同步：期望写 $expected 行，实际写了 $written 行');
+    }
     await reload();
     _notifyDataChanged();
+    return written;
   }
 
   Future<void> deleteCourse(int id) async {

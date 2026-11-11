@@ -11,8 +11,8 @@ import 'notification_service.dart';
 /// - [requestNotification] 走插件 API 直接弹系统授权框；
 /// - [openExactAlarmSettings] / [openBatterySettings] 跳对应的系统页面。
 ///
-/// WB_SPEC_231 第 4.1 节起不再有「首次启动三连弹」：引导函数 `runPermissionGuide`
-/// 与它用到的 `permissions_asked_v1` 标记（`shouldGuide` / `markGuided`）一并删除，
+/// WB_SPEC_231 第 4.1 节起不再有「首次启动三连弹」：首次启动的权限引导
+/// （通知 → 精确闹钟 → 电池优化，依次弹三个系统框）已整体删除，
 /// 权限改成**用到时才申请**（开提醒 / 开常驻通知时检查，见设置页提醒子页）。
 ///
 /// 原生侧只补了一个 MethodChannel（MainActivity 的 device 通道）用来**查状态**

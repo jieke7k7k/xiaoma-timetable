@@ -181,6 +181,33 @@ class _FriendlyErrorWidget extends StatelessWidget {
   }
 }
 
+/// 输入框主题：五态边框都用 CleanGapOutlineInputBorder（WB_SPEC_231 第 11 节），
+/// 抽成一个函数，免得浅色/深色各抄 5 段、改衬底参数时漏改某几态（Kimi 复审优化 1）。
+InputDecorationThemeData _gapInputDecorationTheme(ColorScheme scheme) {
+  CleanGapOutlineInputBorder border(Color color, {double width = 1.0}) =>
+      CleanGapOutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadii.chip),
+        borderSide: BorderSide(color: color, width: width),
+        pageBackgroundColor: scheme.surface,
+        fillColor: scheme.surfaceContainerHighest,
+      );
+  return InputDecorationThemeData(
+    filled: true,
+    fillColor: scheme.surfaceContainerHighest,
+    border: border(scheme.outlineVariant),
+    enabledBorder: border(scheme.outlineVariant),
+    focusedBorder: border(scheme.primary, width: 1.5),
+    errorBorder: border(scheme.error),
+    focusedErrorBorder: border(scheme.error, width: 1.5),
+    contentPadding: const EdgeInsets.symmetric(
+      horizontal: 16,
+      vertical: 12,
+    ),
+    // 多行框的 label 贴顶，不悬空压在中间
+    alignLabelWithHint: true,
+  );
+}
+
 /// 小马课表 App 入口
 class SimpleTimetableApp extends ConsumerWidget {
   const SimpleTimetableApp({super.key});
@@ -260,46 +287,7 @@ class SimpleTimetableApp extends ConsumerWidget {
         // 多行输入框（备注 maxLines: 3）不会被压扁成一行。
         // WB_SPEC_231 第 11 节：边框换成 CleanGapOutlineInputBorder——
         // 标签浮起时缺口处补双色衬底，横线不再从字中间穿过（详见该类注释）。
-        inputDecorationTheme: InputDecorationThemeData(
-          filled: true,
-          fillColor: colorScheme.surfaceContainerHighest,
-          border: CleanGapOutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppRadii.chip),
-            borderSide: BorderSide(color: colorScheme.outlineVariant),
-            pageBackgroundColor: colorScheme.surface,
-            fillColor: colorScheme.surfaceContainerHighest,
-          ),
-          enabledBorder: CleanGapOutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppRadii.chip),
-            borderSide: BorderSide(color: colorScheme.outlineVariant),
-            pageBackgroundColor: colorScheme.surface,
-            fillColor: colorScheme.surfaceContainerHighest,
-          ),
-          focusedBorder: CleanGapOutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppRadii.chip),
-            borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
-            pageBackgroundColor: colorScheme.surface,
-            fillColor: colorScheme.surfaceContainerHighest,
-          ),
-          errorBorder: CleanGapOutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppRadii.chip),
-            borderSide: BorderSide(color: colorScheme.error),
-            pageBackgroundColor: colorScheme.surface,
-            fillColor: colorScheme.surfaceContainerHighest,
-          ),
-          focusedErrorBorder: CleanGapOutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppRadii.chip),
-            borderSide: BorderSide(color: colorScheme.error, width: 1.5),
-            pageBackgroundColor: colorScheme.surface,
-            fillColor: colorScheme.surfaceContainerHighest,
-          ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 12,
-          ),
-          // 多行框的 label 贴顶，不悬空压在中间
-          alignLabelWithHint: true,
-        ),
+        inputDecorationTheme: _gapInputDecorationTheme(colorScheme),
         bottomSheetTheme: const BottomSheetThemeData(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(
@@ -345,45 +333,7 @@ class SimpleTimetableApp extends ConsumerWidget {
         // WB_SPEC_230 第 5.1 节：深色输入框与浅色同 token、同圆角、同描边宽度。
         // WB_SPEC_231 第 11 节：深色同样换 CleanGapOutlineInputBorder，
         // 衬底两色取深色方案（留空段不画线，字仍可读）。
-        inputDecorationTheme: InputDecorationThemeData(
-          filled: true,
-          fillColor: darkColorScheme.surfaceContainerHighest,
-          border: CleanGapOutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppRadii.chip),
-            borderSide: BorderSide(color: darkColorScheme.outlineVariant),
-            pageBackgroundColor: darkColorScheme.surface,
-            fillColor: darkColorScheme.surfaceContainerHighest,
-          ),
-          enabledBorder: CleanGapOutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppRadii.chip),
-            borderSide: BorderSide(color: darkColorScheme.outlineVariant),
-            pageBackgroundColor: darkColorScheme.surface,
-            fillColor: darkColorScheme.surfaceContainerHighest,
-          ),
-          focusedBorder: CleanGapOutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppRadii.chip),
-            borderSide: BorderSide(color: darkColorScheme.primary, width: 1.5),
-            pageBackgroundColor: darkColorScheme.surface,
-            fillColor: darkColorScheme.surfaceContainerHighest,
-          ),
-          errorBorder: CleanGapOutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppRadii.chip),
-            borderSide: BorderSide(color: darkColorScheme.error),
-            pageBackgroundColor: darkColorScheme.surface,
-            fillColor: darkColorScheme.surfaceContainerHighest,
-          ),
-          focusedErrorBorder: CleanGapOutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppRadii.chip),
-            borderSide: BorderSide(color: darkColorScheme.error, width: 1.5),
-            pageBackgroundColor: darkColorScheme.surface,
-            fillColor: darkColorScheme.surfaceContainerHighest,
-          ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 12,
-          ),
-          alignLabelWithHint: true,
-        ),
+        inputDecorationTheme: _gapInputDecorationTheme(darkColorScheme),
         bottomSheetTheme: const BottomSheetThemeData(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(

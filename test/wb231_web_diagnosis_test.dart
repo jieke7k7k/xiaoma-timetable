@@ -19,6 +19,8 @@ void main() {
     int courses = 0,
     int tables = 0,
     int cells = 0,
+    String url = '',
+    String title = '',
   }) {
     return classifyWebImportFailure(
       mainFrameError: mainFrameError,
@@ -29,6 +31,8 @@ void main() {
         hasCaptchaHint: hasCaptcha,
         hasWeekdayKeyword: hasWeekday,
         tableCount: tableCount,
+        url: url,
+        title: title,
       ),
       coursesFound: courses,
       tablesFound: tables,
@@ -62,6 +66,26 @@ void main() {
       expect(d?.message, '检测到当前处于登录界面（或登录已过期），请先在页面中完成登录');
     });
 
+    test('3 的辅助信号：无密码框但 URL 含 login → 仍判登录页', () {
+      // Kimi 复审补充 Bug 2：url/title 是规格第 5.1 节的辅助信号，不能只采不用
+      final d = classify(
+        url: 'https://jwxt.zjnu.edu.cn/cas/login',
+        tables: 1,
+        cells: 5,
+      );
+      expect(d?.failure, WebImportFailure.loginRequired);
+    });
+
+    test('3 的辅助信号：无密码框且 URL/标题都不是登录页 → 不判登录页', () {
+      final d = classify(
+        url: 'https://jwxt.zjnu.edu.cn/kb',
+        title: '学生课表',
+        tables: 1,
+        cells: 5,
+      );
+      expect(d?.failure, WebImportFailure.wrongPage);
+    });
+
     test('4 验证码拦截：有验证码特征且表格极少', () {
       final d = classify(hasCaptcha: true, tableCount: 1, cells: 3);
       expect(d?.failure, WebImportFailure.captcha);
@@ -92,6 +116,20 @@ void main() {
 
     test('已认出课程时不做失败判定', () {
       expect(classify(courses: 3, mainFrameError: true), isNull);
+    });
+  });
+
+  group('抓取异常兜底映射（规格第 5.3 节）', () {
+    test('异常兜底固定为第 6 类，原始异常文本不进界面', () {
+      // Kimi 复审补充 Bug 3：二选一的实现选择必须钉住测试，
+      // 今后改回显示原始异常文本时这里会红
+      final d = diagnosisForExtractionError(
+        StateError('WebView channel error'),
+      );
+      expect(d.failure, WebImportFailure.layoutUnsupported);
+      expect(d.message, '已找到课表表格，但暂未适配贵校的网页排版格式');
+      expect(d.message.contains('WebView'), isFalse);
+      expect(d.message.contains('StateError'), isFalse);
     });
   });
 
