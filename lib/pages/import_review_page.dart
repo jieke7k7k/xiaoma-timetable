@@ -43,6 +43,7 @@ class ImportReviewPage extends ConsumerStatefulWidget {
     required this.drafts,
     required this.targetSemester,
     this.timeBlocks = const [],
+    this.webImportSummary,
   });
 
   final List<Course> drafts;
@@ -52,6 +53,10 @@ class ImportReviewPage extends ConsumerStatefulWidget {
 
   /// ICS 导入解析出的作息校准块；图片/PDF 等路径不传、保持空列表
   final List<IcsTimeBlock> timeBlocks;
+
+  /// 教务网页抓取结果的汇总文案（WB_SPEC_231 第 5.4 节）：
+  /// 只有网页抓取这个来源才传，横幅才出现；ICS / 图片 / PDF 导入不传、不出现
+  final String? webImportSummary;
 
   @override
   ConsumerState<ImportReviewPage> createState() => _ImportReviewPageState();
@@ -605,6 +610,34 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
         ),
         body: Column(
           children: [
+            // 网页抓取结果确认条：常驻展示，告诉用户「抓到了多少」，
+            // 不是 400ms 就消失的 Toast（WB_SPEC_231 第 5.4 节）
+            if (widget.webImportSummary != null)
+              Container(
+                key: const Key('import-web-summary-banner'),
+                width: double.infinity,
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.l,
+                  vertical: AppSpacing.s,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.check_circle_outline,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.onSecondaryContainer,
+                    ),
+                    const SizedBox(width: AppSpacing.s),
+                    Expanded(
+                      child: Text(
+                        widget.webImportSummary!,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             // 目标学期横幅：导入去向全程可见，导错学期当场能发现
             Container(
               width: double.infinity,

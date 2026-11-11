@@ -380,10 +380,16 @@ void main() {
       await tester.tap(find.byIcon(Icons.add_outlined));
       await tester.pumpAndSettle();
 
-      expect(find.text('手动新建课程'), findsOneWidget);
-      expect(find.text('导入课表'), findsOneWidget);
-      expect(find.text('新建课表'), findsOneWidget);
-      expect(find.text('新建一个学期，建好直接切换'), findsOneWidget);
+      // WB_SPEC_231 第 3.3 节起，空学期的周视图占位里也有一颗「导入课表」按钮，
+      // 所以这三行要限定在 ＋ 弹出的底部表单里断言
+      Finder inSheet(String text) => find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.text(text),
+          );
+      expect(inSheet('手动新建课程'), findsOneWidget);
+      expect(inSheet('导入课表'), findsOneWidget);
+      expect(inSheet('新建课表'), findsOneWidget);
+      expect(inSheet('新建一个学期，建好直接切换'), findsOneWidget);
       await settlePendingDbTimers(tester);
     });
 

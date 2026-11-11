@@ -13,6 +13,10 @@ class Dao {
   Dao._();
   static final Dao instance = Dao._();
 
+  /// 测试替身（WB_SPEC_231 第 8 节）：非空时在每次 [updateCourse] 写库前调用，
+  /// 抛错即可验证「多时段一起保存」的整批回滚。生产环境恒为 null。
+  static Future<void> Function(Course course)? debugBeforeUpdateCourse;
+
   Future<Database> get _db async => DbHelper.instance.database;
 
   /// 把一批写操作包进单个事务（1.3.1：批量导入落库用）。
@@ -125,10 +129,38 @@ class Dao {
   /// 不用包事务，只有 deleteCourse（删调课 + 删课程两条 SQL）才需要。
   /// 顺手补 updatedAt（最后修改时间）。
   Future<int> updateCourse(Course c, {DatabaseExecutor? txn}) async {
+    final hook = debugBeforeUpdateCourse;
+    if (hook != null) await hook(c);
     final db = txn ?? await _db;
     final map = c.toMap()..['updatedAt'] = DateTime.now().millisecondsSinceEpoch;
     final n = await db.update('courses', map, where: 'id = ?', whereArgs: [c.id]);
     return n;
+  }
+
+  /// 多时段一起保存（WB_SPEC_231 第 10.4 节）：一次事务写多行。
+  ///
+  /// [currentUpdated] 是用户正在编辑的那个时段（整行覆盖，含时间/周次/考试日期）；
+  /// [siblingsToSync] 是同一门课的其他时段，调用方已按「只覆盖 5 个共享字段」
+  /// 构造好（课程名/老师/教室/颜色/备注），时间与周次原样保留。
+  ///
+  /// 任一行写失败整批回滚——不允许出现「有的时段同步了、有的没同步」的半同步状态。
+  /// 传了 [txn] 说明调用方已在更大的事务里，直接沿用，不再嵌套。
+  Future<int> updateCourseWithSiblings(
+    Course currentUpdated,
+    List<Course> siblingsToSync, {
+    DatabaseExecutor? txn,
+  }) async {
+    Future<int> run(DatabaseExecutor t) async {
+      var n = await updateCourse(currentUpdated, txn: t);
+      for (final sibling in siblingsToSync) {
+        n += await updateCourse(sibling, txn: t);
+      }
+      return n;
+    }
+
+    if (txn != null) return run(txn);
+    final db = await _db;
+    return db.transaction(run);
   }
 
   /// 删除课程（含其调课记录）。[txn] 非空时在该事务内执行

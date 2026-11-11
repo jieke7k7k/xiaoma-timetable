@@ -52,6 +52,14 @@ class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
 
+  /// 测试替身（WB_SPEC_231 第 8 节）：设置后 [ensureNotificationPermission]
+  /// 直接用它返回，不走插件平台通道。测试结束要置回 null。
+  /// 生产调用链一字不动——只有这一处读取它。
+  static Future<bool> Function()? debugEnsurePermissionOverride;
+
+  /// 测试替身：设置后 [canScheduleExact] 直接用它返回，不走平台通道。
+  static Future<bool> Function()? debugCanScheduleExactOverride;
+
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
@@ -261,6 +269,8 @@ class NotificationService {
   /// 申请 Android 13+ 通知权限（POST_NOTIFICATIONS）。
   /// 返回 true 表示已授权或系统版本无需授权；被拒返回 false（不抛异常）。
   Future<bool> ensureNotificationPermission() async {
+    final override = debugEnsurePermissionOverride;
+    if (override != null) return override();
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     if (android == null) return true;
@@ -270,6 +280,8 @@ class NotificationService {
   /// 是否可精确排期（SCHEDULE_EXACT_ALARM）。
   /// 返回 false 表示需降级为非精确排期，并由 UI 引导用户去系统设置授权。
   Future<bool> canScheduleExact() async {
+    final override = debugCanScheduleExactOverride;
+    if (override != null) return override();
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     if (android == null) return false;

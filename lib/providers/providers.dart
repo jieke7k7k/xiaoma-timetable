@@ -303,6 +303,19 @@ class CoursesNotifier extends AsyncNotifier<List<Course>> {
     _notifyDataChanged();
   }
 
+  /// 多时段一起保存（WB_SPEC_231 第 10.4 节）：当前时段 + 兄弟时段的共享字段
+  /// 在**一个事务**里写完，成功后只刷新一次列表，再走一次与单条更新相同的联动
+  /// （重排提醒 → 重建常驻通知并重排闹钟链 → 刷新桌面小部件）。
+  /// 循环里不触发任何 provider 刷新，避免 N 次重建课表。
+  Future<void> updateCourseWithSiblings(
+    Course current,
+    List<Course> siblings,
+  ) async {
+    await Dao.instance.updateCourseWithSiblings(current, siblings);
+    await reload();
+    _notifyDataChanged();
+  }
+
   Future<void> deleteCourse(int id) async {
     await Dao.instance.deleteCourse(id);
     await reload();

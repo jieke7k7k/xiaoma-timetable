@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,12 +12,17 @@ import '../utils/week_parser.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/week_picker.dart';
 
-/// 课程新建/编辑页（阶段二完整版）
+/// 课程新建/编辑页（阶段二完整版，WB_SPEC_231 第 10 节：多时段一起编辑）
 ///
 /// 三种进入方式：
 /// - 点击周视图空白格：arguments = {'dayOfWeek': x, 'startSection': y}（自动带入）
 /// - 编辑已有课程：arguments = course.id
 /// - 同名快捷录入：arguments = {'name': 课程名, 'teacher': 老师, 'colorValue': 颜色}
+///
+/// 一门课在库里是「同学期、同名」的多行，一行一个时段。编辑其中任意一行时：
+/// - 页面列出它的其他时段（「其他时段」区），点一条原地切过去编辑；
+/// - 保存时把 5 个共享字段（课程名/老师/教室/颜色/备注）一次同步到本课全部时段，
+///   时间与周次只改当前这一条（详见 [_buildSiblingsToSync] 与 [CoursesNotifier]）。
 class CourseEditPage extends ConsumerStatefulWidget {
   const CourseEditPage({super.key, this.courseId});
 
@@ -48,9 +54,30 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
   bool _loading = true;
   bool _saving = false;
 
+  // —— 多时段一起编辑（WB_SPEC_231 第 10 节）——
+  /// 进页面时锁死的原课程名：查兄弟时段**永远**用它，绝不用改名后的输入框文本
+  /// （否则把「药理学」改成「临床药理学」再保存，新名字查出 0 条兄弟，一门课被拆成两门）
+  String _originalCourseName = '';
+
+  /// 当前时段的库里原值：未保存改动的判定基准 + 教室/备注异构保护的比对基准
+  Course? _initialCourse;
+
+  /// 本课的其他时段（不含正在编辑的这条），按星期 + 开始节次排序
+  List<Course> _siblings = const [];
+
+  /// 正在切换时段（防连点）
+  bool _switching = false;
+
+  /// 只跑一次加载（[didChangeDependencies] 可能被多次调用）
+  bool _loadStarted = false;
+
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 读路由参数要用 ModalRoute.of(context)，它在 initState 里取会踩
+    // 「initState 期间依赖 InheritedWidget」的断言；放到这里才是正确时机
+    if (_loadStarted) return;
+    _loadStarted = true;
     _load();
   }
 
@@ -78,20 +105,10 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
         }
         return;
       }
-      _nameController.text = course.name;
-      _teacherController.text = course.teacher ?? '';
-      _classroomController.text = course.classroom ?? '';
-      _noteController.text = course.note ?? '';
-      _dayOfWeek = course.dayOfWeek;
-      _startSection = course.startSection;
-      _endSection = course.endSection;
-      _colorValue = course.colorValue;
-      _weeks = course.weeks;
-      _weekType = course.weekType;
-      _examDate = course.examDate;
-      _examEndTime = course.examEndTime;
-      _examPlace = course.examPlace;
-      _semesterId = course.semesterId;
+      _applyCourseToForm(course);
+      _initialCourse = course;
+      _originalCourseName = course.name;
+      await _reloadSiblings();
     } else if (args is Map) {
       // 新建：带入点击格子的星期与节次；
       // 同名快捷录入（详情页「新增本课其他时段」）时额外带入名称/老师/莫兰迪颜色
@@ -117,6 +134,40 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     if (mounted) setState(() => _loading = false);
   }
 
+  /// 把一条课程的全部字段灌进表单（首次加载、切换时段、放弃改动后重置都用它）
+  void _applyCourseToForm(Course course) {
+    _nameController.text = course.name;
+    _teacherController.text = course.teacher ?? '';
+    _classroomController.text = course.classroom ?? '';
+    _noteController.text = course.note ?? '';
+    _dayOfWeek = course.dayOfWeek;
+    _startSection = course.startSection;
+    _endSection = course.endSection;
+    _colorValue = course.colorValue;
+    _weeks = course.weeks;
+    _weekType = course.weekType;
+    _examDate = course.examDate;
+    _examEndTime = course.examEndTime;
+    _examPlace = course.examPlace;
+    _semesterId = course.semesterId;
+  }
+
+  /// 重新拉一份「其他时段」：同学期、同名（用锁死的 [_originalCourseName]）、
+  /// 排除正在编辑的这条；按星期再按开始节次排序
+  Future<void> _reloadSiblings() async {
+    final all = ref.read(coursesProvider).value ?? const <Course>[];
+    final list = <Course>[
+      for (final c in all)
+        if (c.name == _originalCourseName && c.id != null && c.id != _editId) c,
+    ];
+    list.sort((a, b) {
+      final byDay = a.dayOfWeek.compareTo(b.dayOfWeek);
+      return byDay != 0 ? byDay : a.startSection.compareTo(b.startSection);
+    });
+    if (!mounted) return;
+    setState(() => _siblings = list);
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -126,21 +177,72 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     super.dispose();
   }
 
-  Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
+  /// 当前表单相对「这条时段在库里的原值」有没有未保存改动
+  ///
+  /// 归一化口径（规格第 10.2 节）：字符串统一 trim、空串与 null 等价，
+  /// weeks 用 listEquals。进页面没动任何东西时点切换**不该**弹框。
+  bool get _isDirty {
+    final b = _initialCourse;
+    if (b == null) return false;
+    String norm(String? v) => (v ?? '').trim();
+    if (_nameController.text.trim() != norm(b.name)) return true;
+    if (_teacherController.text.trim() != norm(b.teacher)) return true;
+    if (_classroomController.text.trim() != norm(b.classroom)) return true;
+    if (_noteController.text.trim() != norm(b.note)) return true;
+    if (_colorValue != b.colorValue) return true;
+    if (_dayOfWeek != b.dayOfWeek) return true;
+    if (_startSection != b.startSection) return true;
+    if (_endSection != b.endSection) return true;
+    if (_weekType != b.weekType) return true;
+    if (!listEquals(_weeks, b.weeks)) return true;
+    return false;
+  }
+
+  /// 当前学期里是否已经存在另一门叫 [name] 的课（不含本课现有全部时段）
+  bool _hasOtherCourseNamed(String name) {
+    final all = ref.read(coursesProvider).value ?? const <Course>[];
+    final ownIds = <int?>{_editId, for (final s in _siblings) s.id};
+    for (final c in all) {
+      if (c.name != name) continue;
+      if (ownIds.contains(c.id)) continue;
+      return true;
+    }
+    return false;
+  }
+
+  /// 保存。返回 true 表示真正写库成功（切换时段前要用它决定是否继续切）。
+  Future<bool> _save({bool popOnSuccess = true}) async {
+    if (!_formKey.currentState!.validate()) return false;
     if (_startSection > _endSection) {
       _showError('开始节次不能大于结束节次哦');
-      return;
+      return false;
     }
     if (_weeks.isEmpty) {
       _showError('至少选择一周上课哦');
-      return;
+      return false;
+    }
+    final newName = _nameController.text.trim();
+    // 改名撞车：保存前先确认要不要把两门课合并管理（规格第 10.1 节）
+    if (_editId != null &&
+        newName != _originalCourseName &&
+        _hasOtherCourseNamed(newName)) {
+      if (!mounted) return false;
+      final go = await showAppConfirmDialog(
+        context,
+        title: '合并同名课程？',
+        message: '当前学期已存在同名课程「$newName」，保存后它们的时段将合并管理'
+            '并同步共享属性，是否继续？',
+        confirmLabel: '继续',
+        cancelLabel: '取消',
+      );
+      if (go != true) return false;
+      if (!mounted) return false;
     }
     final course = Course(
       id: _editId,
       // 新建时占位，addCourse 会替换为当前学期 id；编辑时保留原学期
       semesterId: _semesterId,
-      name: _nameController.text.trim(),
+      name: newName,
       teacher: _teacherController.text.trim().isEmpty
           ? null
           : _teacherController.text.trim(),
@@ -163,34 +265,190 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
       examPlace: _examPlace,
     );
 
-    // 保存前先做时间冲突预检：与同学期已有课程比对，编辑时排除课程自身。
-    // 语义与导入链路完全一致（同星期 + 周次有交集 + 节次重叠），
-    // 候选课的 weeks/weekType 直接取当前表单值，无需任何换算
+    // 保存前先做时间冲突预检：只算**当前这一个时段**（规格第 10.4 节）——
+    // 兄弟时段本次只改文本/颜色字段、不动时间，对它们重算会拦住「改个备注都不让存」。
+    // 冲突池仍取同学期课程，排除自身但包含本课其他时段（防止把当前时段改到与
+    // 兄弟时段完全重叠）。语义与导入链路一致（同星期 + 周次有交集 + 节次重叠）。
     final conflicts = _findConflicts(course);
     if (conflicts.isNotEmpty) {
       final keepSaving = await _showConflictDialog(conflicts);
-      if (keepSaving != true) return;
-      if (!mounted) return;
+      if (keepSaving != true) return false;
+      if (!mounted) return false;
     }
 
     setState(() => _saving = true);
     try {
       if (_editId == null) {
         await ref.read(coursesProvider.notifier).addCourse(course);
-      } else {
-        await ref.read(coursesProvider.notifier).updateCourse(course);
+        if (mounted && popOnSuccess) {
+          // 先取 messenger 再 pop：pop 之后 context 已失效，不能再往上找祖先
+          final messenger = ScaffoldMessenger.of(context);
+          Navigator.pop(context);
+          messenger.showSnackBar(const SnackBar(content: Text('课程添加成功')));
+        }
+        return true;
       }
-      if (mounted) {
+      final siblings = _buildSiblingsToSync(course);
+      // 一次事务写多行：当前时段整行 + 每个兄弟时段只覆盖 5 个共享字段
+      await ref
+          .read(coursesProvider.notifier)
+          .updateCourseWithSiblings(course, siblings);
+      // 保存成功后把「原课程名」更新为保存后的名字，后续切换/再保存都以它为准
+      _originalCourseName = course.name;
+      final total = siblings.length + 1;
+      if (mounted && popOnSuccess) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(_editId == null ? '课程添加成功' : '课程已更新')));
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(total > 1 ? '已同步到本课共 $total 个时段' : '课程已更新'),
+          ),
+        );
       }
+      return true;
     } catch (e) {
-      if (mounted) {
-        setState(() => _saving = false);
-        _showError('保存失败：$e');
+      // 写库失败整批回滚（事务保证），兄弟时段保持原值；原始异常只进日志
+      debugPrint('保存课程失败：$e');
+      if (mounted) _showError('保存失败，请重试');
+      return false;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// 把 5 个共享字段（课程名/老师/教室/颜色/备注）铺到每个兄弟时段上。
+  ///
+  /// 关键点（规格第 10.3 节）：
+  /// - 兄弟行以**库里的原对象**为底，只覆盖共享字段——时间/周次/考试日期原样保留；
+  /// - 教室/备注异构保护：用户本次没亲手改教室（或备注）时，兄弟时段里本来就
+  ///   不同的那个值保留不动（周二理论课 302、周四实验课 105 不会被一起改成 302）。
+  List<Course> _buildSiblingsToSync(Course updated) {
+    final base = _initialCourse;
+    if (base == null || _siblings.isEmpty) return const [];
+    String norm(String? v) => (v ?? '').trim();
+    final classroomTouched =
+        _classroomController.text.trim() != norm(base.classroom);
+    final noteTouched = _noteController.text.trim() != norm(base.note);
+    return [
+      for (final s in _siblings)
+        Course(
+          id: s.id,
+          semesterId: s.semesterId,
+          name: updated.name,
+          teacher: updated.teacher,
+          colorValue: updated.colorValue,
+          dayOfWeek: s.dayOfWeek,
+          startSection: s.startSection,
+          endSection: s.endSection,
+          weeks: s.weeks,
+          weekType: s.weekType,
+          // 教室：本次亲手改过 → 跟着变；没碰过且兄弟时段自己另有一个非空教室 → 保留
+          classroom: _keepOwnValue(
+            touched: classroomTouched,
+            own: s.classroom,
+            baseValue: base.classroom,
+            incoming: updated.classroom,
+          ),
+          note: _keepOwnValue(
+            touched: noteTouched,
+            own: s.note,
+            baseValue: base.note,
+            incoming: updated.note,
+          ),
+          examDate: s.examDate,
+          examEndTime: s.examEndTime,
+          examPlace: s.examPlace,
+        ),
+    ];
+  }
+
+  /// 异构保护判定：没被用户本次改动过、且兄弟时段自己的值与基准不同且非空 → 保留自己的
+  String? _keepOwnValue({
+    required bool touched,
+    required String? own,
+    required String? baseValue,
+    required String? incoming,
+  }) {
+    String norm(String? v) => (v ?? '').trim();
+    if (!touched && norm(own).isNotEmpty && norm(own) != norm(baseValue)) {
+      return own;
+    }
+    return incoming;
+  }
+
+  /// 切到同课的另一条时段（同一页换 courseId，不新开路由）
+  Future<void> _switchTo(Course target) async {
+    if (_switching || _saving) return;
+    if (_editId == null || target.id == null) return;
+    if (_isDirty) {
+      final choice = await _askUnsavedChoice();
+      if (choice == null) return; // 取消：留在当前时段
+      if (choice == 'save') {
+        // 保存必须整条流程走完（校验 → 冲突 → 事务）才允许切换
+        final ok = await _save(popOnSuccess: false);
+        if (!ok) return;
       }
     }
+    if (!mounted) return;
+    // 切前先收软键盘，避免切换后键盘浮在别的字段上
+    FocusScope.of(context).unfocus();
+    setState(() => _switching = true);
+    final all = ref.read(coursesProvider).value ?? const <Course>[];
+    Course? fresh;
+    for (final c in all) {
+      if (c.id == target.id) {
+        fresh = c;
+        break;
+      }
+    }
+    if (fresh == null) {
+      setState(() => _switching = false);
+      _showError('这个时段已不存在');
+      return;
+    }
+    setState(() {
+      _editId = fresh!.id;
+      _initialCourse = fresh;
+      _originalCourseName = fresh.name;
+      _applyCourseToForm(fresh);
+      _switching = false;
+    });
+    await _reloadSiblings();
+  }
+
+  /// 三选确认框（左一右二：最左「取消」，右侧「放弃」红字 + 「保存」实心）
+  Future<String?> _askUnsavedChoice() {
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final scheme = Theme.of(ctx).colorScheme;
+        return AppDialog(
+          title: '当前时段有未保存的改动',
+          content: const AppDialogText('切换到这个时段前，要先保存这些改动吗？'),
+          actions: [
+            Row(
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消'),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, 'discard'),
+                  style: TextButton.styleFrom(foregroundColor: scheme.error),
+                  child: const Text('放弃'),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, 'save'),
+                  child: const Text('保存'),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
   }
 
   /// 候选课程与同学期已有课程的时间冲突列表（编辑时排除自身）
@@ -279,6 +537,14 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     }
   }
 
+  /// 一条「其他时段」的展示文案：周X 第 a-b 节 · 1-16 周（格式与详情/搜索页一致）
+  String _slotText(Course c) {
+    final weeks = WeekParser.toText(c.weeks, c.weekType);
+    return '周${'一二三四五六日'[c.dayOfWeek - 1]} '
+        '第${c.startSection}-${c.endSection}节'
+        '${weeks.isEmpty ? '' : ' · $weeks 周'}';
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -286,13 +552,14 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     }
     final slots = ref.watch(timeSlotsProvider).value ?? [];
     final sectionCount = slots.isNotEmpty ? slots.length : 12;
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(_editId == null ? '新建课程' : '编辑课程'),
         actions: [
           TextButton(
-            onPressed: _saving ? null : _save,
+            onPressed: _saving ? null : () => _save(),
             child: _saving
                 ? const SizedBox(
                     width: 16,
@@ -354,6 +621,9 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                           child: Text('周${'一二三四五六日'[d - 1]}'),
                         ),
                     ],
+                    // DropdownButtonFormField 只在首帧读 initialValue，切换时段后
+                    // 靠 ValueKey 重建来跟上新值（表单其余字段靠控制器刷新）
+                    key: ValueKey('day-$_editId-$_dayOfWeek'),
                     onChanged: (v) =>
                         setState(() => _dayOfWeek = v ?? _dayOfWeek),
                   ),
@@ -362,6 +632,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                 Expanded(
                   child: DropdownButtonFormField<int>(
                     initialValue: _startSection,
+                    key: ValueKey('start-$_editId-$_startSection'),
                     decoration: const InputDecoration(labelText: '开始节次'),
                     items: [
                       for (var s = 1; s <= sectionCount; s++)
@@ -377,6 +648,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                 Expanded(
                   child: DropdownButtonFormField<int>(
                     initialValue: _endSection,
+                    key: ValueKey('end-$_editId-$_endSection'),
                     decoration: const InputDecoration(labelText: '结束节次'),
                     items: [
                       for (var s = 1; s <= sectionCount; s++)
@@ -390,7 +662,54 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            // 其他时段（WB_SPEC_231 第 10.2 节）：放在「星期与节次」与「课程颜色」之间。
+            // 只有 1 个时段的课不显示该区，页面与改前一致。
+            if (_siblings.isNotEmpty) ...[
+              // 上间距 14：上方星期/节次框的浮动标签会向上凸出约 7dp，别压住它
+              const SizedBox(height: 14),
+              Text('其他时段（同一门课）',
+                  style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: AppSpacing.xs),
+              for (final s in _siblings)
+                InkWell(
+                  onTap: _switching ? null : () => _switchTo(s),
+                  borderRadius: BorderRadius.circular(AppRadii.chip),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.schedule_outlined,
+                            size: 18, color: scheme.outline),
+                        const SizedBox(width: AppSpacing.s),
+                        Expanded(
+                          child: Text(
+                            _slotText(s),
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        Text(
+                          '去编辑',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: scheme.primary,
+                          ),
+                        ),
+                        Icon(Icons.chevron_right,
+                            size: 18, color: scheme.outline),
+                      ],
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 2),
+              Text(
+                '改课程名、老师、教室、颜色、备注会同步到本课全部时段；'
+                '时间与周次只改这一条。',
+                style: TextStyle(fontSize: 12, color: scheme.outline),
+              ),
+              // 下间距 18：保证与下方输入框（浮动标签会向上凸出）之间留足空
+              const SizedBox(height: 18),
+            ] else
+              const SizedBox(height: 20),
             // 课程颜色：显示当前配色方案的颜色，选中后仍存「莫兰迪色位」的
             // 标准值（见 color_schemes.dart 的映射原理），以后切方案能整表换色
             Text(
@@ -425,6 +744,8 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
             Text('上课周次', style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 8),
             WeekPicker(
+              // 切换时段要重置内部选中态：按 courseId 换 key 让组件整体重建
+              key: ValueKey('week-picker-$_editId'),
               initialWeeks: _weeks,
               initialWeekType: _weekType,
               onChanged: (weeks, weekType) {
@@ -466,7 +787,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
             const SizedBox(height: 24),
             // 保存按钮（底部大按钮）
             FilledButton(
-              onPressed: _saving ? null : _save,
+              onPressed: _saving ? null : () => _save(),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
               ),

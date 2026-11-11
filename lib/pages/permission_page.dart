@@ -104,11 +104,54 @@ class _PermissionPageState extends State<PermissionPage> {
                       ? null
                       : () => _jump(PermissionService.instance.openAppDetails),
                 ),
+                // WB_SPEC_231 第 4.5 节：常驻提醒可靠性 3 步说明（冷启动三连弹
+                // 删掉后，这里就是用户唯一能看到「怎么让提醒准时响」的地方）
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.l,
+                    AppSpacing.m,
+                    AppSpacing.l,
+                    0,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '让提醒准时响',
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelLarge
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: AppSpacing.s),
+                      const _ReliabilityStep(
+                        index: 1,
+                        text: '开启自启动：在系统「应用管理 → 自启动」里允许小马课表自启动'
+                            '（各厂商入口位置不同，需手动找）',
+                      ),
+                      _ReliabilityStep(
+                        index: 2,
+                        text: '忽略电池优化：把本机省电策略对小马课表的限制关掉',
+                        onTap: _working
+                            ? null
+                            : () => _jump(
+                                  PermissionService.instance.openBatterySettings,
+                                ),
+                      ),
+                      const _ReliabilityStep(
+                        index: 3,
+                        text: '最近任务卡片下拉加锁：在最近任务界面把「小马课表」'
+                            '卡片下拉加锁，避免一键清理时被清掉',
+                      ),
+                    ],
+                  ),
+                ),
                 Padding(
                   padding: const EdgeInsets.all(AppSpacing.l),
                   child: Text(
                     '三项都不是必需的：没开也能正常看课表，只是提醒可能延迟或'
-                    '在后台被省电策略掐掉。首次打开 App 时会引导一次，之后不再自动弹。',
+                    '在后台被省电策略掐掉。权限在用到时申请：开启提醒时才申请通知与'
+                    '精确闹钟，其余时间不会主动弹窗要权限。',
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
@@ -117,6 +160,68 @@ class _PermissionPageState extends State<PermissionPage> {
                 ),
               ],
             ),
+    );
+  }
+}
+
+/// 「让提醒准时响」里的一步：序号圆点 + 说明文字（可选点按跳对应系统页）
+class _ReliabilityStep extends StatelessWidget {
+  const _ReliabilityStep({
+    required this.index,
+    required this.text,
+    this.onTap,
+  });
+
+  final int index;
+  final String text;
+
+  /// 非空时整行可点（目前只有「忽略电池优化」一步有系统页可跳）
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 18,
+            height: 18,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: scheme.primaryContainer,
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              '$index',
+              style: TextStyle(
+                fontSize: 11,
+                color: scheme.onPrimaryContainer,
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.s),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+          if (onTap != null)
+            Icon(Icons.chevron_right, size: 18, color: scheme.outline),
+        ],
+      ),
+    );
+    if (onTap == null) return content;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadii.chip),
+      child: content,
     );
   }
 }

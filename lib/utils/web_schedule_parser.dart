@@ -30,6 +30,20 @@ class WebScheduleResult {
 class WebScheduleParser {
   WebScheduleParser._();
 
+  /// 「共 M 个排课节次」里的 M（WB_SPEC_231 第 5.4 节）：
+  /// 各门课每周排课节数之和 —— Σ(endSection - startSection + 1)。
+  ///
+  /// 口径：按课程在目标学期的每周排课算，不按周次展开（14 门课、每门每周 2 节
+  /// → M = 28）。与核对页 AppBar 的「N 门」同一个数据源，两处数字不会打架。
+  static int countWeeklySections(List<Course> courses) {
+    var total = 0;
+    for (final c in courses) {
+      final span = c.endSection - c.startSection + 1;
+      if (span > 0) total += span;
+    }
+    return total;
+  }
+
   static final _weekdayNames = <String, int>{
     '星期一': 1,
     '周一': 1,

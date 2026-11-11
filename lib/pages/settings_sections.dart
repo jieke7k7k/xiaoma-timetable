@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../database/dao.dart';
 import '../models/course.dart';
 import '../models/time_slot.dart';
 import '../models/ui_settings.dart';
@@ -270,11 +271,51 @@ class AppearanceSettingsPage extends StatelessWidget {
 }
 
 /// 提醒子页：上课提醒 / 上课播报 / 今日课程常驻通知 / 提前提醒
-class RemindersSettingsPage extends ConsumerWidget {
+///
+/// WB_SPEC_231 第 4.2–4.4 节起改成「用到时才申请权限」：
+/// - 上课提醒、今日课程常驻通知两个开关在打开前先查通知权限，被拒时开关保持
+///   关闭并弹带引导的确认框（不再出现「开关亮着、提醒收不到」的假开启）；
+/// - 精确闹钟未授权时开关仍保持开（照旧降级为非精确排期），开关行下方常驻一行
+///   轻量提示，点按跳系统「闹钟和提醒」页，授权后自动消失；
+/// - 首次成功开启提醒后只提示一次电池优化（标记 `battery_hint_shown`）。
+class RemindersSettingsPage extends ConsumerStatefulWidget {
   const RemindersSettingsPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RemindersSettingsPage> createState() =>
+      _RemindersSettingsPageState();
+}
+
+class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage> {
+  /// 电池优化轻提示的一次性标记键（只写 '1'）
+  static const String _batteryHintKey = 'battery_hint_shown';
+
+  /// 精确闹钟当前未授权（只有在提醒开关已开时才展示那条轻量提示）
+  bool _exactAlarmMissing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshExactAlarmState();
+  }
+
+  /// 查一次精确闹钟状态：进页面时、每次拨动提醒开关后、从系统页返回后
+  Future<void> _refreshExactAlarmState() async {
+    bool exact;
+    try {
+      exact = await NotificationService.instance.canScheduleExact();
+    } catch (e) {
+      // 插件没就绪（测试环境 / 通道异常）时查不出来：按「已授权」处理，
+      // 宁可不显示降级提示，也不要让设置页崩在这里
+      debugPrint('读取精确闹钟状态失败：$e');
+      exact = true;
+    }
+    if (!mounted) return;
+    setState(() => _exactAlarmMissing = !exact);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     // WB_SPEC_222：组内分隔线颜色取自当前主题。
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
@@ -285,14 +326,21 @@ class RemindersSettingsPage extends ConsumerWidget {
             builder: (ctx, ref, _) {
               final settings = ref.watch(reminderSettingsProvider);
               return settings.when(
-                data: (s) => SwitchListTile(
-                  secondary: const SettingsIconBox(icon: Icons.notifications_active_outlined, category: SettingsIconCategory.reminder),
-                  title: const _InfoTitle(
-                    title: '上课提醒',
-                    message: '每节课提前提醒，App 被杀后也能准时响铃',
-                  ),
-                  value: s.enabled,
-                  onChanged: (v) => _onReminderToggle(ctx, ref, v),
+                data: (s) => Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SwitchListTile(
+                      secondary: const SettingsIconBox(icon: Icons.notifications_active_outlined, category: SettingsIconCategory.reminder),
+                      title: const _InfoTitle(
+                        title: '上课提醒',
+                        message: '每节课提前提醒，App 被杀后也能准时响铃',
+                      ),
+                      value: s.enabled,
+                      onChanged: (v) => _onReminderToggle(v),
+                    ),
+                    // 精确闹钟未授权且提醒已开：轻量提示，点按跳系统「闹钟和提醒」页
+                    if (s.enabled && _exactAlarmMissing) _exactAlarmHint(scheme),
+                  ],
                 ),
                 loading: () => const ListTile(
                   leading: SettingsIconBox(icon: Icons.notifications_active_outlined, category: SettingsIconCategory.reminder),
@@ -350,9 +398,7 @@ class RemindersSettingsPage extends ConsumerWidget {
                     message: '通知栏常驻显示今日剩余或明日课程预告',
                   ),
                   value: on,
-                  onChanged: (v) => ref
-                      .read(ongoingNoticeSettingsProvider.notifier)
-                      .setEnabled(v),
+                  onChanged: (v) => _onOngoingToggle(v),
                 ),
                 loading: () => const ListTile(
                   leading: SettingsIconBox(icon: Icons.pin_outlined, category: SettingsIconCategory.reminder),
@@ -360,7 +406,7 @@ class RemindersSettingsPage extends ConsumerWidget {
                   subtitle: Text('加载中…'),
                 ),
                 error: (e, _) => ListTile(
-                  leading: const SettingsIconBox(icon: Icons.pin_outlined, category: SettingsIconCategory.reminder),
+                  leading: SettingsIconBox(icon: Icons.pin_outlined, category: SettingsIconCategory.reminder),
                   title: const Text('今日课程常驻通知'),
                   subtitle: Text('加载失败：$e'),
                 ),
@@ -396,30 +442,122 @@ class RemindersSettingsPage extends ConsumerWidget {
     );
   }
 
-  /// 上课提醒开关：开启时申请通知权限 + 精确闹钟授权引导，再持久化
-  Future<void> _onReminderToggle(
-    BuildContext context,
-    WidgetRef ref,
-    bool value,
-  ) async {
-    final notifier = ref.read(reminderSettingsProvider.notifier);
-    if (value) {
-      // Android 13+ 通知权限：被拒给中文提示，但不阻断开启（用户可稍后授权）
-      final granted = await NotificationService.instance
-          .ensureNotificationPermission();
-      if (!granted && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('通知权限被拒绝，提醒可能无法显示，请到系统设置开启')),
-        );
-      }
+  /// 精确闹钟降级提示：一行轻量文字（字号/字色沿用设置页副标题口径），点按跳设置
+  Widget _exactAlarmHint(ColorScheme scheme) {
+    return InkWell(
+      onTap: () async {
+        await PermissionService.instance.openExactAlarmSettings();
+        await _refreshExactAlarmState();
+      },
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(72, 0, 16, 12),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, size: 16, color: scheme.outline),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                '精确闹钟未授权，提醒可能延迟几分钟',
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-      // 精确闹钟：无权限时降级为非精确排期，并引导用户去系统设置授权
-      final exact = await NotificationService.instance.canScheduleExact();
-      if (!exact && context.mounted) {
-        await _showExactAlarmGuide(context);
-      }
+  /// 上课提醒开关：严格两步事务（WB_SPEC_231 第 4.2 节）
+  ///
+  /// 第一步通知权限被拒 → 开关**绝不**变成 true（不写库），弹带引导的确认框；
+  /// 第二步通知通过后先落库（开关正式变 true），再查精确闹钟——未授权只降级为
+  /// 非精确排期 + 常驻轻量提示，开关保持开。
+  Future<void> _onReminderToggle(bool value) async {
+    final notifier = ref.read(reminderSettingsProvider.notifier);
+    if (!value) {
+      // 关闭：直接落库，不申请权限、不弹框（规格第 4.2 节末）
+      await notifier.setEnabled(false);
+      return;
     }
-    await notifier.setEnabled(value);
+    // 第一步：核心必选权限——通知
+    final granted =
+        await NotificationService.instance.ensureNotificationPermission();
+    if (!granted) {
+      if (!mounted) return;
+      final go = await showAppConfirmDialog(
+        context,
+        title: '需要通知权限',
+        message: '需要开启通知权限才能发送上课提醒，是否前往系统设置开启？',
+        confirmLabel: '去设置',
+        cancelLabel: '暂不',
+      );
+      if (go == true) await PermissionService.instance.openAppDetails();
+      return;
+    }
+    // 第二步：增强权限——精确闹钟（先落库，开关正式变 true）
+    await notifier.setEnabled(true);
+    if (!mounted) return;
+    await _refreshExactAlarmState();
+    if (_exactAlarmMissing && mounted) {
+      await _showExactAlarmGuide(context);
+    }
+    await _maybeShowBatteryHint();
+  }
+
+  /// 今日课程常驻通知开关：与上课提醒第一步同一套事务（WB_SPEC_231 第 4.3 节）
+  ///
+  /// 只在用户手动拨开关时检查权限——进主页时不弹、不申请（否则又变回冷启动
+  /// 要权限）；Android 13+ 全新安装默认值 true 但没权限时发不出通知属正常现象。
+  Future<void> _onOngoingToggle(bool value) async {
+    final notifier = ref.read(ongoingNoticeSettingsProvider.notifier);
+    if (!value) {
+      await notifier.setEnabled(false);
+      return;
+    }
+    final granted =
+        await NotificationService.instance.ensureNotificationPermission();
+    if (!granted) {
+      if (!mounted) return;
+      final go = await showAppConfirmDialog(
+        context,
+        title: '需要通知权限',
+        message: '需要开启通知权限才能在通知栏常驻显示今日课程，是否前往系统设置开启？',
+        confirmLabel: '去设置',
+        cancelLabel: '暂不',
+      );
+      if (go == true) await PermissionService.instance.openAppDetails();
+      return;
+    }
+    await notifier.setEnabled(true);
+  }
+
+  /// 电池优化轻提示：只在**首次**成功开启提醒后出现一次（规格第 4.4 节）
+  ///
+  /// 跳系统电池优化列表页（ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS），
+  /// 所以文案写「在列表里找到小马课表设为不优化」，不承诺一键搞定。
+  Future<void> _maybeShowBatteryHint() async {
+    if (!mounted) return;
+    try {
+      final shown = await Dao.instance.getSetting(_batteryHintKey);
+      if (shown == '1') return;
+      await Dao.instance.setSetting(_batteryHintKey, '1');
+    } catch (e) {
+      // 标记读写失败就让提示再来一次，绝不影响开关本身
+      debugPrint('电池优化提示标记读写失败：$e');
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          '为防止系统后台清理导致漏报，建议在电池优化列表里把小马课表设为「不优化」',
+        ),
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: '去设置',
+          onPressed: () => PermissionService.instance.openBatterySettings(),
+        ),
+      ),
+    );
   }
 
   /// 精确闹钟授权引导对话框（拒绝也不闪退，只是提醒可能延迟）
@@ -435,6 +573,7 @@ class RemindersSettingsPage extends ConsumerWidget {
     if (go == true) {
       // requestExactAlarmsPermission 会跳系统「闹钟和提醒」设置页
       await NotificationService.instance.requestExactAlarmPermission();
+      await _refreshExactAlarmState();
     }
   }
 

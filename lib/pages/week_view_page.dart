@@ -1993,20 +1993,66 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
                   editMode: editMode,
                   ui: ui,
                 ),
-          // 空周占位提示（阶段五·视觉打磨）：网格全空时给中文引导，
-          // IgnorePointer 保证点击穿透到空白格的新建手势
+          // 空周占位提示（阶段五·视觉打磨）：网格全空时给中文引导。
+          // WB_SPEC_231 第 3.3 节起分两种情况：
+          // - 情况 A（当前学期一门课都没有，纯新用户/空白学期）：文字 + 两个
+          //   按钮（导入课表 / 手动加课），按钮可点，其余区域仍穿透到空白格；
+          // - 情况 B（学期有课、只是这一周没课）：保持原样纯文本，不放任何按钮
+          //   （否则用户在第 18 周会以为要重新导入，把整学期弄乱）。
           if (visible.isEmpty)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: EmptyState(
-                  icon: Icons.wb_sunny_outlined,
-                  title: '本周没有课程',
-                  message: editMode
-                      ? '点击空白格子新建，或从底部「新建」导入课表'
-                      : '点右上角的编辑按钮开启编辑模式后，可添加课程',
+            if (allCourses.isEmpty)
+              Positioned.fill(
+                // 只让按钮可点：文字区套 IgnorePointer，空白格点按新建手势不受影响
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IgnorePointer(
+                        child: EmptyState(
+                          icon: Icons.wb_sunny_outlined,
+                          title: '本周没有课程',
+                          message: editMode
+                              ? '点击空白格子新建，或从底部「新建」导入课表'
+                              : '点右上角的编辑按钮开启编辑模式后，可添加课程',
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: AppSpacing.m),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: () =>
+                                  Navigator.pushNamed(context, '/import'),
+                              icon: const Icon(Icons.upload_file_outlined),
+                              label: const Text('导入课表'),
+                            ),
+                            const SizedBox(width: AppSpacing.m),
+                            OutlinedButton.icon(
+                              onPressed: () =>
+                                  Navigator.pushNamed(context, '/course-edit'),
+                              icon: const Icon(Icons.edit_outlined),
+                              label: const Text('手动加课'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: EmptyState(
+                    icon: Icons.wb_sunny_outlined,
+                    title: '本周没有课程',
+                    message: editMode
+                        ? '点击空白格子新建，或从底部「新建」导入课表'
+                        : '点右上角的编辑按钮开启编辑模式后，可添加课程',
+                  ),
                 ),
               ),
-            ),
           // 今天整列边框（1.2.5，替代 1.2.3 的淡色底——用户反馈太淡看不见）：
           // 给今天这一整天画一圈主题色框，压在最上层保证边框连续
           if (widget.highlightDay != null &&

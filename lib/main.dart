@@ -31,7 +31,6 @@ import 'pages/time_settings_page.dart';
 import 'pages/week_view_page.dart';
 import 'providers/providers.dart';
 import 'widgets/home_tab_bar.dart';
-import 'widgets/permission_guide.dart';
 
 import 'package:quick_actions/quick_actions.dart';
 
@@ -44,6 +43,7 @@ import 'utils/route_observer.dart';
 import 'services/widget_service.dart';
 import 'ui/app_styles.dart';
 import 'ui/bottom_bar_metrics.dart';
+import 'ui/clean_gap_input_border.dart';
 import 'ui/shell_transition.dart';
 import 'ui/page_transitions.dart';
 
@@ -258,28 +258,40 @@ class SimpleTimetableApp extends ConsumerWidget {
         // （废除 M3 默认下划线样式——多字段表单里横线与 Divider 分不清）。
         // 圆角走 AppRadii.chip，与全站圆润黑白灰统一；不设高度约束，
         // 多行输入框（备注 maxLines: 3）不会被压扁成一行。
+        // WB_SPEC_231 第 11 节：边框换成 CleanGapOutlineInputBorder——
+        // 标签浮起时缺口处补双色衬底，横线不再从字中间穿过（详见该类注释）。
         inputDecorationTheme: InputDecorationThemeData(
           filled: true,
           fillColor: colorScheme.surfaceContainerHighest,
-          border: OutlineInputBorder(
+          border: CleanGapOutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadii.chip),
             borderSide: BorderSide(color: colorScheme.outlineVariant),
+            pageBackgroundColor: colorScheme.surface,
+            fillColor: colorScheme.surfaceContainerHighest,
           ),
-          enabledBorder: OutlineInputBorder(
+          enabledBorder: CleanGapOutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadii.chip),
             borderSide: BorderSide(color: colorScheme.outlineVariant),
+            pageBackgroundColor: colorScheme.surface,
+            fillColor: colorScheme.surfaceContainerHighest,
           ),
-          focusedBorder: OutlineInputBorder(
+          focusedBorder: CleanGapOutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadii.chip),
             borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+            pageBackgroundColor: colorScheme.surface,
+            fillColor: colorScheme.surfaceContainerHighest,
           ),
-          errorBorder: OutlineInputBorder(
+          errorBorder: CleanGapOutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadii.chip),
             borderSide: BorderSide(color: colorScheme.error),
+            pageBackgroundColor: colorScheme.surface,
+            fillColor: colorScheme.surfaceContainerHighest,
           ),
-          focusedErrorBorder: OutlineInputBorder(
+          focusedErrorBorder: CleanGapOutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadii.chip),
             borderSide: BorderSide(color: colorScheme.error, width: 1.5),
+            pageBackgroundColor: colorScheme.surface,
+            fillColor: colorScheme.surfaceContainerHighest,
           ),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
@@ -331,28 +343,40 @@ class SimpleTimetableApp extends ConsumerWidget {
           elevation: 8,
         ),
         // WB_SPEC_230 第 5.1 节：深色输入框与浅色同 token、同圆角、同描边宽度。
+        // WB_SPEC_231 第 11 节：深色同样换 CleanGapOutlineInputBorder，
+        // 衬底两色取深色方案（留空段不画线，字仍可读）。
         inputDecorationTheme: InputDecorationThemeData(
           filled: true,
           fillColor: darkColorScheme.surfaceContainerHighest,
-          border: OutlineInputBorder(
+          border: CleanGapOutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadii.chip),
             borderSide: BorderSide(color: darkColorScheme.outlineVariant),
+            pageBackgroundColor: darkColorScheme.surface,
+            fillColor: darkColorScheme.surfaceContainerHighest,
           ),
-          enabledBorder: OutlineInputBorder(
+          enabledBorder: CleanGapOutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadii.chip),
             borderSide: BorderSide(color: darkColorScheme.outlineVariant),
+            pageBackgroundColor: darkColorScheme.surface,
+            fillColor: darkColorScheme.surfaceContainerHighest,
           ),
-          focusedBorder: OutlineInputBorder(
+          focusedBorder: CleanGapOutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadii.chip),
             borderSide: BorderSide(color: darkColorScheme.primary, width: 1.5),
+            pageBackgroundColor: darkColorScheme.surface,
+            fillColor: darkColorScheme.surfaceContainerHighest,
           ),
-          errorBorder: OutlineInputBorder(
+          errorBorder: CleanGapOutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadii.chip),
             borderSide: BorderSide(color: darkColorScheme.error),
+            pageBackgroundColor: darkColorScheme.surface,
+            fillColor: darkColorScheme.surfaceContainerHighest,
           ),
-          focusedErrorBorder: OutlineInputBorder(
+          focusedErrorBorder: CleanGapOutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadii.chip),
             borderSide: BorderSide(color: darkColorScheme.error, width: 1.5),
+            pageBackgroundColor: darkColorScheme.surface,
+            fillColor: darkColorScheme.surfaceContainerHighest,
           ),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
@@ -406,7 +430,7 @@ class SimpleTimetableApp extends ConsumerWidget {
         '/notes': (context) => const NotesPage(),
         // 课表工具（2.0.2：课程搜索 / 空闲时段 / 考试倒计时 / 导出课表图片 / 日期备注）
         '/course-tools': (context) => const CourseToolsPage(),
-        // 权限（通知 / 精确闹钟 / 电池优化，首次启动会引导一次）
+        // 权限（通知 / 精确闹钟 / 电池优化：状态与补开入口，用到时才申请）
         '/permissions': (context) => const PermissionPage(),
         // 数据管理页（1.2.4：占用/备份快捷入口/恢复出厂）
         '/data-manage': (context) => const DataManagePage(),
@@ -506,21 +530,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     // 放在 initState 里会和课表首帧渲染抢 isolate；首帧后并发触发，课表先出来。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_runStartupTasks());
-      // 首次启动的权限引导（只走一次）；它是几个对话框，不占启动的关键路径
-      unawaited(_guidePermissionsOnce());
     });
-  }
-
-  /// 首次启动依次引导三项权限（通知 → 精确闹钟 → 电池优化）。
-  ///
-  /// 标记在引导开始前就写进 app_settings（见 PermissionService.markGuided），
-  /// 所以每一步都能「跳过」、跳过与拒绝都不再自动弹。失败只打日志，不打扰启动。
-  Future<void> _guidePermissionsOnce() async {
-    try {
-      await runPermissionGuide(context);
-    } catch (e) {
-      debugPrint('权限引导失败：$e');
-    }
   }
 
   /// 首帧后的启动联动：四项互不依赖并发跑完，常驻通知顺序殿后（见下方 C5 注）。

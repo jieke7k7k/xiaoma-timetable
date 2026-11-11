@@ -433,7 +433,17 @@ class _ImportPageState extends ConsumerState<ImportPage> {
       MaterialPageRoute(builder: (_) => WebImportPage(semesterId: target.id!)),
     );
     if (result == null || !context.mounted) return;
-    _openReview(context, result.courses, result.errors, target: target);
+    // WB_SPEC_231 第 5.4 节：抓取成功不再静默跳走，核对页顶部常驻汇总横幅
+    // 「已从当前页面识别出 N 门课程（共 M 个排课节次）」；其它导入来源不传
+    final sections = WebScheduleParser.countWeeklySections(result.courses);
+    _openReview(
+      context,
+      result.courses,
+      result.errors,
+      target: target,
+      summary: '已从当前页面识别出 ${result.courses.length} 门课程'
+          '（共 $sections 个排课节次）',
+    );
   }
 
   void _openReview(
@@ -442,6 +452,7 @@ class _ImportPageState extends ConsumerState<ImportPage> {
     List<String> errors, {
     required Semester target,
     List<IcsTimeBlock> timeBlocks = const [],
+    String? summary,
   }) {
     // 先提示解析失败条目
     if (errors.isNotEmpty && context.mounted) {
@@ -459,6 +470,7 @@ class _ImportPageState extends ConsumerState<ImportPage> {
           drafts: courses,
           targetSemester: target,
           timeBlocks: timeBlocks,
+          webImportSummary: summary,
         ),
       ),
     );

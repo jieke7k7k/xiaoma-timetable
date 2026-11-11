@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-import '../database/dao.dart';
 import 'notification_service.dart';
 
 /// 权限收敛服务：通知 / 精确闹钟 / 电池优化白名单（**全 App 唯一入口**）
@@ -10,8 +9,11 @@ import 'notification_service.dart';
 /// 用户从没被完整告知过要开哪些。本服务把它们收成一处：
 /// - [status] 一次查三项（供设置页显示「已授权 / 未授权」）；
 /// - [requestNotification] 走插件 API 直接弹系统授权框；
-/// - [openExactAlarmSettings] / [openBatterySettings] 跳对应的系统页面；
-/// - [shouldGuide] / [markGuided] 管「首次启动引导只出现一次」的标记。
+/// - [openExactAlarmSettings] / [openBatterySettings] 跳对应的系统页面。
+///
+/// WB_SPEC_231 第 4.1 节起不再有「首次启动三连弹」：引导函数 `runPermissionGuide`
+/// 与它用到的 `permissions_asked_v1` 标记（`shouldGuide` / `markGuided`）一并删除，
+/// 权限改成**用到时才申请**（开提醒 / 开常驻通知时检查，见设置页提醒子页）。
 ///
 /// 原生侧只补了一个 MethodChannel（MainActivity 的 device 通道）用来**查状态**
 /// 与跳「应用详情页 / 电池优化设置页」；申请通知与精确闹钟仍复用
@@ -24,9 +26,6 @@ class PermissionService {
   /// 测试替身：设置后 [status] 直接用它返回，不走平台通道。
   /// 测试结束要置回 null（见 settings_page_test 的 tearDown）。
   static Future<PermissionSnapshot> Function()? debugStatusOverride;
-
-  /// 首次引导的标记键（app_settings）。值 '1' 表示这套引导已经走过。
-  static const String askedKey = 'permissions_asked_v1';
 
   /// 原生「设备设置」通道（MainActivity 里注册）
   static const MethodChannel _channel =
@@ -104,27 +103,6 @@ class PermissionService {
       // 通道没实现：静默失败，页面层已经给了中文说明
     } on PlatformException catch (e) {
       debugPrint('跳转系统设置失败（$method）：${e.message}');
-    }
-  }
-
-  // ---------- 首次引导标记 ----------
-
-  /// 这套引导还没走过？
-  Future<bool> shouldGuide() async {
-    try {
-      return await Dao.instance.getSetting(askedKey) != '1';
-    } catch (_) {
-      // 读库失败时不挡路：宁可再引导一次，也不要因为异常卡住启动
-      return true;
-    }
-  }
-
-  /// 标记「引导已走过」。在引导**开始前**调用——中途退出/杀 App 也不该反复打扰。
-  Future<void> markGuided() async {
-    try {
-      await Dao.instance.setSetting(askedKey, '1');
-    } catch (_) {
-      // 标记写不进去最多是下次再问一次，不影响任何功能
     }
   }
 }
