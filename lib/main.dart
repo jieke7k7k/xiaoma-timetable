@@ -181,28 +181,32 @@ class _FriendlyErrorWidget extends StatelessWidget {
   }
 }
 
-/// 输入框主题：五态边框都用 CleanGapOutlineInputBorder（WB_SPEC_231 第 11 节），
-/// 抽成一个函数，免得浅色/深色各抄 5 段、改衬底参数时漏改某几态（Kimi 复审优化 1）。
+/// 输入框主题：五态边框都用 CleanGapOutlineInputBorder（WB_SPEC_231 第 12.1 节 1B），
+/// 抽成一个函数，免得浅色/深色各抄 5 段、改参数时漏改某几态（Kimi 复审优化 1）。
 InputDecorationThemeData _gapInputDecorationTheme(ColorScheme scheme) {
   CleanGapOutlineInputBorder border(Color color, {double width = 1.0}) =>
       CleanGapOutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadii.chip),
         borderSide: BorderSide(color: color, width: width),
-        pageBackgroundColor: scheme.surface,
         fillColor: scheme.surfaceContainerHighest,
       );
   return InputDecorationThemeData(
-    filled: true,
+    // 1B：原生填充停掉（filled: false），框内填充改由边框自画——两边都画会叠出
+    // 双层填充色差，正是真机上「边框穿过文字」的残留
+    filled: false,
+    // 原生填充不再生效，这里保留同值只作口径记录（边框自画用的是同一个 token）
     fillColor: scheme.surfaceContainerHighest,
     border: border(scheme.outlineVariant),
     enabledBorder: border(scheme.outlineVariant),
     focusedBorder: border(scheme.primary, width: 1.5),
     errorBorder: border(scheme.error),
     focusedErrorBorder: border(scheme.error, width: 1.5),
-    contentPadding: const EdgeInsets.symmetric(
-      horizontal: 16,
-      vertical: 12,
-    ),
+    // 1B 配套值（Argon 给：上 18 / 下 10 / 左右 14）：框顶在标签浮起时整体下移
+    // 9dp，这两个上下值按设计是让框内文字在**框**里垂直居中的补偿量。
+    // 实测（widget 渲染核对）：Flutter 对 outline 边框把内容恒居中于整个 rect，
+    // 上下 padding 的差值只改框的总高、改不了文字位置，故文字在框内比几何中心
+    // 偏高约 topInset/2（9dp 时约 4.5dp）。值按规格保留，观感交真机复核。
+    contentPadding: const EdgeInsets.fromLTRB(14, 18, 14, 10),
     // 多行框的 label 贴顶，不悬空压在中间
     alignLabelWithHint: true,
   );

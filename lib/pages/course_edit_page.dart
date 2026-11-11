@@ -6,6 +6,7 @@ import '../models/course.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../ui/app_styles.dart';
+import '../utils/color_schemes.dart';
 import '../utils/conflict_detector.dart';
 import '../utils/morandi_palette.dart';
 import '../utils/week_parser.dart';
@@ -21,8 +22,9 @@ import '../widgets/week_picker.dart';
 ///
 /// 一门课在库里是「同学期、同名」的多行，一行一个时段。编辑其中任意一行时：
 /// - 页面列出它的其他时段（「其他时段」区），点一条原地切过去编辑；
-/// - 保存时把 5 个共享字段（课程名/老师/教室/颜色/备注）一次同步到本课全部时段，
-///   时间与周次只改当前这一条（详见 [_buildSiblingsToSync] 与 [CoursesNotifier]）。
+/// - 保存时把名/师/室/注 4 个共享字段同步到本课全部时段，颜色按用户的
+///   「应用到全部 / 仅改本节」选择**按需**同步（第 12.2 节），时间与周次只改当前这一条
+///   （详见 [_buildSiblingsToSync] 与 [CoursesNotifier]）。
 class CourseEditPage extends ConsumerStatefulWidget {
   const CourseEditPage({super.key, this.courseId});
 
@@ -67,6 +69,12 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
 
   /// 正在切换时段（防连点）
   bool _switching = false;
+
+  /// 颜色是否同步到本课全部时段（WB_SPEC_231 第 12.2 节，内联行二选一）
+  ///
+  /// 默认 true（选了颜色就默认整门课一起变）；用户点「仅改本节」置 false。
+  /// 切换时段时随 [_applyCourseToForm] 回到默认态——新时段有它自己的初始颜色。
+  bool _syncColorToAll = true;
 
   /// 只跑一次加载（[didChangeDependencies] 可能被多次调用）
   bool _loadStarted = false;
@@ -163,6 +171,8 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     _examEndTime = course.examEndTime;
     _examPlace = course.examPlace;
     _semesterId = course.semesterId;
+    // 换了时段就等于换了「初始颜色」，颜色同步选择回到默认的「应用到全部」
+    _syncColorToAll = true;
   }
 
   /// 重新拉一份「其他时段」：同学期、同名（用锁死的 [_originalCourseName]）、
@@ -217,6 +227,15 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     if (norm(_examPlace) != norm(b.examPlace)) return true;
     return false;
   }
+
+  /// 本次是否改了颜色（对当前时段的库内原值而言）
+  bool get _colorChanged =>
+      _initialCourse != null && _colorValue != _initialCourse!.colorValue;
+
+  /// 是否展开「颜色同步」内联行（第 12.2 节）：多时段课 + 本次改了颜色
+  ///
+  /// 只有一个时段的课不显示；没改颜色不显示（不打扰用户，也不改变原有行为）。
+  bool get _showColorSyncRow => _siblings.isNotEmpty && _colorChanged;
 
   /// 当前学期里是否已经存在另一门叫 [name] 的课（不含本课现有全部时段）
   bool _hasOtherCourseNamed(String name) {
@@ -323,13 +342,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
         final messenger = ScaffoldMessenger.of(context);
         Navigator.pop(context);
         messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              written >= expected
-                  ? (expected > 1 ? '已同步到本课共 $expected 个时段' : '课程已更新')
-                  : '已保存，但有 ${expected - written} 个时段未同步',
-            ),
-          ),
+          SnackBar(content: Text(_savedToast(written, expected))),
         );
       }
       return true;
@@ -343,12 +356,26 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     }
   }
 
-  /// 把 5 个共享字段（课程名/老师/教室/颜色/备注）铺到每个兄弟时段上。
+  /// 保存成功 Toast 文案（第 12.2 节改法 7）
   ///
-  /// 关键点（规格第 10.3 节）：
+  /// 优先级：有未同步时段 > 「颜色仅应用于当前时段」 > 常规同步/更新文案。
+  /// [_colorChanged] 读的是本次保存前的原值基准，此时仍有效。
+  String _savedToast(int written, int expected) {
+    if (written < expected) return '已保存，但有 ${expected - written} 个时段未同步';
+    if (_colorChanged && !_syncColorToAll) return '已保存（颜色仅应用于当前时段）';
+    return expected > 1 ? '已同步到本课共 $expected 个时段' : '课程已更新';
+  }
+
+  /// 把共享字段（课程名/老师/教室/备注，颜色按需）铺到每个兄弟时段上。
+  ///
+  /// 关键点（规格第 10.3 节 + 第 12.2 节改法 4）：
   /// - 兄弟行以**库里的原对象**为底，只覆盖共享字段——时间/周次/考试日期原样保留；
   /// - 教室/备注异构保护：用户本次没亲手改教室（或备注）时，兄弟时段里本来就
-  ///   不同的那个值保留不动（周二理论课 302、周四实验课 105 不会被一起改成 302）。
+  ///   不同的那个值保留不动（周二理论课 302、周四实验课 105 不会被一起改成 302）；
+  /// - 颜色**按需**同步（第 12.2 节取代第 10.3 节的「无条件同步」）：只有本次真改了
+  ///   颜色、且内联行选了「应用到本课全部」时，兄弟行才换成 [updated] 的新颜色；
+  ///   没改颜色、或选了「仅改本节」时，兄弟行保留自己库里的 colorValue 不动
+  ///   ——否则「只改个老师」会把各时段各自的颜色一起洗掉。
   List<Course> _buildSiblingsToSync(Course updated) {
     final base = _initialCourse;
     if (base == null || _siblings.isEmpty) return const [];
@@ -356,6 +383,8 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     final classroomTouched =
         _classroomController.text.trim() != norm(base.classroom);
     final noteTouched = _noteController.text.trim() != norm(base.note);
+    // 颜色同步判定：本次改过颜色 + 用户选了「应用到本课全部」
+    final syncColor = updated.colorValue != base.colorValue && _syncColorToAll;
     return [
       for (final s in _siblings)
         Course(
@@ -363,7 +392,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
           semesterId: s.semesterId,
           name: updated.name,
           teacher: updated.teacher,
-          colorValue: updated.colorValue,
+          colorValue: syncColor ? updated.colorValue : s.colorValue,
           dayOfWeek: s.dayOfWeek,
           startSection: s.startSection,
           endSection: s.endSection,
@@ -572,6 +601,42 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
         '${weeks.isEmpty ? '' : ' · $weeks 周'}';
   }
 
+  /// 改色内联行（第 12.2 节改法 2）：36dp 高，一行放下「已更改颜色」＋二选一
+  ///
+  /// [total] 是本课时段总数（当前这条 + 兄弟时段）。
+  /// 用 Wrap 兜底：正常宽度下就是一行；320dp 这类窄屏上折成两行而不是报
+  /// RenderFlex 溢出（文案是规格定死的，不能靠缩短文字来凑宽度）。
+  Widget _buildColorSyncRow({required int total}) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      constraints: const BoxConstraints(minHeight: 36),
+      alignment: Alignment.centerLeft,
+      child: Wrap(
+        spacing: AppSpacing.m,
+        runSpacing: AppSpacing.xs,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            '🎨 已更改颜色：',
+            style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+          ),
+          _ColorSyncChoice(
+            key: const ValueKey('color-sync-all'),
+            selected: _syncColorToAll,
+            label: '应用到本课全部 $total 个时段',
+            onTap: () => setState(() => _syncColorToAll = true),
+          ),
+          _ColorSyncChoice(
+            key: const ValueKey('color-sync-current'),
+            selected: !_syncColorToAll,
+            label: '仅改本节',
+            onTap: () => setState(() => _syncColorToAll = false),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -580,6 +645,17 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     final slots = ref.watch(timeSlotsProvider).value ?? [];
     final sectionCount = slots.isNotEmpty ? slots.length : 12;
     final scheme = Theme.of(context).colorScheme;
+    // 界面设置（配色方案 / 色板）只在这里取一次：色块、其他时段小圆点共用同一口径
+    final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
+
+    // 课程存储色 → 屏幕上真正的显示色（先按当前配色方案映射，深色再降饱和），
+    // 与周视图课程卡片、色板圆点保持同一套口径
+    Color displayColor(int storedValue) {
+      final mapped = Color(mapCourseColor(storedValue, ui.colorScheme));
+      return Theme.of(context).brightness == Brightness.dark
+          ? MorandiPalette.desaturateForDark(mapped)
+          : mapped;
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -705,6 +781,23 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Row(
                       children: [
+                        // 该时段当前的实时有效颜色（第 12.2 节改法 5）：改色且选
+                        // 「应用到全部」时跟着变新色，否则是兄弟时段自己的原色
+                        Container(
+                          key: ValueKey('sibling-dot-${s.id}'),
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: displayColor(
+                              (_colorChanged && _syncColorToAll)
+                                  ? _colorValue
+                                  : s.colorValue,
+                            ),
+                            // 直径 10 的小圆点（半径=宽高一半），不属于 AppRadii 圆角体系
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.s),
                         Icon(Icons.schedule_outlined,
                             size: 18, color: scheme.outline),
                         const SizedBox(width: AppSpacing.s),
@@ -729,8 +822,8 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                 ),
               const SizedBox(height: 2),
               Text(
-                '改课程名、老师、教室、颜色、备注会同步到本课全部时段；'
-                '时间与周次只改这一条。',
+                '改课程名、老师、教室、备注会同步到本课全部时段；'
+                '颜色按上方选择同步；时间与周次只改这一条。',
                 style: TextStyle(fontSize: 12, color: scheme.outline),
               ),
               // 下间距 18：保证与下方输入框（浮动标签会向上凸出）之间留足空
@@ -739,8 +832,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
               const SizedBox(height: 20),
             // 课程颜色：显示当前配色方案的颜色，选中后仍存「莫兰迪色位」的
             // 标准值（见 color_schemes.dart 的映射原理），以后切方案能整表换色
-            Text(
-                '课程颜色（${(ref.watch(uiSettingsProvider).value ?? const UiSettings()).colorScheme.name}）',
+            Text('课程颜色（${ui.colorScheme.name}）',
                 style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 8),
             Wrap(
@@ -749,10 +841,8 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
               children: [
                 for (var i = 0; i < MorandiPalette.colors.length; i++)
                   _ColorDot(
-                    color: (ref.watch(uiSettingsProvider).value ??
-                            const UiSettings())
-                        .colorScheme
-                        .colors[i],
+                    key: ValueKey('color-dot-$i'),
+                    color: ui.colorScheme.colors[i],
                     selected: MorandiPalette.colors[i] == _colorValue,
                     onTap: () =>
                         setState(() => _colorValue = MorandiPalette.colors[i]),
@@ -760,11 +850,23 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                 // 课程存了非色板色（历史自定义色）时，把它也列出来保持可选
                 if (!MorandiPalette.colors.contains(_colorValue))
                   _ColorDot(
+                    key: const ValueKey('color-dot-custom'),
                     color: _colorValue,
                     selected: true,
                     onTap: () {},
                   ),
               ],
+            ),
+            // 改色提示行（WB_SPEC_231 第 12.2 节，取代第 10.3 节的「颜色无条件同步」）：
+            // 多时段课改了颜色才在色块正下方展开，不弹窗，二选一决定要不要同步。
+            // 用 AnimatedSize 让展开/收起不突兀；高度归零时不占位。
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              child: _showColorSyncRow
+                  ? _buildColorSyncRow(total: _siblings.length + 1)
+                  : const SizedBox(width: double.infinity, height: 0),
             ),
             const SizedBox(height: 20),
             // 周次选择器
@@ -830,6 +932,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
 /// 色板小圆点
 class _ColorDot extends StatelessWidget {
   const _ColorDot({
+    super.key,
     required this.color,
     required this.selected,
     required this.onTap,
@@ -867,6 +970,53 @@ class _ColorDot extends StatelessWidget {
           ),
         ),
         child: selected ? Icon(Icons.check, size: 18, color: checkColor) : null,
+      ),
+    );
+  }
+}
+
+/// 改色内联行的二选一（WB_SPEC_231 第 12.2 节）：实心圆 = 选中，空心圆 = 未选
+class _ColorSyncChoice extends StatelessWidget {
+  const _ColorSyncChoice({
+    super.key,
+    required this.selected,
+    required this.label,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadii.chip),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              selected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              size: 16,
+              color: selected ? scheme.primary : scheme.outline,
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                color: selected ? scheme.primary : scheme.onSurfaceVariant,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -60,6 +60,10 @@ class _CourseSearchPageState extends ConsumerState<CourseSearchPage> {
           decoration: const InputDecoration(
             hintText: '搜课名 / 老师 / 教室',
             border: InputBorder.none,
+            // WB_SPEC_231 第 12.1 节：全局主题把 filled 改成 false（框内填充改由
+            // CleanGapOutlineInputBorder 自画），这个搜索框用的是 InputBorder.none、
+            // 走不到自画边框，这里显式开着填充，保持改前的底色不变。
+            filled: true,
           ),
           onChanged: (v) => setState(() => _query = v),
         ),

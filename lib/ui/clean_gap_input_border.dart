@@ -1,38 +1,41 @@
 import 'package:flutter/material.dart';
 
-/// 带「双色衬底缺口」的圆角输入框边框（WB_SPEC_231 第 11 节）
+/// 「标签留空」圆角输入框边框（WB_SPEC_231 第 12.1 节，落法 1B）
 ///
-/// 要解决的问题：标签浮到边框上时，横线正好从字中间穿过。标准
-/// [OutlineInputBorder] 在标签浮起时**会**在描边上留缺口（gap），所以缺口本身
-/// 不是问题；问题是 `filled: true` 的填充块顶边也在 y = rect.top 这条线上——
-/// 描边断了，填充色与页面底色的交界线却照旧从字中间划过（规格第 11.2 节核实：
-/// 8 处字段都是标准写法、没有外层 Container 边框，真因是这个填充色交界线）。
+/// 要解决的问题：标签浮到边框上时，横线正好从字中间穿过。第 11 节采纳的落法 A
+/// 是「保留原生缺口 + 补双色衬底把交界线抹平」，2.3.0 真机上仍不合格——
+/// `filled: true` 的填充块顶边与页面底色在 y = rect.top 交汇，描边虽然断了，
+/// 色差拼出的台阶线照样从汉字正中横切（2026-11-11 22:04 用户原话：「边框穿过了」）。
 ///
-/// 修法（规格采纳的落法 A）：在原生缺口基础上补一层双色衬底——
-/// 缺口区域的上半截填页面底色、下半截填框内填充色，分界正好压在边框线所在的
-/// y = rect.top 上。这样字中间那道交界线被衬底「抹平」，两侧描边照旧断开，
-/// 视觉上就是线从字两边断开、字中间干净留空。
+/// 落法 1B（Argon，以代码为准）：不给描边留缺口，而是**把整个框往下让**——
+/// 标签浮起时，填充圆角矩形与完整描边圆角矩形一起下移 `9.0 * gapPercentage`，
+/// 标签于是整个站在完整框顶横线的上方，框顶一笔画完、标签脚底与框顶留出可见间隙。
 ///
-/// 只在全局 `inputDecorationTheme` 里替换，业务页面零改动；其余行为
-/// （圆角、描边色、空态时标签印在框里）全部继承 [OutlineInputBorder] 原生实现。
+/// 具体做法：
+/// - 不调 `super.paint()`：否则原生那条带缺口的边框会被再画一遍；
+/// - 填充由本边框自画（全局主题里 `filled: false` 把原生填充停掉），
+///   避免「原生填充 + 边框自画填充」叠出双层色差；
+/// - 描边画**完整**圆角矩形，不留缺口（缺口由标签浮起的位置自然让开）。
+///
+/// 空态（没聚焦、没内容，标签印在框中间）时 `gapExtent == 0`，`topInset` 归零：
+/// 框与填充都停在原位，外观与改前一致。圆角、描边色、五态共用同一 helper，
+/// 浅色/深色走同一段代码（[fillColor] 取 `scheme.surfaceContainerHighest`）。
 class CleanGapOutlineInputBorder extends OutlineInputBorder {
   const CleanGapOutlineInputBorder({
     super.borderSide,
     super.borderRadius,
     // 汉字方块字更饱满，左右各留 6dp 呼吸空白，不贴首尾汉字
     super.gapPadding = 6.0,
-    required this.pageBackgroundColor,
     required this.fillColor,
   });
 
-  /// 框外的页面底色（衬底上半截用）
-  final Color pageBackgroundColor;
-
-  /// 框内的填充色（衬底下半截用，与 inputDecorationTheme.fillColor 同值）
+  /// 框内填充色（原生填充已由 `filled: false` 停掉，改由本边框自画）
   final Color fillColor;
 
-  /// 衬底半高：浮动标签正文字号约 16，上下各留一点余量盖住字身
-  static const double _backingHalfHeight = 12.0;
+  /// 标签满浮起时整个框（填充 + 描边）下移的距离：`9.0 * gapPercentage`
+  ///
+  /// 规格正文写「下移 8dp」、代码写 9.0，两处不一致，按规格「以代码为准」取 9.0。
+  static const double _topInsetPerGap = 9.0;
 
   @override
   void paint(
@@ -43,30 +46,27 @@ class CleanGapOutlineInputBorder extends OutlineInputBorder {
     double gapPercentage = 0.0,
     TextDirection? textDirection,
   }) {
-    // 先按原生逻辑画描边与填充（缺口由 super 自己让出来）
-    super.paint(
-      canvas,
-      rect,
-      gapStart: gapStart,
-      gapExtent: gapExtent,
-      gapPercentage: gapPercentage,
-      textDirection: textDirection,
+    // 只有标签浮起（有缺口）时才让位；空态 gapExtent == 0，框不动、标签照常印在框中间
+    final floating = gapStart != null && gapExtent > 0.0 && gapPercentage > 0.0;
+    final topInset = floating ? _topInsetPerGap * gapPercentage : 0.0;
+    final boxRect = Rect.fromLTRB(
+      rect.left,
+      rect.top + topInset,
+      rect.right,
+      rect.bottom,
     );
-    if (gapStart == null || gapExtent <= 0.0) return;
-    // 缺口左右再多铺一点，避免描边端点与衬底之间露出 1px 的填充边
-    final left = gapStart - gapPadding;
-    final right = gapStart + gapExtent + gapPadding;
-    final paint = Paint()..style = PaintingStyle.fill;
-    // 上半截：页面底色（与框外一致，做到「这里没有框」）
-    canvas.drawRect(
-      Rect.fromLTRB(left, rect.top - _backingHalfHeight, right, rect.top),
-      paint..color = pageBackgroundColor,
+    final rrect = borderRadius.toRRect(boxRect);
+    // 填充：边框自画（全局 filled: false，原生不再铺一层，杜绝双层填充色差）
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..color = fillColor
+        ..style = PaintingStyle.fill,
     );
-    // 下半截：框内填充色（与框内一致，做到「框内也没多一条线」）
-    canvas.drawRect(
-      Rect.fromLTRB(left, rect.top, right, rect.top + _backingHalfHeight),
-      paint..color = fillColor,
-    );
+    // 描边：完整圆角矩形，一笔画完不留缺口
+    if (borderSide.style != BorderSide.none && borderSide.width > 0) {
+      canvas.drawRRect(rrect, borderSide.toPaint());
+    }
   }
 
   @override
@@ -79,7 +79,7 @@ class CleanGapOutlineInputBorder extends OutlineInputBorder {
       borderSide: borderSide ?? this.borderSide,
       borderRadius: borderRadius ?? this.borderRadius,
       gapPadding: gapPadding ?? this.gapPadding,
-      pageBackgroundColor: pageBackgroundColor,
+      // 换态（focused/error）时填充色不能丢，否则描边一换就露出原生底色
       fillColor: fillColor,
     );
   }
