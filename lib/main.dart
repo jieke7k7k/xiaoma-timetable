@@ -194,18 +194,20 @@ InputDecorationThemeData _gapInputDecorationTheme(ColorScheme scheme) {
     // 1B：原生填充停掉（filled: false），框内填充改由边框自画——两边都画会叠出
     // 双层填充色差，正是真机上「边框穿过文字」的残留
     filled: false,
-    // 原生填充不再生效，这里保留同值只作口径记录（边框自画用的是同一个 token）
+    // 原生填充不再生效，这里保留同值只作口径记录（边框自画用的是同一个 token；
+    // InputDecorator 在 filled: false 时不读这个值，别误以为它还起作用）
     fillColor: scheme.surfaceContainerHighest,
     border: border(scheme.outlineVariant),
     enabledBorder: border(scheme.outlineVariant),
     focusedBorder: border(scheme.primary, width: 1.5),
     errorBorder: border(scheme.error),
     focusedErrorBorder: border(scheme.error, width: 1.5),
-    // 1B 配套值（Argon 给：上 18 / 下 10 / 左右 14）：框顶在标签浮起时整体下移
-    // 9dp，这两个上下值按设计是让框内文字在**框**里垂直居中的补偿量。
-    // 实测（widget 渲染核对）：Flutter 对 outline 边框把内容恒居中于整个 rect，
-    // 上下 padding 的差值只改框的总高、改不了文字位置，故文字在框内比几何中心
-    // 偏高约 topInset/2（9dp 时约 4.5dp）。值按规格保留，观感交真机复核。
+    // 1B 配套值（Argon 给：上 18 / 下 10 / 左右 14），按规格原样保留。
+    // 两点已核实的实测结论，别再按旧直觉调：①浮动标签与框顶的间隙来自框顶
+    // 下移 9dp、标签位置由 SDK 按 floatingY 算出，与 contentPadding.top 无关，
+    // 调 padding 找回间隙是白费功夫；②outline 边框内容恒居中于整个 rect，
+    // 上下 padding 的差值只改框的总高、改不了文字位置，文字在框内比几何中心
+    // 偏高约 topInset/2（9dp 时约 4.5dp），观感交真机复核。
     contentPadding: const EdgeInsets.fromLTRB(14, 18, 14, 10),
     // 多行框的 label 贴顶，不悬空压在中间
     alignLabelWithHint: true,

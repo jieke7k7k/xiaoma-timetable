@@ -7,6 +7,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/main.dart';
 import 'package:xiaoma_timetable/pages/course_edit_page.dart';
+import 'package:xiaoma_timetable/ui/app_styles.dart';
 import 'package:xiaoma_timetable/ui/clean_gap_input_border.dart';
 
 /// WB_SPEC_231 第 12.1 节：输入框标签留空改按 1B。
@@ -55,7 +56,7 @@ void main() {
       expect(gap.fillColor, scheme.surfaceContainerHighest,
           reason: '填充由边框自画，色值与主题同一 token');
       // 圆角、描边宽度沿用 AppRadii.chip / 原生行为
-      expect(gap.borderRadius, BorderRadius.circular(10));
+      expect(gap.borderRadius, BorderRadius.circular(AppRadii.chip));
     }
   }
 
@@ -182,6 +183,7 @@ void main() {
 
     // 只画填充（borderSide 为 none），便于单看「框顶落在哪一行」
     const fillOnly = CleanGapOutlineInputBorder(
+      borderSide: BorderSide.none,
       fillColor: Color(0xFFFF0000),
     );
     // 填充红 + 白描边 2px：用来验「框顶横线在标签缺口处不断」

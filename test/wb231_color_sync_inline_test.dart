@@ -346,6 +346,54 @@ void main() {
     expect(siblingDot(tester, ids[0]), display(colorC));
   });
 
+  // 注：本想在 360dp 真机宽度下直接验「内联行折行不溢出」，实测发现编辑页
+  // 「开始/结束节次」两个下拉框在 360dp 下本身就溢出 24px（基线代码的旧问题，
+  // 与 §12 无关，已记档、未在本轮修），整页 pump 必然报错。改锁结构：内联行
+  // 必须是 Wrap（不是 Row）——Wrap 天生折行不溢出；再断言最小高 36。
+  testWidgets('内联行用 Wrap + 最小高 36（窄屏折行不溢出，自报#5 的兜底）', (tester) async {
+    await tester.runAsync(seedTwoSlots);
+    await openEditor(tester, ids[0]);
+
+    await tapColor(tester, 8);
+    expect(colorRowVisible(), isTrue);
+
+    final wrap = find.ancestor(
+      of: find.textContaining('已更改颜色'),
+      matching: find.byType(Wrap),
+    );
+    expect(wrap, findsOneWidget, reason: '内联行必须是 Wrap，Row 在窄屏会报溢出');
+    final container = tester.widget<Container>(
+      find.ancestor(of: wrap, matching: find.byType(Container)).first,
+    );
+    expect((container.constraints as BoxConstraints?)?.minHeight, 36,
+        reason: '正常宽度下仍是一行 36dp');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('改色后点回原始色：内联行收起，落盘等同未改色', (tester) async {
+    await tester.runAsync(seedTwoSlots);
+    await openEditor(tester, ids[0]);
+
+    await tapColor(tester, 8);
+    expect(colorRowVisible(), isTrue);
+    await tapChoice(tester, 'color-sync-current');
+    // 点回原来的色位（colorA 是第 0 颗）
+    await tapColor(tester, 0);
+    expect(colorRowVisible(), isFalse, reason: '颜色改回原值，等于没改过色');
+
+    await tester.tap(find.text('保存'));
+    await drain(tester);
+
+    final list = await allCourses(tester);
+    expect(byId(list, ids[0]).colorValue, colorA);
+    expect(byId(list, ids[1]).colorValue, colorB);
+    expect(find.text('已同步到本课共 2 个时段'), findsOneWidget);
+
+    await drain(tester, rounds: 4);
+    await tester.pump(const Duration(seconds: 5));
+    await drain(tester, rounds: 2);
+  });
+
   testWidgets('底部文案改成「颜色按上方选择同步」', (tester) async {
     await tester.runAsync(seedTwoSlots);
     await openEditor(tester, ids[0]);
