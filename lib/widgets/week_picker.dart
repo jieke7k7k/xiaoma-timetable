@@ -157,7 +157,12 @@ class _WeekPickerState extends ConsumerState<WeekPicker> {
       });
       _emit();
     } on WeekParseException catch (e) {
-      setState(() => _parseError = e.message);
+      setState(() {
+        _parseError = e.message;
+        // 解析失败也不保留旧锚点：用户已转用文本输入，待配对状态应当复位
+        //（成功路径本来就清锚，失败路径不清会留一个无意义的外圈；Kimi 复审低）
+        _anchorWeek = null;
+      });
     }
   }
 

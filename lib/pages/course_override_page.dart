@@ -244,10 +244,11 @@ class _CourseOverridePageState extends ConsumerState<CourseOverridePage> {
 
     final slots = ref.watch(timeSlotsProvider).value ?? [];
     // 与编辑页同一份节次数据源（WB_SPEC_232 第 5.3 节：三处表单复用同一套构造器）
+    // 作息未读出时回退 13 个空节次，与 DB 种子一致（Kimi 复审低：四处回退值统一为 13）
     final sectionSlots = slots.isNotEmpty
         ? slots
         : [
-            for (var s = 1; s <= 12; s++)
+            for (var s = 1; s <= 13; s++)
               TimeSlot(section: s, startTime: '', endTime: ''),
           ];
     final seg = ref.watch(segmentSettingsProvider).value;

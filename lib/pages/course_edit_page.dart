@@ -729,12 +729,12 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     }
     final slots = ref.watch(timeSlotsProvider).value ?? [];
     // 节次选项的数据源与「在课表上选」的迷你网格共用这一份：
-    // 正常情况就是学期作息表的 13 节；作息还没读出来时退化成 12 个空节次，
-    // 保证下拉里仍有 1–12 可选（与改前 DropdownButtonFormField 的兜底一致）
+    // 正常情况就是学期作息表的 13 节；作息还没读出来时退化成 13 个空节次，
+    // 与 DB 种子一致（草稿弹窗同款回退；Kimi 复审低：四处回退值统一为 13）
     final sectionSlots = slots.isNotEmpty
         ? slots
         : [
-            for (var s = 1; s <= 12; s++)
+            for (var s = 1; s <= 13; s++)
               TimeSlot(section: s, startTime: '', endTime: ''),
           ];
     // 分段点（午休/晚餐）决定节次抽屉里的分隔行插在哪一节之后

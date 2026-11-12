@@ -130,7 +130,8 @@ class _SelectTimeSheetState extends ConsumerState<_SelectTimeSheet> {
     final totalWeeks = semester?.totalWeeks ?? 20;
 
     final sorted = [...slots]..sort((a, b) => a.section.compareTo(b.section));
-    final sectionCount = sorted.isNotEmpty ? sorted.last.section : 12;
+    // 作息未读出时回退 13 节，与 DB 种子一致（Kimi 复审低：四处回退值统一为 13）
+    final sectionCount = sorted.isNotEmpty ? sorted.last.section : 13;
     final slotMap = {for (final s in sorted) s.section: s};
 
     // 分隔带：午休/晚餐按分段点落在第 X 节之后（弹层只做时间参考，

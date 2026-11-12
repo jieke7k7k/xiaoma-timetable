@@ -177,6 +177,22 @@ void main() {
     expect(lastWeeks, [5]);
   });
 
+  testWidgets('文本解析失败时待配对锚点也被清掉（Kimi 复审低）', (tester) async {
+    await pumpPicker(tester);
+    await tapWeek(tester, 3); // 立锚点
+    expect(find.byKey(const ValueKey('week-anchor-3')), findsOneWidget);
+    await tester.enterText(find.byType(TextField), '瞎写一通');
+    await tester.tap(find.byIcon(Icons.auto_fix_high));
+    await tester.pump();
+    // 解析失败：红字提示出现，锚点复位；已选的 3 不动
+    expect(find.byKey(const ValueKey('week-anchor-3')), findsNothing);
+    expect(lastWeeks, [3]);
+    // 复位后点 5 是「第一下」：只把 5 加入选择、不连成区间——
+    // 应得 [3, 5]，若锚点没清掉会连成 [3, 4, 5]
+    await tapWeek(tester, 5);
+    expect(lastWeeks, [3, 5]);
+  });
+
   testWidgets('文本框手输「1-8, 10-16单周」解析后芯片与文本一致', (tester) async {
     await pumpPicker(tester);
     await tester.enterText(find.byType(TextField), '1-8, 10-16单周');
