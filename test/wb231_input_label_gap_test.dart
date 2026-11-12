@@ -100,9 +100,18 @@ void main() {
           child: MaterialApp(home: CourseEditPage()),
         ),
       );
-      await Future<void>.delayed(const Duration(milliseconds: 300));
     });
-    await tester.pump(const Duration(milliseconds: 200));
+    // 新建页 _load 会先等课程列表就绪（§12 第二批补测 1 的修复）：
+    // 固定 300ms＋200ms 的抽水不够把排队的库查询都跑完，sqflite 的
+    // 10 秒锁警告定时器会在 teardown 时还挂着（“A Timer is still pending”）；
+    // 按轮次抽干、再 pumpAndSettle，等页面真正静止再断言。
+    for (var i = 0; i < 5; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 80)),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpAndSettle();
 
     // 5 个 TextField（课程名 / 老师 / 教室 / 周次文本 / 备注）都没有手写边框
     final fields = tester.widgetList<TextField>(find.byType(TextField)).toList();

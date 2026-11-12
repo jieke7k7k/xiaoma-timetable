@@ -152,6 +152,16 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
         _colorValue = presetColor;
       }
     }
+    // 新建页也要等课程列表就绪再出表单：撞色占用表第一次 build 就读它，
+    // 不等的话占用小圆点要等用户点一下才出现（复审补测 1 咬住的真问题）。
+    // 编辑页前面已经 await 过，走到这里 future 早已完成，不会多等。
+    if (_editId == null) {
+      try {
+        await ref.read(coursesProvider.future);
+      } catch (_) {
+        // 列表读失败不拦新建，撞色提示本次没有而已
+      }
+    }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -253,10 +263,6 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     return map.map((k, v) => MapEntry(k, v.toList()..sort()));
   }
 
-  /// 当前选中的颜色被别的课占用的课程名（空 = 没撞色）
-  List<String> get _collisionNames =>
-      _usedColorsByOtherCourses[_colorValue] ?? const [];
-
   String _collisionHintText(List<String> names) {
     if (names.length == 1) return '该颜色已用于『${names.first}』，仍可继续使用';
     return '该颜色已用于『${names.first}』等 ${names.length} 门课程，仍可继续使用';
@@ -265,7 +271,9 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
   /// 撞色提示行（§12 第二批）：选中颜色已被别的课占用时出现，不弹窗、不拦保存。
   ///
   /// 与多时段同步行共用色块下方的 AnimatedSize 容器；点到空闲色块时自动收起。
-  Widget _buildColorCollisionHint() {
+  /// [names] 是占用当前选中颜色的课程名（调用方 build 里一次算好传进来，
+  /// 复审低：此前每颗色块都重算一遍占用表）。
+  Widget _buildColorCollisionHint(List<String> names) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
@@ -281,7 +289,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              _collisionHintText(_collisionNames),
+              _collisionHintText(names),
               style: TextStyle(
                 fontSize: 12,
                 color: scheme.onSurfaceVariant,
@@ -704,6 +712,10 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     final scheme = Theme.of(context).colorScheme;
     // 界面设置（配色方案 / 色板）只在这里取一次：色块、其他时段小圆点共用同一口径
     final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
+    // 撞色占用表每 build 只算一次：色板循环、提示行共用同一份（复审低）
+    final usedColors = _usedColorsByOtherCourses;
+    // 当前选中的颜色被别的课占用的课程名（空 = 没撞色）
+    final collisionNames = usedColors[_colorValue] ?? const <String>[];
 
     // 课程存储色 → 屏幕上真正的显示色（先按当前配色方案映射，深色再降饱和），
     // 与周视图课程卡片、色板圆点保持同一套口径
@@ -908,9 +920,9 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                     color: ui.colorScheme.colors[i],
                     selected: MorandiPalette.colors[i] == _colorValue,
                     // §12 第二批：已被别的课占用的色块右下角带 4dp 小圆点，点前就看得见
-                    occupied: (_usedColorsByOtherCourses[MorandiPalette.colors[i]]
-                            ?? const [])
-                        .isNotEmpty,
+                    occupied:
+                        (usedColors[MorandiPalette.colors[i]] ?? const [])
+                            .isNotEmpty,
                     onTap: () =>
                         setState(() => _colorValue = MorandiPalette.colors[i]),
                   ),
@@ -933,16 +945,16 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeOut,
               alignment: Alignment.topCenter,
-              child: (_showColorSyncRow || _collisionNames.isNotEmpty)
+              child: (_showColorSyncRow || collisionNames.isNotEmpty)
                   ? Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (_collisionNames.isNotEmpty)
+                        if (collisionNames.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 8),
-                            child: _buildColorCollisionHint(),
+                            child: _buildColorCollisionHint(collisionNames),
                           ),
-                        if (_collisionNames.isNotEmpty && _showColorSyncRow)
+                        if (collisionNames.isNotEmpty && _showColorSyncRow)
                           const SizedBox(height: 8),
                         if (_showColorSyncRow)
                           _buildColorSyncRow(total: _siblings.length + 1),
@@ -1026,6 +1038,8 @@ class _ColorDot extends StatelessWidget {
 
   /// 该颜色已被本学期别的课占用（§12 第二批）：未选中时右下角带 4dp 小圆点；
   /// 选中时圆点藏起来（中央是对勾，占用信息由色块下方的提示行说）。
+  /// 位置 right:5/bottom:5（复审低：right:4 时圆点外角约 1dp 越出正圆边界；
+  /// 5 时圆心距 15.56dp＋圆角半径 2dp＝17.56dp＜18dp，完全落在圆内）。
   final bool occupied;
 
   final VoidCallback onTap;
@@ -1064,8 +1078,8 @@ class _ColorDot extends StatelessWidget {
           ),
           if (occupied && !selected)
             Positioned(
-              right: 4,
-              bottom: 4,
+              right: 5,
+              bottom: 5,
               child: Container(
                 key: const ValueKey('color-occupied-dot'),
                 width: 4,

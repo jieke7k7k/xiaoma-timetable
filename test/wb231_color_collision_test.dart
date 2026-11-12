@@ -103,6 +103,33 @@ void main() {
     await drain(tester);
   }
 
+  /// 打开新建页（无 courseId）：不带路由参数，走新建分支
+  Future<void> openNewEditor(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1200, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final navKey = GlobalKey<NavigatorState>();
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            navigatorKey: navKey,
+            home: const Scaffold(body: Text('HOME_PAGE')),
+          ),
+        ),
+      );
+    });
+    await drain(tester, rounds: 2);
+    await tester.runAsync(() async {
+      navKey.currentState!.push(
+        MaterialPageRoute<void>(
+          builder: (_) => const CourseEditPage(),
+        ),
+      );
+    });
+    await drain(tester);
+  }
+
   Future<void> tapColor(WidgetTester tester, int index) async {
     await tester.tap(find.byKey(ValueKey('color-dot-$index')));
     await tester.pumpAndSettle();
@@ -231,6 +258,62 @@ void main() {
     );
     expect(list!.firstWhere((c) => c.id == pharma).colorValue, colorC);
     expect(find.text('课程已更新'), findsOneWidget, reason: '单时段课保存成功说「课程已更新」');
+
+    await drain(tester, rounds: 4);
+    await tester.pump(const Duration(seconds: 5));
+    await drain(tester, rounds: 2);
+  });
+
+  testWidgets('新建课程：全表都算别的课，点被占色照样出提示（复审低·补测 1）', (tester) async {
+    await tester.runAsync(
+      () => Dao.instance.insertCourse(
+        course(name: '高等数学', day: 3, start: 1, end: 2, colorValue: colorC),
+      ),
+    );
+    await openNewEditor(tester);
+
+    // 新建页没有本课时段：被占的第 8 颗进页面就有小圆点
+    expect(hasOccupiedDot(tester, 8), isTrue, reason: '新建时全表课程都算别的课');
+    await tapColor(tester, 8);
+    expect(find.text('该颜色已用于『高等数学』，仍可继续使用'), findsOneWidget);
+  });
+
+  testWidgets('多时段课改色撞色：提示行和同步行同时出现，保存后两时段一起换色（复审低·补测 2）',
+      (tester) async {
+    final a = await tester.runAsync(
+      () => Dao.instance.insertCourse(
+        course(name: '药理学', day: 2, start: 1, end: 2, colorValue: colorA),
+      ),
+    );
+    final b = await tester.runAsync(
+      () => Dao.instance.insertCourse(
+        course(name: '药理学', day: 4, start: 3, end: 4, colorValue: colorB),
+      ),
+    );
+    await tester.runAsync(
+      () => Dao.instance.insertCourse(
+        course(name: '高等数学', day: 3, start: 1, end: 2, colorValue: colorC),
+      ),
+    );
+    await openEditor(tester, a!);
+
+    await tapColor(tester, 8);
+    // 两行共存：撞色提示行在上、同步行在下，中间隔 8dp
+    expect(find.text('该颜色已用于『高等数学』，仍可继续使用'), findsOneWidget);
+    expect(find.textContaining('已更改颜色'), findsOneWidget);
+    expect(find.text('应用到本课全部 2 个时段'), findsOneWidget);
+    expect(tester.takeException(), isNull, reason: '两行叠加不能溢出');
+
+    await tester.tap(find.text('保存'));
+    await drain(tester);
+
+    final list = await tester.runAsync<List<Course>>(
+      () => Dao.instance.getCoursesBySemester(1),
+    );
+    expect(list!.firstWhere((c) => c.id == a).colorValue, colorC);
+    expect(list.firstWhere((c) => c.id == b).colorValue, colorC,
+        reason: '默认应用到全部：兄弟时段一起换成撞色');
+    expect(find.text('已同步到本课共 2 个时段'), findsOneWidget);
 
     await drain(tester, rounds: 4);
     await tester.pump(const Duration(seconds: 5));
