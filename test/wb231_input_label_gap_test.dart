@@ -123,14 +123,17 @@ void main() {
       final label = f.decoration?.labelText;
       if (label != null) textLabels.add(label);
     }
-    // 3 个 DropdownButtonFormField（星期 / 开始节次 / 结束节次）同样没有手写边框
-    final dropdowns = tester
-        .widgetList<DropdownButtonFormField<int>>(
-          find.byType(DropdownButtonFormField<int>),
-        )
+    // WB_SPEC_232 第 5 节：三个下拉换成统一选择框 AppSelectField，
+    // 它们内部是 InputDecorator（不再是 DropdownButtonFormField），
+    // 同样不许手写边框——外观全部继承全局 InputDecorationTheme（本条 231 口径不变）
+    // 只看三个选择框自己的 InputDecorator（TextField 内部也有 InputDecorator）
+    const selectLabels = {'星期', '开始节次', '结束节次'};
+    final decorators = tester
+        .widgetList<InputDecorator>(find.byType(InputDecorator))
+        .where((d) => selectLabels.contains(d.decoration.labelText))
         .toList();
-    expect(dropdowns.length, 3);
-    for (final d in dropdowns) {
+    expect(decorators.length, 3);
+    for (final d in decorators) {
       expect(d.decoration.border, isNull);
       expect(d.decoration.enabledBorder, isNull);
       expect(d.decoration.focusedBorder, isNull);

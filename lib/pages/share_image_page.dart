@@ -53,7 +53,8 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
             mimeType: 'image/png',
           ),
         ],
-        text: '我的课表（第 $week 周）· 小马课表',
+        // WB_SPEC_232 第 4 节：分享文案不再带「· 小马课表」
+        text: '我的课表（第 $week 周）',
       ));
     } catch (e) {
       if (mounted) {
@@ -231,6 +232,9 @@ class _ExportSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           // 标题区（紧凑一行 + 日期范围）
+          //
+          // WB_SPEC_232 第 4 节：右上角「小马课表」水印已删，标题独占整行；
+          // Expanded 保留（标题仍可占满宽度、不与右侧挤在一起），不留占位空块。
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 2),
             child: Row(
@@ -241,8 +245,6 @@ class _ExportSheet extends StatelessWidget {
                       style: const TextStyle(
                           fontSize: 17, fontWeight: FontWeight.bold)),
                 ),
-                Text('小马课表',
-                    style: TextStyle(fontSize: 11, color: scheme.outline)),
               ],
             ),
           ),
@@ -464,12 +466,10 @@ class _ExportSheet extends StatelessWidget {
               ],
             ),
           ),
-          // 页脚
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text('由小马课表生成 · 无广告课表',
-                style: TextStyle(fontSize: 10, color: scheme.outline)),
-          ),
+          // WB_SPEC_232 第 4 节：页脚「由小马课表生成 · 无广告课表」整块删除。
+          // 页脚原来是网格下唯一的留白来源，删掉后在外层容器补等量底部内边距
+          // ——原页脚的外层内边距是 8dp，这里保留同一档，网格不贴图片下边缘。
+          const SizedBox(height: 8),
         ],
       ),
     );

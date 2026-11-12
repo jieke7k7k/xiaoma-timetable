@@ -7,6 +7,7 @@ import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
 import 'package:xiaoma_timetable/pages/settings_sections.dart';
 import 'package:xiaoma_timetable/ui/app_choice_chip.dart';
+import 'package:xiaoma_timetable/ui/app_select_field.dart';
 import 'package:xiaoma_timetable/utils/color_schemes.dart';
 import 'package:xiaoma_timetable/widgets/app_dialog.dart';
 
@@ -393,10 +394,12 @@ void main() {
       expect(find.text('同步应用推荐界面主题色'), findsOneWidget);
       expect(find.textContaining('顺带应用推荐主题色'), findsNothing);
       expect(y(tester, '同步应用推荐界面主题色'), lessThan(g2));
-      // 课程配色下拉此时共 10 套（方案集合本身在 color_schemes_test 逐字校验）；
-      // 外观页仍能找到课程配色下拉与显示字体下拉两个 DropdownButtonFormField。
+      // 课程配色此时共 10 套（方案集合本身在 color_schemes_test 逐字校验）；
+      // WB_SPEC_232 第 5 节：两处下拉改成 56dp 标准设置行（点开统一底部抽屉），
+      // 外观页仍能找到「课程配色」「显示字体」两行，且不再有原生下拉。
       expect(kCourseColorSchemes.length, 10);
-      expect(find.byType(DropdownButtonFormField<String>), findsNWidgets(2));
+      expect(find.byType(AppSelectSettingRow<String>), findsNWidgets(2));
+      expect(find.byType(DropdownButtonFormField<String>), findsNothing);
     });
 
     testWidgets('节次时间设置 / 立即刷新桌面小部件 / 部件状态 已移出外观页', (tester) async {

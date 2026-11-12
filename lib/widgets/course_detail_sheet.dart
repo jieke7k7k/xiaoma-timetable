@@ -137,45 +137,79 @@ class CourseDetailSheet extends ConsumerWidget {
                   : course.note!,
             ),
             const SizedBox(height: 16),
-            // 同名课程快捷录入：一周多节 / 实验课不用重复填名称老师颜色
+            // WB_SPEC_232 第 2 节：三个入口同级并排一行（删除 | 新增时段 | 编辑）。
+            // 删除 flex 3 放最左，远离右手拇指热区防误触；编辑 flex 4 放最右黄金位；
+            // 统一 44dp 高、chip 圆角、10dp 间距，三个按钮都显式收窄水平内边距，
+            // 否则原生 16–24dp 内边距会在 360dp 窄屏把「新增时段」挤成省略号。
             SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.pop(context); // 先关弹窗
-                  Navigator.pushNamed(context, '/course-edit', arguments: {
-                    'name': course.name,
-                    'teacher': course.teacher,
-                    'colorValue': course.colorValue,
-                  });
-                },
-                icon: const Icon(Icons.add),
-                label: const Text('新增本课其他时段'),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context); // 先关弹窗
-                    Navigator.pushNamed(context, '/course-edit',
-                        arguments: course.id);
-                  },
-                  icon: const Icon(Icons.edit_outlined),
-                  label: const Text('编辑'),
-                ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: () => _confirmDelete(context, ref),
-                  icon: const Icon(Icons.delete_outline),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Theme.of(context).colorScheme.error,
+              height: 44,
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: _DetailAction(
+                      icon: Icons.delete_outline,
+                      label: '删除',
+                      background: Theme.of(context)
+                          .colorScheme
+                          .error
+                          .withValues(
+                            alpha: Theme.of(context).brightness ==
+                                    Brightness.dark
+                                ? 0.18
+                                : 0.10,
+                          ),
+                      foreground: Theme.of(context).colorScheme.error,
+                      onPressed: () => _confirmDelete(context, ref),
+                    ),
                   ),
-                  label: const Text('删除'),
-                ),
-              ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 4,
+                    child: _DetailAction(
+                      icon: Icons.add,
+                      label: '新增时段',
+                      background: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest
+                          .withValues(
+                            alpha: Theme.of(context).brightness ==
+                                    Brightness.dark
+                                ? 0.4
+                                : 0.6,
+                          ),
+                      foreground: Theme.of(context).colorScheme.onSurface,
+                      border: BorderSide(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                        width: 1.0,
+                      ),
+                      onPressed: () {
+                        Navigator.pop(context); // 先关弹窗
+                        Navigator.pushNamed(context, '/course-edit', arguments: {
+                          'name': course.name,
+                          'teacher': course.teacher,
+                          'colorValue': course.colorValue,
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 4,
+                    child: _DetailAction(
+                      icon: Icons.edit_outlined,
+                      label: '编辑',
+                      background: Theme.of(context).colorScheme.primary,
+                      foreground: Theme.of(context).colorScheme.onPrimary,
+                      onPressed: () {
+                        Navigator.pop(context); // 先关弹窗
+                        Navigator.pushNamed(context, '/course-edit',
+                            arguments: course.id);
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -206,6 +240,46 @@ class CourseDetailSheet extends ConsumerWidget {
             .showSnackBar(SnackBar(content: Text('删除失败：$e')));
       }
     }
+  }
+}
+
+class _DetailAction extends StatelessWidget {
+  const _DetailAction({
+    required this.icon,
+    required this.label,
+    required this.background,
+    required this.foreground,
+    this.border,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color background;
+  final Color foreground;
+  final BorderSide? border;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        backgroundColor: background,
+        foregroundColor: foreground,
+        // 三个入口统一 44dp 高 + chip 圆角，不再各用默认药丸形与默认内边距
+        minimumSize: const Size(0, 44),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadii.chip),
+          side: border ?? BorderSide.none,
+        ),
+      ),
+      icon: Icon(icon, size: 18),
+      // 窄屏 + 大字体下宁可省略号也不折行（360dp 一行装下三个按钮的硬要求）
+      label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+    );
   }
 }
 

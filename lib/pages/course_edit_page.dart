@@ -3,14 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/course.dart';
+import '../models/time_slot.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
+import '../ui/app_select_field.dart';
 import '../ui/app_styles.dart';
 import '../utils/color_schemes.dart';
 import '../utils/conflict_detector.dart';
 import '../utils/morandi_palette.dart';
 import '../utils/week_parser.dart';
 import '../widgets/app_dialog.dart';
+import '../widgets/select_time_sheet.dart';
 import '../widgets/week_picker.dart';
 
 /// 课程新建/编辑页（阶段二完整版，WB_SPEC_231 第 10 节：多时段一起编辑）
@@ -210,6 +213,23 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     _classroomController.dispose();
     _noteController.dispose();
     super.dispose();
+  }
+
+  /// 「在课表上选」（WB_SPEC_232 第 6 节）：迷你周视图里点两下定一段，
+  /// 确认后把星期与节次一次性写回三个状态量；下划 / scrim / 返回键关闭 = 取消不写回。
+  Future<void> _pickOnGrid() async {
+    final picked = await showSelectTimeSheet(
+      context: context,
+      dayOfWeek: _dayOfWeek,
+      startSection: _startSection,
+      endSection: _endSection,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _dayOfWeek = picked.dayOfWeek;
+      _startSection = picked.startSection;
+      _endSection = picked.endSection;
+    });
   }
 
   /// 当前表单相对「这条时段在库里的原值」有没有未保存改动
@@ -708,7 +728,17 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final slots = ref.watch(timeSlotsProvider).value ?? [];
-    final sectionCount = slots.isNotEmpty ? slots.length : 12;
+    // 节次选项的数据源与「在课表上选」的迷你网格共用这一份：
+    // 正常情况就是学期作息表的 13 节；作息还没读出来时退化成 12 个空节次，
+    // 保证下拉里仍有 1–12 可选（与改前 DropdownButtonFormField 的兜底一致）
+    final sectionSlots = slots.isNotEmpty
+        ? slots
+        : [
+            for (var s = 1; s <= 12; s++)
+              TimeSlot(section: s, startTime: '', endTime: ''),
+          ];
+    // 分段点（午休/晚餐）决定节次抽屉里的分隔行插在哪一节之后
+    final seg = ref.watch(segmentSettingsProvider).value;
     final scheme = Theme.of(context).colorScheme;
     // 界面设置（配色方案 / 色板）只在这里取一次：色块、其他时段小圆点共用同一口径
     final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
@@ -785,55 +815,65 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
               ),
             ),
             const SizedBox(height: 16),
-            // 星期与节次
+            // 组头：左侧组名（与其他时段组头同款 labelLarge）+ 右侧「在课表上选」
+            // 入口（WB_SPEC_232 第 6.1 节）。新建、编辑、新增时段预填三种进入方式共用。
             Row(
               children: [
                 Expanded(
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _dayOfWeek,
-                    decoration: const InputDecoration(labelText: '星期'),
-                    items: [
-                      for (var d = 1; d <= 7; d++)
-                        DropdownMenuItem(
-                          value: d,
-                          child: Text('周${'一二三四五六日'[d - 1]}'),
-                        ),
-                    ],
-                    // DropdownButtonFormField 只在首帧读 initialValue，切换时段后
-                    // 靠 ValueKey 重建来跟上新值（表单其余字段靠控制器刷新）
-                    key: ValueKey('day-$_editId'),
-                    onChanged: (v) =>
-                        setState(() => _dayOfWeek = v ?? _dayOfWeek),
+                  child: Text('星期与节次',
+                      style: Theme.of(context).textTheme.labelLarge),
+                ),
+                TextButton.icon(
+                  onPressed: _pickOnGrid,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  icon: const Icon(Icons.calendar_month_outlined, size: 18),
+                  label: const Text('在课表上选'),
+                ),
+              ],
+            ),
+            // 下方三个框的浮动标签会向上凸出约 7dp，组头下留 10dp 别压住
+            const SizedBox(height: 10),
+            // WB_SPEC_232 第 5 节：原生下拉换成统一选择框（点击弹底部抽屉）。
+            // 新组件是受控的，切换兄弟时段后直接读新状态即可，不再需要 ValueKey 重建。
+            Row(
+              children: [
+                Expanded(
+                  child: AppSelectField<int>(
+                    labelText: '星期',
+                    value: _dayOfWeek,
+                    options: buildWeekdayOptions(),
+                    onChanged: (v) => setState(() => _dayOfWeek = v),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _startSection,
-                    key: ValueKey('start-$_editId'),
-                    decoration: const InputDecoration(labelText: '开始节次'),
-                    items: [
-                      for (var s = 1; s <= sectionCount; s++)
-                        DropdownMenuItem(value: s, child: Text('第 $s 节')),
-                    ],
+                  child: AppSelectField<int>(
+                    labelText: '开始节次',
+                    value: _startSection,
+                    options: buildSectionOptions(slots: sectionSlots, seg: seg),
                     onChanged: (v) => setState(() {
-                      _startSection = v ?? _startSection;
+                      _startSection = v;
                       if (_endSection < _startSection) _endSection = _startSection;
                     }),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _endSection,
-                    key: ValueKey('end-$_editId'),
-                    decoration: const InputDecoration(labelText: '结束节次'),
-                    items: [
-                      for (var s = 1; s <= sectionCount; s++)
-                        DropdownMenuItem(value: s, child: Text('第 $s 节')),
-                    ],
+                  child: AppSelectField<int>(
+                    labelText: '结束节次',
+                    value: _endSection,
+                    // 小于开始节次的那几节置灰（不藏掉，用户才知道为什么点不了）
+                    options: buildSectionOptions(
+                      slots: sectionSlots,
+                      seg: seg,
+                      minSection: _startSection,
+                    ),
                     onChanged: (v) => setState(() {
-                      _endSection = v ?? _endSection;
+                      _endSection = v;
                       if (_startSection > _endSection) _startSection = _endSection;
                     }),
                   ),

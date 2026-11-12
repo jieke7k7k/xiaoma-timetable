@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/course.dart';
 import '../models/course_override.dart';
+import '../models/time_slot.dart';
 import '../utils/override_effect.dart';
 import '../providers/providers.dart';
+import '../ui/app_select_field.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/empty_state.dart';
 
@@ -241,7 +243,14 @@ class _CourseOverridePageState extends ConsumerState<CourseOverridePage> {
     }
 
     final slots = ref.watch(timeSlotsProvider).value ?? [];
-    final sectionCount = slots.isNotEmpty ? slots.length : 12;
+    // 与编辑页同一份节次数据源（WB_SPEC_232 第 5.3 节：三处表单复用同一套构造器）
+    final sectionSlots = slots.isNotEmpty
+        ? slots
+        : [
+            for (var s = 1; s <= 12; s++)
+              TimeSlot(section: s, startTime: '', endTime: ''),
+          ];
+    final seg = ref.watch(segmentSettingsProvider).value;
     final course = _course!;
     final originalRoom = course.classroom?.trim();
 
@@ -300,32 +309,21 @@ class _CourseOverridePageState extends ConsumerState<CourseOverridePage> {
             Row(
               children: [
                 Expanded(
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _dayOfWeek,
-                    decoration: const InputDecoration(labelText: '星期'),
-                    items: [
-                      for (var d = 1; d <= 7; d++)
-                        DropdownMenuItem(
-                          value: d,
-                          child: Text('周${weekdayName(d)}'),
-                        ),
-                    ],
-                    onChanged: (v) =>
-                        setState(() => _dayOfWeek = v ?? _dayOfWeek),
+                  child: AppSelectField<int>(
+                    labelText: '星期',
+                    value: _dayOfWeek,
+                    options: buildWeekdayOptions(),
+                    onChanged: (v) => setState(() => _dayOfWeek = v),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _startSection,
-                    decoration: const InputDecoration(labelText: '开始节次'),
-                    items: [
-                      for (var s = 1; s <= sectionCount; s++)
-                        DropdownMenuItem(
-                            value: s, child: Text('第 $s 节')),
-                    ],
+                  child: AppSelectField<int>(
+                    labelText: '开始节次',
+                    value: _startSection,
+                    options: buildSectionOptions(slots: sectionSlots, seg: seg),
                     onChanged: (v) => setState(() {
-                      _startSection = v ?? _startSection;
+                      _startSection = v;
                       if (_endSection < _startSection) {
                         _endSection = _startSection;
                       }
@@ -334,16 +332,16 @@ class _CourseOverridePageState extends ConsumerState<CourseOverridePage> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _endSection,
-                    decoration: const InputDecoration(labelText: '结束节次'),
-                    items: [
-                      for (var s = 1; s <= sectionCount; s++)
-                        DropdownMenuItem(
-                            value: s, child: Text('第 $s 节')),
-                    ],
+                  child: AppSelectField<int>(
+                    labelText: '结束节次',
+                    value: _endSection,
+                    options: buildSectionOptions(
+                      slots: sectionSlots,
+                      seg: seg,
+                      minSection: _startSection,
+                    ),
                     onChanged: (v) => setState(() {
-                      _endSection = v ?? _endSection;
+                      _endSection = v;
                       if (_startSection > _endSection) {
                         _startSection = _endSection;
                       }

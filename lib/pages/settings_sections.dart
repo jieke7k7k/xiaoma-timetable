@@ -19,6 +19,7 @@ import '../services/ongoing_notice_service.dart';
 import '../services/permission_service.dart';
 import '../services/widget_service.dart';
 import '../ui/app_choice_chip.dart';
+import '../ui/app_select_field.dart';
 import '../ui/app_styles.dart';
 import '../ui/grid_metrics.dart';
 import '../ui/settings_icon_box.dart';
@@ -1248,33 +1249,35 @@ class _AppearanceGroup extends ConsumerWidget {
               ),
             ),
           ),
-        // 3. 课程卡片配色：下拉选方案（此时共 10 套，原样）＋同步按钮
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: DropdownButtonFormField<String>(
-            key: ValueKey('scheme_${ui.colorSchemeId}'),
-            initialValue: ui.colorSchemeId,
-            decoration: const InputDecoration(
-              labelText: '课程配色',
-            ),
-            items: [
-              for (final scheme in kCourseColorSchemes)
-                DropdownMenuItem(
-                  value: scheme.id,
-                  child: Row(
-                    children: [
-                      _ColorStrip(colors: scheme.colors),
-                      const SizedBox(width: 10),
-                      Text(scheme.name),
-                    ],
-                  ),
-                ),
+        // 3. 课程卡片配色：标准 56dp 设置行（WB_SPEC_232 第 5.3 节），
+        // 点开统一底部抽屉；行尾显示当前方案的 4 色条＋方案名，右侧 › 由行组件给
+        AppSelectSettingRow<String>(
+          title: '课程配色',
+          value: ui.colorSchemeId,
+          sheetTitle: '课程配色',
+          options: [
+            for (final scheme in kCourseColorSchemes)
+              AppSelectOption(
+                value: scheme.id,
+                shortLabel: scheme.name,
+                // 抽屉行：左方案名，右 4 颗代表色圆点（选中勾由抽屉统一补）
+                trailing: _ColorDots(colors: scheme.colors.take(4).toList()),
+              ),
+          ],
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _ColorStrip(colors: ui.colorScheme.colors.take(4).toList()),
+              const SizedBox(width: AppSpacing.s),
+              Text(ui.colorScheme.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium),
             ],
-            onChanged: (v) {
-              if (v != null) apply(ui.copyWith(colorSchemeId: v));
-            },
           ),
+          onChanged: (v) => apply(ui.copyWith(colorSchemeId: v)),
         ),
+        const SizedBox(height: AppSpacing.s),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Align(
@@ -1637,6 +1640,32 @@ class _ColorStrip extends StatelessWidget {
             decoration: BoxDecoration(
               color: Color(c),
               borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// 4 颗代表色圆点（WB_SPEC_232 第 5.3 节：课程配色抽屉行右侧）
+class _ColorDots extends StatelessWidget {
+  const _ColorDots({required this.colors});
+
+  final List<int> colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final c in colors)
+          Container(
+            width: 10,
+            height: 10,
+            margin: const EdgeInsets.only(right: 4),
+            decoration: BoxDecoration(
+              color: Color(c),
+              shape: BoxShape.circle,
             ),
           ),
       ],
@@ -2200,33 +2229,52 @@ class _FontSectionState extends State<_FontSection> {
             ),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: DropdownButtonFormField<String>(
-            key: ValueKey('font_${ui.fontId}'),
-            initialValue: ui.fontId,
-            decoration: const InputDecoration(
-              labelText: '显示字体',
+        // 显示字体：标准 56dp 设置行（WB_SPEC_232 第 5.3 节），行尾用该字体本身渲染；
+        // 抽屉里每行也用各自字体渲染，导入的带「（导入）」后缀
+        AppSelectSettingRow<String>(
+          title: '显示字体',
+          value: ui.fontId,
+          sheetTitle: '显示字体',
+          options: [
+            for (final f in builtins)
+              AppSelectOption(
+                value: f.id,
+                shortLabel: f.name,
+                labelStyle: TextStyle(fontFamily: f.family),
+              ),
+            for (final f in imported)
+              AppSelectOption(
+                value: f.id,
+                shortLabel: '${f.name}（导入）',
+                labelStyle: TextStyle(fontFamily: f.family),
+              ),
+          ],
+          // 抽屉底部：导入入口（调现有 _importFont；先关抽屉再选文件，
+          // 否则文件选择器会被抽屉盖住、导入后列表也不刷新）
+          footer: Builder(
+            builder: (sheetContext) => TextButton.icon(
+              icon: const Icon(Icons.add_circle_outline, size: 18),
+              label: const Text('导入本地 TTF/OTF 字体'),
+              onPressed: () {
+                Navigator.pop(sheetContext);
+                _importFont();
+              },
             ),
-            items: [
-              for (final f in builtins)
-                DropdownMenuItem(
-                  value: f.id,
-                  child: Text(f.name, style: TextStyle(fontFamily: f.family)),
-                ),
-              for (final f in imported)
-                DropdownMenuItem(
-                  value: f.id,
-                  child: Text(
-                    '${f.name}（导入）',
-                    style: TextStyle(fontFamily: f.family),
-                  ),
-                ),
-            ],
-            onChanged: (v) {
-              if (v != null) widget.apply(ui.copyWith(fontId: v));
-            },
           ),
+          trailing: Text(
+            selectedImported != null
+                ? '${selectedImported.name}（导入）'
+                : builtins
+                    .firstWhere(
+                      (f) => f.id == ui.fontId,
+                      orElse: () => builtins.first,
+                    )
+                    .name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontFamily: FontsService.resolveFamily(ui)),
+          ),
+          onChanged: (v) => widget.apply(ui.copyWith(fontId: v)),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
