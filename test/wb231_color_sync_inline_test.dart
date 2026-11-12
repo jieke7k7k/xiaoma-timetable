@@ -365,7 +365,7 @@ void main() {
     final container = tester.widget<Container>(
       find.ancestor(of: wrap, matching: find.byType(Container)).first,
     );
-    expect((container.constraints as BoxConstraints?)?.minHeight, 36,
+    expect(container.constraints?.minHeight, 36,
         reason: '正常宽度下仍是一行 36dp');
     expect(tester.takeException(), isNull);
   });

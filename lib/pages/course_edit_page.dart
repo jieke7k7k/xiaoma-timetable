@@ -237,6 +237,63 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
   /// 只有一个时段的课不显示；没改颜色不显示（不打扰用户，也不改变原有行为）。
   bool get _showColorSyncRow => _siblings.isNotEmpty && _colorChanged;
 
+  /// 本学期别的课（不同名；本课自己所有时段除外）占用的颜色 → 课程名列表
+  ///
+  /// 撞色提示用：比对的是莫兰迪基准色值（Course.colorValue），与色板色位一一对应。
+  /// 新建课程时 [_originalCourseName] 为空、[_siblings] 为空，全表课程都算「别的课」。
+  Map<int, List<String>> get _usedColorsByOtherCourses {
+    final all = ref.read(coursesProvider).value ?? const <Course>[];
+    final ownIds = <int?>{_editId, for (final s in _siblings) s.id};
+    final map = <int, Set<String>>{};
+    for (final c in all) {
+      if (ownIds.contains(c.id)) continue;
+      if (c.name.trim() == _originalCourseName.trim()) continue;
+      map.putIfAbsent(c.colorValue, () => <String>{}).add(c.name.trim());
+    }
+    return map.map((k, v) => MapEntry(k, v.toList()..sort()));
+  }
+
+  /// 当前选中的颜色被别的课占用的课程名（空 = 没撞色）
+  List<String> get _collisionNames =>
+      _usedColorsByOtherCourses[_colorValue] ?? const [];
+
+  String _collisionHintText(List<String> names) {
+    if (names.length == 1) return '该颜色已用于『${names.first}』，仍可继续使用';
+    return '该颜色已用于『${names.first}』等 ${names.length} 门课程，仍可继续使用';
+  }
+
+  /// 撞色提示行（§12 第二批）：选中颜色已被别的课占用时出现，不弹窗、不拦保存。
+  ///
+  /// 与多时段同步行共用色块下方的 AnimatedSize 容器；点到空闲色块时自动收起。
+  Widget _buildColorCollisionHint() {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 14, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              _collisionHintText(_collisionNames),
+              style: TextStyle(
+                fontSize: 12,
+                color: scheme.onSurfaceVariant,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 当前学期里是否已经存在另一门叫 [name] 的课（不含本课现有全部时段）
   bool _hasOtherCourseNamed(String name) {
     final all = ref.read(coursesProvider).value ?? const <Course>[];
@@ -682,6 +739,10 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
             // 课程名（必填）
             TextFormField(
               controller: _nameController,
+              // §12 第二批：outline 边框的内容恒居中于整个 rect，框顶下移 9dp 后
+              // 文字比框几何中心偏高约 4.5dp；显式指定 y:0.45 让字沉回框正中央，
+              // 也就不再跟浮起的标签撞在一起（三处单行框都加，见下）
+              textAlignVertical: const TextAlignVertical(y: 0.45),
               decoration: const InputDecoration(
                 labelText: '课程名 *',
                 hintText: '如 药物分析',
@@ -694,6 +755,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
             // 老师
             TextFormField(
               controller: _teacherController,
+              textAlignVertical: const TextAlignVertical(y: 0.45),
               decoration: const InputDecoration(
                 labelText: '老师（可空）',
                 prefixIcon: Icon(Icons.person_outline),
@@ -703,6 +765,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
             // 教室
             TextFormField(
               controller: _classroomController,
+              textAlignVertical: const TextAlignVertical(y: 0.45),
               decoration: const InputDecoration(
                 labelText: '教室（可空）',
                 hintText: '如 16-222',
@@ -844,6 +907,10 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                     key: ValueKey('color-dot-$i'),
                     color: ui.colorScheme.colors[i],
                     selected: MorandiPalette.colors[i] == _colorValue,
+                    // §12 第二批：已被别的课占用的色块右下角带 4dp 小圆点，点前就看得见
+                    occupied: (_usedColorsByOtherCourses[MorandiPalette.colors[i]]
+                            ?? const [])
+                        .isNotEmpty,
                     onTap: () =>
                         setState(() => _colorValue = MorandiPalette.colors[i]),
                   ),
@@ -859,13 +926,28 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
             ),
             // 改色提示行（WB_SPEC_231 第 12.2 节，取代第 10.3 节的「颜色无条件同步」）：
             // 多时段课改了颜色才在色块正下方展开，不弹窗，二选一决定要不要同步。
+            // §12 第二批：撞色提示行共用这个 AnimatedSize 容器（在同步行上方），
+            // 选中颜色被别的课占用就出现，点到空闲色块自动收起；两者都不显示时不占位。
             // 用 AnimatedSize 让展开/收起不突兀；高度归零时不占位。
             AnimatedSize(
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeOut,
               alignment: Alignment.topCenter,
-              child: _showColorSyncRow
-                  ? _buildColorSyncRow(total: _siblings.length + 1)
+              child: (_showColorSyncRow || _collisionNames.isNotEmpty)
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_collisionNames.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: _buildColorCollisionHint(),
+                          ),
+                        if (_collisionNames.isNotEmpty && _showColorSyncRow)
+                          const SizedBox(height: 8),
+                        if (_showColorSyncRow)
+                          _buildColorSyncRow(total: _siblings.length + 1),
+                      ],
+                    )
                   : const SizedBox(width: double.infinity, height: 0),
             ),
             const SizedBox(height: 20),
@@ -935,11 +1017,17 @@ class _ColorDot extends StatelessWidget {
     super.key,
     required this.color,
     required this.selected,
+    this.occupied = false,
     required this.onTap,
   });
 
   final int color;
   final bool selected;
+
+  /// 该颜色已被本学期别的课占用（§12 第二批）：未选中时右下角带 4dp 小圆点；
+  /// 选中时圆点藏起来（中央是对勾，占用信息由色块下方的提示行说）。
+  final bool occupied;
+
   final VoidCallback onTap;
 
   @override
@@ -955,21 +1043,40 @@ class _ColorDot extends StatelessWidget {
         : const Color(MorandiPalette.textColor);
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: dotColor,
-          // 色板圆点是正圆（半径=宽高一半），不属于 AppRadii 圆角体系
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: selected
-                ? Theme.of(context).colorScheme.primary
-                : Colors.transparent,
-            width: 2.5,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: dotColor,
+              // 色板圆点是正圆（半径=宽高一半），不属于 AppRadii 圆角体系
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: selected
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.transparent,
+                width: 2.5,
+              ),
+            ),
+            child: selected ? Icon(Icons.check, size: 18, color: checkColor) : null,
           ),
-        ),
-        child: selected ? Icon(Icons.check, size: 18, color: checkColor) : null,
+          if (occupied && !selected)
+            Positioned(
+              right: 4,
+              bottom: 4,
+              child: Container(
+                key: const ValueKey('color-occupied-dot'),
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

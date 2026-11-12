@@ -1,3 +1,5 @@
+import 'dart:ui' as ui show lerpDouble;
+
 import 'package:flutter/material.dart';
 
 /// 「标签留空」圆角输入框边框（WB_SPEC_231 第 12.1 节，落法 1B）
@@ -74,13 +76,90 @@ class CleanGapOutlineInputBorder extends OutlineInputBorder {
     BorderSide? borderSide,
     BorderRadius? borderRadius,
     double? gapPadding,
+    Color? fillColor,
   }) {
     return CleanGapOutlineInputBorder(
       borderSide: borderSide ?? this.borderSide,
       borderRadius: borderRadius ?? this.borderRadius,
       gapPadding: gapPadding ?? this.gapPadding,
       // 换态（focused/error）时填充色不能丢，否则描边一换就露出原生底色
+      fillColor: fillColor ?? this.fillColor,
+    );
+  }
+
+  /// 焦点切换时 _BorderContainer 用 _InputBorderTween 做插值：begin/end 都是
+  /// CleanGap 时必须全程返回 CleanGap，否则父类 OutlineInputBorder.lerpFrom
+  /// 会退化成普通 OutlineInputBorder（只画描边不画填充），filled:false 又让
+  /// 原生填充停掉，动画约 200ms 内框里是空的、看着先变白再变回来（真机反馈）。
+  ///
+  /// 三个方法缺一不可：lerpFrom/lerpTo 走同类型插值，scale 兜底（其中一端为
+  /// null、或类型不一致时 ShapeBorder.lerp 会调它）。
+  @override
+  CleanGapOutlineInputBorder scale(double t) {
+    return CleanGapOutlineInputBorder(
+      borderSide: borderSide.scale(t),
+      borderRadius: borderRadius * t,
+      gapPadding: gapPadding * t,
       fillColor: fillColor,
     );
   }
+
+  @override
+  ShapeBorder? lerpFrom(ShapeBorder? a, double t) {
+    if (a is CleanGapOutlineInputBorder) {
+      return CleanGapOutlineInputBorder(
+        borderSide: BorderSide.lerp(a.borderSide, borderSide, t),
+        borderRadius: BorderRadius.lerp(a.borderRadius, borderRadius, t)!,
+        gapPadding: ui.lerpDouble(a.gapPadding, gapPadding, t)!,
+        fillColor: Color.lerp(a.fillColor, fillColor, t)!,
+      );
+    }
+    if (a is OutlineInputBorder) {
+      return CleanGapOutlineInputBorder(
+        borderSide: BorderSide.lerp(a.borderSide, borderSide, t),
+        borderRadius: BorderRadius.lerp(a.borderRadius, borderRadius, t)!,
+        gapPadding: ui.lerpDouble(a.gapPadding, gapPadding, t)!,
+        fillColor: Color.lerp(Colors.transparent, fillColor, t)!,
+      );
+    }
+    return super.lerpFrom(a, t);
+  }
+
+  @override
+  ShapeBorder? lerpTo(ShapeBorder? b, double t) {
+    if (b is CleanGapOutlineInputBorder) {
+      return CleanGapOutlineInputBorder(
+        borderSide: BorderSide.lerp(borderSide, b.borderSide, t),
+        borderRadius: BorderRadius.lerp(borderRadius, b.borderRadius, t)!,
+        gapPadding: ui.lerpDouble(gapPadding, b.gapPadding, t)!,
+        fillColor: Color.lerp(fillColor, b.fillColor, t)!,
+      );
+    }
+    if (b is OutlineInputBorder) {
+      return CleanGapOutlineInputBorder(
+        borderSide: BorderSide.lerp(borderSide, b.borderSide, t),
+        borderRadius: BorderRadius.lerp(borderRadius, b.borderRadius, t)!,
+        gapPadding: ui.lerpDouble(gapPadding, b.gapPadding, t)!,
+        fillColor: Color.lerp(fillColor, Colors.transparent, t)!,
+      );
+    }
+    return super.lerpTo(b, t);
+  }
+
+  /// 父类 OutlineInputBorder 的 == 只比 borderSide、borderRadius、gapPadding，
+  /// 不认 fillColor：深浅切换时若只变填充色，_BorderContainer 会误判新旧边框
+  /// 相等而跳过重绘，背景色卡死在旧颜色。这里把 fillColor 算进去。
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other.runtimeType != runtimeType) return false;
+    return other is CleanGapOutlineInputBorder &&
+        other.borderSide == borderSide &&
+        other.borderRadius == borderRadius &&
+        other.gapPadding == gapPadding &&
+        other.fillColor == fillColor;
+  }
+
+  @override
+  int get hashCode => Object.hash(borderSide, borderRadius, gapPadding, fillColor);
 }
