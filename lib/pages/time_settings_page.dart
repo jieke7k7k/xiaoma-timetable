@@ -66,6 +66,9 @@ class TimeSettingsPage extends ConsumerWidget {
                 key: const Key('time_band_morning'),
                 title: '上午',
                 count: morning.length,
+                timeRange: morning.isEmpty
+                    ? null
+                    : '${morning.first.startTime}–${morning.last.endTime}',
                 expanded: initialBand == TimeBand.morning,
                 children: [
                   for (final s in morning) _buildSlotCard(context, ref, s),
@@ -78,6 +81,9 @@ class TimeSettingsPage extends ConsumerWidget {
                 key: const Key('time_band_afternoon'),
                 title: '下午',
                 count: afternoon.length,
+                timeRange: afternoon.isEmpty
+                    ? null
+                    : '${afternoon.first.startTime}–${afternoon.last.endTime}',
                 expanded: initialBand == TimeBand.afternoon,
                 children: [
                   for (final s in afternoon) _buildSlotCard(context, ref, s),
@@ -90,6 +96,9 @@ class TimeSettingsPage extends ConsumerWidget {
                 key: const Key('time_band_evening'),
                 title: '晚上',
                 count: evening.length,
+                timeRange: evening.isEmpty
+                    ? null
+                    : '${evening.first.startTime}–${evening.last.endTime}',
                 expanded: initialBand == TimeBand.evening,
                 tailHint: true,
                 children: [
@@ -201,7 +210,7 @@ class TimeSettingsPage extends ConsumerWidget {
     return SizedBox(
       height: kSettingsSingleRowHeight,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           children: [
             SizedBox(
@@ -260,6 +269,7 @@ class _BandTile extends StatelessWidget {
     required this.expanded,
     required this.children,
     this.tailHint = false,
+    this.timeRange,
   });
 
   final String title;
@@ -267,6 +277,9 @@ class _BandTile extends StatelessWidget {
   final bool expanded;
   final List<Widget> children;
   final bool tailHint;
+
+  /// 段头时段范围（如 08:00–12:00），空段为 null 时不显示（Kimi 228 复审低 4）。
+  final String? timeRange;
 
   @override
   Widget build(BuildContext context) {
@@ -277,7 +290,7 @@ class _BandTile extends StatelessWidget {
           Text(title, style: const TextStyle(fontSize: 16)),
           const SizedBox(width: 8),
           Text(
-            '$count 节',
+            '$count 节${timeRange == null ? '' : ' · $timeRange'}',
             style: TextStyle(
               fontSize: 12,
               color: Theme.of(context).colorScheme.onSurfaceVariant,

@@ -62,7 +62,7 @@ class CardStylePage extends ConsumerWidget {
               ),
               SettingsSwitchRow(
                 title: '显示备注',
-                subtitle: '备注过长时自动省略',
+                subtitle: '备注以小字显示在卡片上',
                 value: ui.showNote,
                 onChanged: (v) => apply(ui.copyWith(showNote: v)),
               ),

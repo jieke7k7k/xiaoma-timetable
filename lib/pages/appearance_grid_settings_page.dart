@@ -35,6 +35,7 @@ class AppearanceGridSettingsPage extends ConsumerWidget {
             children: [
               SettingsSwitchRow(
                 title: '周末无课时自动收起周六日',
+                subtitle: '开启后周末没课时周视图只显示周一到周五，更宽敞',
                 value: autoCollapse,
                 onChanged: (v) => ref
                     .read(autoCollapseWeekendProvider.notifier)
@@ -50,19 +51,20 @@ class AppearanceGridSettingsPage extends ConsumerWidget {
               ),
               SettingsSwitchRow(
                 title: '今天整列边框高亮',
+                subtitle: '给今天这一整天加一圈主题色边框，默认关',
                 value: ui.highlightTodayColumn,
                 onChanged: (v) =>
                     apply(ui.copyWith(highlightTodayColumn: v)),
               ),
               SettingsSwitchRow(
                 title: '节数栏显示时间',
-                subtitle: '左侧节数栏显示每节上下课时间',
+                subtitle: '关掉后左侧只显示节次数字',
                 value: ui.axisShowTime,
                 onChanged: (v) => apply(ui.copyWith(axisShowTime: v)),
               ),
               SettingsSwitchRow(
                 title: '标题显示单双周',
-                subtitle: '标题栏显示当前周是单周还是双周',
+                subtitle: '开时左上角显示「第 X 周 · 单周/双周」，关时只显示「第 X 周」，默认关',
                 value: ui.showWeekParity,
                 onChanged: (v) => apply(ui.copyWith(showWeekParity: v)),
               ),

@@ -244,7 +244,7 @@ void main() {
     expect(find.text('胶囊贴底'), findsNothing);
   });
 
-  testWidgets('提醒子页：ⓘ 说明按钮存在且点开能看到对应弹窗', (tester) async {
+  testWidgets('提醒子页：ⓘ 已按 228 §3.4 移除，说明文案改为行内副标题', (tester) async {
     await tester.runAsync(() async {
       await tester.pumpWidget(
         const ProviderScope(
@@ -256,17 +256,10 @@ void main() {
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(find.byType(AppInfoIconButton), findsWidgets);
-    final reminderTile = find.widgetWithText(SwitchListTile, '上课提醒');
-    expect(reminderTile, findsOneWidget);
-    final reminderInfo = find.descendant(
-      of: reminderTile,
-      matching: find.byType(AppInfoIconButton),
-    );
-    expect(reminderInfo, findsOneWidget);
-    await tester.tap(reminderInfo);
-    await tester.pumpAndSettle();
+    expect(find.byType(AppInfoIconButton), findsNothing);
     expect(find.text('每节课提前提醒，App 被杀后也能准时响铃'), findsOneWidget);
+    expect(find.text('主页顶部显示当前/下一节课状态条，默认关'), findsOneWidget);
+    expect(find.text('通知栏常驻显示今日剩余或明日课程预告'), findsOneWidget);
   });
 
   testWidgets('实时预览：今天列边框随 highlightTodayColumn 开关', (tester) async {

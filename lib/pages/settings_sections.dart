@@ -54,12 +54,6 @@ import '../widgets/empty_state.dart';
 /// 实时预览「今天整列边框」覆盖层的 Key：测试据此断言开关开/关时该层的有无。
 const Key kPreviewTodayHighlightKey = ValueKey('preview_today_highlight');
 
-/// 外观页「切换动效」某个选项的 Key（2026-11-05：三种动效做成开关）。
-///
-/// 测试据此取 ChoiceChip，断言选中态与切换后的持久化。
-Key shellTransitionChipKey(ShellTransitionStyle style) =>
-    ValueKey('shell_transition_${style.id}');
-
 /// 把同一组内连续行用轻量分隔线隔开（与 settings_page 的 Taste 口径一致）。
 ///
 /// WB_SPEC_222：分隔线 thickness 0.5、outlineVariant 20%，对齐标题文字左缘。
@@ -348,10 +342,11 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
                   children: [
                     SwitchListTile(
                       secondary: const SettingsIconBox(icon: Icons.notifications_active_outlined, category: SettingsIconCategory.reminder),
-                      title: const _InfoTitle(
-                        title: '上课提醒',
-                        message: '每节课提前提醒，App 被杀后也能准时响铃',
+                      title: const Text(
+                        '上课提醒',
+                        style: TextStyle(fontWeight: FontWeight.w500),
                       ),
+                      subtitle: const Text('每节课提前提醒，App 被杀后也能准时响铃'),
                       value: s.enabled,
                       onChanged: (v) => _onReminderToggle(v),
                     ),
@@ -386,10 +381,11 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
                   ref.watch(uiSettingsProvider).value ?? const UiSettings();
               return SwitchListTile(
                 secondary: const SettingsIconBox(icon: Icons.campaign_outlined, category: SettingsIconCategory.reminder),
-                title: const _InfoTitle(
-                  title: '上课播报',
-                  message: '主页顶部显示当前/下一节课状态条，默认关',
+                title: const Text(
+                  '上课播报',
+                  style: TextStyle(fontWeight: FontWeight.w500),
                 ),
+                subtitle: const Text('主页顶部显示当前/下一节课状态条，默认关'),
                 value: ui.showClassBroadcast,
                 onChanged: (v) => ref
                     .read(uiSettingsProvider.notifier)
@@ -410,10 +406,11 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
               return enabled.when(
                 data: (on) => SwitchListTile(
                   secondary: const SettingsIconBox(icon: Icons.pin_outlined, category: SettingsIconCategory.reminder),
-                  title: const _InfoTitle(
-                    title: '今日课程常驻通知',
-                    message: '通知栏常驻显示今日剩余或明日课程预告',
+                  title: const Text(
+                    '今日课程常驻通知',
+                    style: TextStyle(fontWeight: FontWeight.w500),
                   ),
+                  subtitle: const Text('通知栏常驻显示今日剩余或明日课程预告'),
                   value: on,
                   onChanged: (v) => _onOngoingToggle(v),
                 ),

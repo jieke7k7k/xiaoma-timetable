@@ -6,6 +6,7 @@ import '../providers/providers.dart';
 import '../ui/app_popup_menu.dart';
 import '../ui/app_styles.dart';
 import '../ui/settings_icon_box.dart';
+import '../ui/settings_line_frame.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/semester_form_dialog.dart';
@@ -46,8 +47,14 @@ class SemesterManagePage extends ConsumerWidget {
               onAction: () => _createSemester(context, ref),
             );
           }
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 88),
+          // WB_SPEC_228 §6：学期页补「学期信息」分组标题。
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SettingsGroupHeader('学期信息', top: 12),
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(12, 2, 12, 88),
             itemCount: semesters.length,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemBuilder: (ctx, i) {
@@ -143,6 +150,9 @@ class SemesterManagePage extends ConsumerWidget {
                 ),
               );
             },
+                ),
+              ),
+            ],
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),

@@ -14,6 +14,7 @@ import 'package:xiaoma_timetable/providers/providers.dart';
 import 'package:xiaoma_timetable/ui/app_styles.dart';
 import 'package:xiaoma_timetable/ui/settings_entry_row.dart';
 import 'package:xiaoma_timetable/ui/settings_line_frame.dart';
+import 'package:xiaoma_timetable/widgets/app_dialog.dart';
 
 /// WB_SPEC_228 §11 新增测试：
 /// 1. 三条新增联动的条件渲染（含「不留空位 / 不留分隔线」）；
@@ -151,6 +152,24 @@ void main() {
       expect(find.text('格子边框粗细'), findsNothing);
       expect(find.byType(SettingsSliderRow), findsOneWidget);
     });
+
+    testWidgets('ⓘ 移除后原 message 一字不改改为副标题（228 §3.4）',
+        (tester) async {
+      final fake = _FakeUiNotifier(const UiSettings());
+      await pumpPage(
+        tester,
+        home: const AppearanceGridSettingsPage(),
+        overrides: [uiSettingsProvider.overrideWith(() => fake)],
+      );
+      expect(find.text('开启后周末没课时周视图只显示周一到周五，更宽敞'),
+          findsOneWidget);
+      expect(find.text('给今天这一整天加一圈主题色边框，默认关'), findsOneWidget);
+      expect(find.text('关掉后左侧只显示节次数字'), findsOneWidget);
+      expect(find.text('开时左上角显示「第 X 周 · 单周/双周」，关时只显示「第 X 周」，默认关'),
+          findsOneWidget);
+      // §3.4 只留 2 处 ⓘ（显示非本周课程、行高自适应一屏），其余 4 处已改为副标题
+      expect(find.byType(AppInfoIconButton), findsNWidgets(2));
+    });
   });
 
   group('作息三段默认展开逻辑（§5）', () {
@@ -188,6 +207,13 @@ void main() {
           reason: '只有当前时段 $expected 默认展开，$band 应收起',
         );
       }
+    });
+
+    testWidgets('段头显示时段范围（Kimi 228 复审低 4）', (tester) async {
+      await pumpPage(tester, home: const TimeSettingsPage());
+      expect(find.text('5 节 · 08:00–12:00'), findsOneWidget);
+      expect(find.text('4 节 · 14:00–17:10'), findsOneWidget);
+      expect(find.text('4 节 · 18:00–21:10'), findsOneWidget);
     });
   });
 
