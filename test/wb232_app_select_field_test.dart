@@ -393,9 +393,10 @@ void main() {
     expect(find.text('课程配色'), findsWidgets);
     expect(find.text('显示字体'), findsWidgets);
 
-    // 旧下拉不再存在，两处都是标准 56dp 设置行
+    // 旧下拉不再存在，两处都是 WB_SPEC_228 的标准入口行
     expect(find.byType(DropdownButtonFormField<String>), findsNothing);
-    expect(find.byType(AppSelectSettingRow<String>), findsNWidgets(2));
+    // WB_SPEC_228 §3：父页两处改成标准入口行，细节进弹层/子页
+    expect(find.byType(AppSelectSettingRow<String>), findsNothing);
 
     // 点课程配色行 → 统一抽屉，10 套方案都在
     await tester.tap(find.text('课程配色').first);

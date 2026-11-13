@@ -25,6 +25,10 @@ import 'pages/share_image_page.dart';
 import 'pages/import_page.dart';
 import 'pages/menu_manage_page.dart';
 import 'pages/semester_manage_page.dart';
+import 'pages/appearance_grid_settings_page.dart';
+import 'pages/card_style_page.dart';
+import 'pages/font_settings_page.dart';
+import 'pages/section_rules_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/settings_sections.dart';
 import 'pages/time_settings_page.dart';
@@ -215,6 +219,65 @@ InputDecorationThemeData _gapInputDecorationTheme(ColorScheme scheme) {
 }
 
 /// 小马课表 App 入口
+/// 应用命名路由表（WB_SPEC_228 §9：4 个专项子页也在此注册）。
+///
+/// 抽成顶层变量，widget 测试可以直接用真实路由表验证入口行跳转，
+/// 不必在测试里另抄一份路由。
+final Map<String, WidgetBuilder> appRoutes = {
+        '/': (context) => const _RootGate(),
+        // 课程新建/编辑：arguments 为 courseId(int，编辑) 或 Map(新建预填)
+        '/course-edit': (context) => const CourseEditPage(),
+        // 作息时间设置
+        '/time-settings': (context) => const TimeSettingsPage(),
+        // 课程导入入口
+        '/import': (context) => const ImportPage(),
+        // 学期管理（新建/切换/删除学期）
+        '/semester-manage': (context) => const SemesterManagePage(),
+        // 考试倒计时（当前学期设置了考试日期的课程，按日期升序）
+        '/exam-countdown': (context) => const ExamCountdownPage(),
+        // 课程搜索（1.2.0：按课名/老师/教室搜当前学期课程，点结果跳周）
+        '/course-search': (context) => const CourseSearchPage(),
+        // 空闲时段（1.2.0：按周列出每天没课的时段）
+        '/free-time': (context) => const FreeTimePage(),
+        // 课表导出图片（1.2.0：当前浏览周渲染成图走系统分享）
+        '/share-image': (context) => const ShareImagePage(),
+        // 节假日单次调课：arguments = {'courseId': int, 'week': int（originalWeek）}
+        '/course-override': (context) => const CourseOverridePage(),
+        // 关于页（1.2.4：版本/检查更新/公告/日志/许可/帮助/反馈）
+        '/about': (context) => const AboutPage(),
+        // 公告页（1.2.4：公开通道公告列表）
+        '/announcements': (context) => const AnnouncementsPage(),
+        // 更新日志页（1.2.4：渲染打包的 CHANGELOG.md）
+        '/changelog': (context) => const ChangelogPage(),
+        // 使用帮助页（1.2.4）
+        '/help': (context) => const HelpPage(),
+        // 备注（v3：按日期分组的备忘，同步到常驻通知与桌面小部件）
+        '/notes': (context) => const NotesPage(),
+        // 课表工具（2.0.2：课程搜索 / 空闲时段 / 考试倒计时 / 导出课表图片 / 日期备注）
+        '/course-tools': (context) => const CourseToolsPage(),
+        // 权限（通知 / 精确闹钟 / 电池优化：状态与补开入口，用到时才申请）
+        '/permissions': (context) => const PermissionPage(),
+        // 数据管理页（1.2.4：占用/备份快捷入口/恢复出厂）
+        '/data-manage': (context) => const DataManagePage(),
+        // 设置分类子页（2.0.5：设置首页 QQ 式分级，见 settings_sections.dart）
+        '/settings-semester': (context) => const SemesterSettingsPage(),
+        '/settings-appearance': (context) => const AppearanceSettingsPage(),
+        '/settings-reminders': (context) => const RemindersSettingsPage(),
+        '/settings-data': (context) => const DataSettingsPage(),
+        '/settings-permissions': (context) => const PermissionsSettingsPage(),
+        '/settings-widget': (context) => const WidgetSettingsPage(),
+        // WB_SPEC_228 §9：4 个专项子页（第 3 层，全平铺）
+        '/settings-appearance-grid': (context) =>
+            const AppearanceGridSettingsPage(),
+        '/settings-card-style': (context) => const CardStylePage(),
+        '/settings-font': (context) => const FontSettingsPage(),
+        '/settings-section-rules': (context) => const SectionRulesPage(),
+        // 设置主页（2.1.0 WB_SPEC_212 第 2 节）：原底栏右键改由右上角「更多」菜单进入
+        '/settings': (context) => const SettingsPage(),
+        // 菜单管理（2.1.0 WB_SPEC_212 第 4 节）：右上角菜单显隐 + 排序
+        '/menu-manage': (context) => const MenuManagePage(),
+};
+
 class SimpleTimetableApp extends ConsumerWidget {
   const SimpleTimetableApp({super.key});
 
@@ -354,54 +417,7 @@ class SimpleTimetableApp extends ConsumerWidget {
       // Flutter 首帧，所以不会白闪；主页数据未就绪时自带加载态（见 _RootGate
       // 与 WeekViewPage），不会是坏掉的空白页。
       initialRoute: '/',
-      routes: {
-        '/': (context) => const _RootGate(),
-        // 课程新建/编辑：arguments 为 courseId(int，编辑) 或 Map(新建预填)
-        '/course-edit': (context) => const CourseEditPage(),
-        // 作息时间设置
-        '/time-settings': (context) => const TimeSettingsPage(),
-        // 课程导入入口
-        '/import': (context) => const ImportPage(),
-        // 学期管理（新建/切换/删除学期）
-        '/semester-manage': (context) => const SemesterManagePage(),
-        // 考试倒计时（当前学期设置了考试日期的课程，按日期升序）
-        '/exam-countdown': (context) => const ExamCountdownPage(),
-        // 课程搜索（1.2.0：按课名/老师/教室搜当前学期课程，点结果跳周）
-        '/course-search': (context) => const CourseSearchPage(),
-        // 空闲时段（1.2.0：按周列出每天没课的时段）
-        '/free-time': (context) => const FreeTimePage(),
-        // 课表导出图片（1.2.0：当前浏览周渲染成图走系统分享）
-        '/share-image': (context) => const ShareImagePage(),
-        // 节假日单次调课：arguments = {'courseId': int, 'week': int（originalWeek）}
-        '/course-override': (context) => const CourseOverridePage(),
-        // 关于页（1.2.4：版本/检查更新/公告/日志/许可/帮助/反馈）
-        '/about': (context) => const AboutPage(),
-        // 公告页（1.2.4：公开通道公告列表）
-        '/announcements': (context) => const AnnouncementsPage(),
-        // 更新日志页（1.2.4：渲染打包的 CHANGELOG.md）
-        '/changelog': (context) => const ChangelogPage(),
-        // 使用帮助页（1.2.4）
-        '/help': (context) => const HelpPage(),
-        // 备注（v3：按日期分组的备忘，同步到常驻通知与桌面小部件）
-        '/notes': (context) => const NotesPage(),
-        // 课表工具（2.0.2：课程搜索 / 空闲时段 / 考试倒计时 / 导出课表图片 / 日期备注）
-        '/course-tools': (context) => const CourseToolsPage(),
-        // 权限（通知 / 精确闹钟 / 电池优化：状态与补开入口，用到时才申请）
-        '/permissions': (context) => const PermissionPage(),
-        // 数据管理页（1.2.4：占用/备份快捷入口/恢复出厂）
-        '/data-manage': (context) => const DataManagePage(),
-        // 设置分类子页（2.0.5：设置首页 QQ 式分级，见 settings_sections.dart）
-        '/settings-semester': (context) => const SemesterSettingsPage(),
-        '/settings-appearance': (context) => const AppearanceSettingsPage(),
-        '/settings-reminders': (context) => const RemindersSettingsPage(),
-        '/settings-data': (context) => const DataSettingsPage(),
-        '/settings-permissions': (context) => const PermissionsSettingsPage(),
-        '/settings-widget': (context) => const WidgetSettingsPage(),
-        // 设置主页（2.1.0 WB_SPEC_212 第 2 节）：原底栏右键改由右上角「更多」菜单进入
-        '/settings': (context) => const SettingsPage(),
-        // 菜单管理（2.1.0 WB_SPEC_212 第 4 节）：右上角菜单显隐 + 排序
-        '/menu-manage': (context) => const MenuManagePage(),
-      },
+      routes: appRoutes,
       // 未知路由兜底（2.1.3 WB_SPEC_214 第 2 节）：路由表里已没有任何 AI 页，
       // 旧深链、旧书签、系统恢复出来的历史栈里的老路由名都会走到这里。
       // 静默回首页：不抛 FlutterError（那会红屏）、不弹提示、不留空页。

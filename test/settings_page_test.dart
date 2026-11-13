@@ -67,7 +67,7 @@ void main() {
       expect(find.text(g), findsOneWidget, reason: '分组「$g」应出现在设置首页');
     }
 
-    // 六个入口行标题
+    // 八个入口行标题（WB_SPEC_228 §8 追加权限自检）
     const entries = [
       '当前学期与周次',
       '课表工具箱',
@@ -76,14 +76,15 @@ void main() {
       '桌面小组件',
       '上课提醒',
       '数据备份与换机',
+      '权限自检',
     ];
     for (final e in entries) {
       expect(find.text(e), findsOneWidget, reason: '入口「$e」应出现在设置首页');
     }
 
     // 2.1.7 三大分组与入口行不动；WB_SPEC_219 在「课表与学期」组追加
-    // 「节次时间设置」一行，入口集合由 6 行变 7 行。
-    expect(find.byType(ListTile), findsNWidgets(7));
+    // 「节次时间设置」一行；WB_SPEC_228 §8 再把权限自检移入，共 8 行。
+    expect(find.byType(ListTile), findsNWidgets(8));
 
     // 首页不出现任何开关 / 滑杆（开关只在子页）
     expect(find.byType(Switch), findsNothing);
@@ -117,20 +118,24 @@ void main() {
     expect(find.text('课表工具箱'), findsOneWidget);
   });
 
-  testWidgets('设置首页：权限自检与关于移入 AppBar ⋮ 菜单（不再占列表行）', (tester) async {
+  testWidgets('设置首页：权限自检移入「数据与安全」组，⋮ 只留关于（WB_SPEC_228 §8）',
+      (tester) async {
     await pumpPage(tester);
 
-    // ⋮ 更多菜单存在，且未展开时列表里没有「权限自检」「关于小马课表」行
-    expect(find.byIcon(Icons.more_vert), findsOneWidget);
-    expect(find.text('权限自检'), findsNothing);
+    // 权限自检现在是首页第 8 行入口，菜单里不再有它
+    expect(find.text('权限自检'), findsOneWidget);
     expect(find.text('关于小马课表'), findsNothing);
 
-    // 展开 ⋮ 菜单后，两项出现在 PopupMenu 里（路由不变，仅入口位置变化）
     await tester.tap(find.byIcon(Icons.more_vert));
     await tester.pumpAndSettle();
-    expect(find.text('权限自检'), findsOneWidget);
-    expect(find.text('权限自检'), findsOneWidget);
-    expect(find.text('关于小马课表'), findsOneWidget);
+    expect(find.byType(PopupMenuItem<String>), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(PopupMenuItem<String>),
+        matching: find.text('关于小马课表'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('⋮ 菜单：打开后不盖住顶栏（复查 Bug 2）', (tester) async {

@@ -18,11 +18,12 @@ import '../services/notification_service.dart';
 import '../services/ongoing_notice_service.dart';
 import '../services/permission_service.dart';
 import '../services/widget_service.dart';
-import '../ui/app_choice_chip.dart';
 import '../ui/app_select_field.dart';
 import '../ui/app_styles.dart';
 import '../ui/grid_metrics.dart';
 import '../ui/settings_icon_box.dart';
+import '../ui/settings_entry_row.dart';
+import '../ui/settings_line_frame.dart';
 import '../utils/backup_codec.dart';
 import '../utils/color_schemes.dart';
 import '../utils/ics_export.dart';
@@ -39,7 +40,7 @@ import '../widgets/empty_state.dart';
 /// 这些子页里的控件与业务逻辑全部从 settings_page.dart **原样搬来**（搬家），
 /// 不许丢项、不许改行为：
 /// - [SemesterSettingsPage]（/settings-semester）：学期名称 / 开学日期 / 总周数
-/// - [AppearanceSettingsPage]（/settings-appearance）：实时预览 + 4 组外观条目（WB_SPEC_219）
+/// - [AppearanceSettingsPage]（/settings-appearance）：实时预览 + 8 行入口（WB_SPEC_228）
 /// - [RemindersSettingsPage]（/settings-reminders）：上课提醒 / 上课播报 / 常驻通知 / 提前提醒
 /// - [DataSettingsPage]（/settings-data）：导入 / 学期管理 / 备份 / 恢复 / 导出 ICS / 数据管理
 /// - [PermissionsSettingsPage]（/settings-permissions）：原 `_PermissionSummaryTile` 内容
@@ -1128,6 +1129,12 @@ class _PermissionSummaryTileState extends State<_PermissionSummaryTile> {
 /// 页首实时预览 + 4 个分组（色彩与主题 / 课表网格与表头 / 课程卡片样式与字体 /
 /// 导航与交互动效）。只移动位置与分组，控件、provider、字段、行为原样。
 /// 节次时间入口移到设置首页；立即刷新桌面小部件、部件状态移到 WidgetSettingsPage。
+/// 外观父页（WB_SPEC_228 §3）：只剩 1 个实时预览 + 8 行入口。
+///
+/// 全部细节控件按 §4 对照表搬进 4 个专项子页；父页不再出现宫格、滑杆、
+/// 竖排三按钮，只保留导航入口与两个留在本页的控件（深浅模式、底部栏开关）。
+/// 三处 Argon 第四轮补齐：主题色收成行（宫格进 BottomSheet）、同步链收进
+/// 课程配色面板底部、切换动效收成单行（选项进 BottomSheet）。
 class _AppearanceGroup extends ConsumerWidget {
   const _AppearanceGroup();
 
@@ -1137,7 +1144,299 @@ class _AppearanceGroup extends ConsumerWidget {
     final notifier = ref.read(uiSettingsProvider.notifier);
     void apply(UiSettings next) => notifier.apply(next);
 
-    // 预览 1:1 所需的真实网格参数：列数与主页当前周完全同源计算
+    // provider 未加载完（首帧）时按跟随系统显示，加载后自动到位
+    final themeMode =
+        ref.watch(themeSettingsProvider).value ?? ThemeMode.system;
+    final themeLabel = ui.themeCustomColor != null
+        ? '自定义'
+        : themePresetById(ui.themePresetId).name;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // §3：顶部实时预览卡片，不吸顶（随页面滚动）；卡片本身有边框，不另加框
+        const AppearancePreviewCard(),
+
+        // ── 第 1 组「色彩与字体」4 行 ────────────────────────────
+        SettingsLineFrame(
+          title: '色彩与字体',
+          children: [
+            _ThemeModeRow(
+              themeMode: themeMode,
+              onChanged: (m) =>
+                  ref.read(themeSettingsProvider.notifier).setMode(m),
+            ),
+            SettingsEntryRow(
+              title: '界面主题色',
+              valueWidget: Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: _ThemeDot(color: Color(ui.themeSeedValue)),
+              ),
+              value: themeLabel,
+              onTap: () => _openThemeSheet(context, ui, apply),
+            ),
+            SettingsEntryRow(
+              title: '课程配色',
+              valueWidget: Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: _ColorStrip(
+                  colors: ui.colorScheme.colors.take(4).toList(),
+                ),
+              ),
+              value: ui.colorScheme.name,
+              onTap: () => _openSchemeSheet(context, ui, apply),
+            ),
+            SettingsEntryRow(
+              title: '显示字体',
+              value: fontLabelOf(ui.fontId),
+              route: '/settings-font',
+            ),
+          ],
+        ),
+
+        // ── 第 2 组「课表排版与细节」2 行 ─────────────────────────
+        SettingsLineFrame(
+          title: '课表排版与细节',
+          children: [
+            SettingsEntryRow(
+              title: '课表网格与表头',
+              subtitle: '周末收起、非本周课程、行高与网格线',
+              value: ui.autoFitHeight
+                  ? '自适应'
+                  : '${ui.cellHeight.round()}px',
+              route: '/settings-appearance-grid',
+            ),
+            SettingsEntryRow(
+              title: '课程卡片样式',
+              subtitle: '卡片圆角、字号大小、教室与教师显示',
+              value:
+                  '${ui.cornerRadius.round()}px · ${(ui.cardTextScale * 100).round()}%',
+              route: '/settings-card-style',
+            ),
+          ],
+        ),
+
+        // ── 第 3 组「导航与底栏」2 行 ─────────────────────────────
+        // 联动 ①：底部栏显示关时，切换动效行整个不进 children，
+        // 因而不留空位、不留分隔线（条件渲染，见 §1 例外条款）。
+        SettingsLineFrame(
+          title: '导航与底栏',
+          children: [
+            SettingsSwitchRow(
+              title: '底部栏显示',
+              subtitle: '关闭后可从主页右上角菜单进入设置',
+              value: ui.showBottomBar,
+              onChanged: (v) => apply(ui.copyWith(showBottomBar: v)),
+            ),
+            if (ui.showBottomBar)
+              SettingsEntryRow(
+                title: '切换动效',
+                value: ui.shellTransitionStyle.label,
+                onTap: () => _openTransitionSheet(context, ui, apply),
+              ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.group),
+      ],
+    );
+  }
+
+  /// §3.1 界面主题色：色点宫格放进 BottomSheet，父页不直接展开宫格。
+  void _openThemeSheet(
+    BuildContext context,
+    UiSettings ui,
+    void Function(UiSettings) apply,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('界面主题色',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  for (final preset in kThemePresets)
+                    _ThemeChip(
+                      name: preset.name,
+                      color: Color(preset.seed),
+                      selected: ui.themeCustomColor == null &&
+                          ui.themePresetId == preset.id,
+                      onTap: () {
+                        apply(ui.copyWith(
+                          themePresetId: preset.id,
+                          clearThemeCustomColor: true,
+                        ));
+                        Navigator.pop(ctx);
+                      },
+                    ),
+                  _ThemeChip(
+                    name: '自定义',
+                    color: ui.themeCustomColor != null
+                        ? Color(ui.themeCustomColor!)
+                        : Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest,
+                    selected: ui.themeCustomColor != null,
+                    isCustom: true,
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      final picked = await showDialog<Color>(
+                        context: context,
+                        builder: (_) => _HsvPickerDialog(
+                          initial: Color(ui.themeSeedValue),
+                        ),
+                      );
+                      if (picked != null) {
+                        apply(ui.copyWith(
+                          themeCustomColor: picked.toARGB32(),
+                        ));
+                      }
+                    },
+                  ),
+                ],
+              ),
+              if (ui.themeCustomColor != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: () {
+                      apply(ui.copyWith(clearThemeCustomColor: true));
+                      Navigator.pop(ctx);
+                    },
+                    child: const Text('清除自定义，回到预置主题色'),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// §3.2 课程配色面板：方案列表 + 底部灰白小按钮（原橙色文字链收进来）。
+  void _openSchemeSheet(
+    BuildContext context,
+    UiSettings ui,
+    void Function(UiSettings) apply,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.7,
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Text('课程配色',
+                  style: Theme.of(context).textTheme.titleMedium),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final scheme in kCourseColorSchemes)
+                    ListTile(
+                      leading: _ColorDots(
+                        colors: scheme.colors.take(4).toList(),
+                      ),
+                      title: Text(scheme.name),
+                      trailing: ui.colorSchemeId == scheme.id
+                          ? Icon(Icons.check,
+                              color: Theme.of(context).colorScheme.primary)
+                          : null,
+                      onTap: () {
+                        apply(ui.copyWith(colorSchemeId: scheme.id));
+                        Navigator.pop(ctx);
+                      },
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: FilledButton.tonal(
+                onPressed: () {
+                  apply(ui.copyWith(
+                    themePresetId: ui.colorScheme.recommendedThemeId,
+                    clearThemeCustomColor: true,
+                  ));
+                  Navigator.pop(ctx);
+                },
+                child: const Text('同步应用推荐界面主题色'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// §3.3 切换动效：单行入口 + 底部弹层 SegmentedButton 三选一。
+  void _openTransitionSheet(
+    BuildContext context,
+    UiSettings ui,
+    void Function(UiSettings) apply,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('切换动效',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              SegmentedButton<ShellTransitionStyle>(
+                segments: [
+                  for (final style in ShellTransitionStyle.values)
+                    ButtonSegment<ShellTransitionStyle>(
+                      value: style,
+                      label: Text(style.label),
+                    ),
+                ],
+                selected: {ui.shellTransitionStyle},
+                showSelectedIcon: false,
+                onSelectionChanged: (selection) {
+                  apply(ui.copyWith(
+                    shellTransitionStyle: selection.first,
+                  ));
+                  Navigator.pop(ctx);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 实时预览卡片（父页 + 网格/卡片两个专项子页共用）。
+///
+/// 预览 1:1 所需的真实网格参数计算与迁移前完全一致，只抽成共用组件搬位置，
+/// provider、绑定、算法一字未动。
+class AppearancePreviewCard extends ConsumerWidget {
+  const AppearancePreviewCard({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
     final courses = ref.watch(coursesProvider).value ?? const [];
     final overrides = ref.watch(courseOverridesProvider).value ?? const [];
     final displayWeek = ref.watch(displayWeekProvider);
@@ -1154,363 +1453,104 @@ class _AppearanceGroup extends ConsumerWidget {
       autoCollapse,
     );
     final slots = ref.watch(timeSlotsProvider).value ?? const <TimeSlot>[];
-
-    // provider 未加载完（首帧）时按跟随系统显示，加载后自动到位
-    final themeMode =
-        ref.watch(themeSettingsProvider).value ?? ThemeMode.system;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ── 顶部：实时预览（页面第 1 项，不吸顶；网格参数计算原样不动）──
         const _Header('实时预览'),
         Preview(ui: ui, columnCount: previewDays.length, slots: slots),
-
-        // ── 第 1 组「色彩与主题」──────────────────────────────
-        const _Header('色彩与主题'),
-        // 1. 深浅模式：跟随系统/浅色/深色（阶段五·深色适配），原样
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: SegmentedButton<ThemeMode>(
-            segments: const [
-              ButtonSegment(
-                value: ThemeMode.system,
-                icon: Icon(Icons.brightness_auto_outlined),
-                label: Text('跟随系统'),
-              ),
-              ButtonSegment(
-                value: ThemeMode.light,
-                icon: Icon(Icons.light_mode_outlined),
-                label: Text('浅色'),
-              ),
-              ButtonSegment(
-                value: ThemeMode.dark,
-                icon: Icon(Icons.dark_mode_outlined),
-                label: Text('深色'),
-              ),
-            ],
-            selected: {themeMode},
-            onSelectionChanged: (selection) => ref
-                .read(themeSettingsProvider.notifier)
-                .setMode(selection.first),
-          ),
-        ),
-        // 2. 界面主题色：7 预置色块＋自定义取色器＋清除自定义，原样
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              for (final preset in kThemePresets)
-                _ThemeChip(
-                  name: preset.name,
-                  color: Color(preset.seed),
-                  selected:
-                      ui.themeCustomColor == null &&
-                      ui.themePresetId == preset.id,
-                  onTap: () => apply(
-                    ui.copyWith(
-                      themePresetId: preset.id,
-                      clearThemeCustomColor: true,
-                    ),
-                  ),
-                ),
-              _ThemeChip(
-                name: '自定义',
-                color: ui.themeCustomColor != null
-                    ? Color(ui.themeCustomColor!)
-                    : Theme.of(context).colorScheme.surfaceContainerHighest,
-                selected: ui.themeCustomColor != null,
-                isCustom: true,
-                onTap: () async {
-                  final picked = await showDialog<Color>(
-                    context: context,
-                    builder: (_) =>
-                        _HsvPickerDialog(initial: Color(ui.themeSeedValue)),
-                  );
-                  if (picked != null) {
-                    apply(ui.copyWith(themeCustomColor: picked.toARGB32()));
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-        if (ui.themeCustomColor != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: () =>
-                    apply(ui.copyWith(clearThemeCustomColor: true)),
-                child: const Text('清除自定义，回到预置主题色'),
-              ),
-            ),
-          ),
-        // 3. 课程卡片配色：标准 56dp 设置行（WB_SPEC_232 第 5.3 节），
-        // 点开统一底部抽屉；行尾显示当前方案的 4 色条＋方案名，右侧 › 由行组件给
-        AppSelectSettingRow<String>(
-          title: '课程配色',
-          value: ui.colorSchemeId,
-          sheetTitle: '课程配色',
-          options: [
-            for (final scheme in kCourseColorSchemes)
-              AppSelectOption(
-                value: scheme.id,
-                shortLabel: scheme.name,
-                // 抽屉行：左方案名，右 4 颗代表色圆点（选中勾由抽屉统一补）
-                trailing: _ColorDots(colors: scheme.colors.take(4).toList()),
-              ),
-          ],
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _ColorStrip(colors: ui.colorScheme.colors.take(4).toList()),
-              const SizedBox(width: AppSpacing.s),
-              Text(ui.colorScheme.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium),
-            ],
-          ),
-          onChanged: (v) => apply(ui.copyWith(colorSchemeId: v)),
-        ),
-        const SizedBox(height: AppSpacing.s),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              icon: const Icon(Icons.palette_outlined, size: 18),
-              // WB_SPEC_219：按钮文案改名，行为不变
-              // （应用当前方案 recommendedThemeId 并清除自定义色）
-              label: const Text('同步应用推荐界面主题色'),
-              onPressed: () => apply(
-                ui.copyWith(
-                  themePresetId: ui.colorScheme.recommendedThemeId,
-                  clearThemeCustomColor: true,
-                ),
-              ),
-            ),
-          ),
-        ),
-
-        // ── 第 2 组「课表网格与表头」────────────────────────────
-        const _Header('课表网格与表头'),
-        // 组内第 2、3 行无 leading（文字左缘 x=16），分隔线 indent 取 16
-        //（222 复审 Bug 4；默认 72 会越过这两行文字左缘）。
-        ..._divideRows(Theme.of(context).colorScheme, [
-          // 1. 周末无课时自动收起周六日（从页底移入）
-          SwitchListTile(
-            secondary: const SettingsIconBox(icon: Icons.weekend_outlined, category: SettingsIconCategory.appearance),
-            title: const _InfoTitle(
-              title: '周末无课时自动收起周六日',
-              message: '开启后周末没课时周视图只显示周一到周五，更宽敞',
-            ),
-            value: autoCollapse,
-            onChanged: (v) =>
-                ref.read(autoCollapseWeekendProvider.notifier).toggle(v),
-          ),
-          // 2. 行高自适应一屏
-          SwitchListTile(
-            title: const _InfoTitle(
-              title: '行高自适应一屏',
-              message: '按屏幕高度均分行高，整张课表不用上下滚',
-            ),
-            value: ui.autoFitHeight,
-            onChanged: (v) => apply(ui.copyWith(autoFitHeight: v)),
-          ),
-          // 3. 课程格子高度滑杆（自适应开启时置灰，行为与现状一致）
-          _SliderRow(
-            label: '课程格子高度',
-            valueText: ui.autoFitHeight
-                ? '自适应中'
-                : '${ui.cellHeight.round()} px',
-            value: ui.cellHeight,
-            min: 44,
-            max: 96,
-            divisions: 26,
-            onChanged: ui.autoFitHeight
-                ? (_) {}
-                : (v) => apply(ui.copyWith(cellHeight: v)),
-          ),
-          // 4. 显示网格线
-          SwitchListTile(
-            title: const Text(
-              '显示网格线',
-              style: TextStyle(fontWeight: FontWeight.w500),
-            ),
-            value: ui.showGridLines,
-            onChanged: (v) => apply(ui.copyWith(showGridLines: v)),
-          ),
-          // 5. 格子边框粗细滑杆（行为与现状一致，不新增联动）
-          _SliderRow(
-            label: '格子边框粗细',
-            valueText: ui.borderWidth <= 0
-                ? '无边框'
-                : '${ui.borderWidth.toStringAsFixed(1)} px',
-            value: ui.borderWidth,
-            min: UiSettings.borderWidthMin,
-            max: UiSettings.borderWidthMax,
-            divisions: 30,
-            onChanged: (v) => apply(ui.copyWith(borderWidth: v)),
-          ),
-          // 6. 今天整列边框高亮
-          SwitchListTile(
-            title: const _InfoTitle(
-              title: '今天整列边框高亮',
-              message: '给今天这一整天加一圈主题色边框，默认关',
-            ),
-            value: ui.highlightTodayColumn,
-            onChanged: (v) => apply(ui.copyWith(highlightTodayColumn: v)),
-          ),
-          // 7. 节数栏显示时间
-          SwitchListTile(
-            title: const _InfoTitle(
-              title: '节数栏显示时间',
-              message: '关掉后左侧只显示节次数字',
-            ),
-            value: ui.axisShowTime,
-            onChanged: (v) => apply(ui.copyWith(axisShowTime: v)),
-          ),
-          // 8. 标题显示单双周
-          SwitchListTile(
-            title: const _InfoTitle(
-              title: '标题显示单双周',
-              message: '开时左上角显示「第 X 周 · 单周/双周」，关时只显示「第 X 周」，默认关',
-            ),
-            value: ui.showWeekParity,
-            onChanged: (v) => apply(ui.copyWith(showWeekParity: v)),
-          ),
-          // 9. 显示非本周课程（从页底移入）
-          SwitchListTile(
-            secondary: const SettingsIconBox(icon: Icons.visibility_outlined, category: SettingsIconCategory.appearance),
-            title: const _InfoTitle(
-              title: '显示非本周课程',
-              message: '开启后其他周次的课程置灰显示，方便全局查看',
-            ),
-            value: showOther,
-            onChanged: (v) =>
-                ref.read(showOtherWeeksProvider.notifier).toggle(v),
-          ),
-        ], indent: 16),
-
-        // ── 第 3 组「课程卡片样式与字体」────────────────────────
-        const _Header('课程卡片样式与字体'),
-        // 组内 5 行全无 leading（文字左缘 x=16），分隔线 indent 取 16
-        //（222 复审 Bug 4；默认 72 会越过全部 5 行文字左缘）。
-        ..._divideRows(Theme.of(context).colorScheme, [
-          // 1. 卡片圆角大小（规格书 2.2 命名，即原「格子圆角半径」滑杆，
-          //    从第 2 组移入此处；控件本身不动）
-          _SliderRow(
-            label: '格子圆角半径',
-            valueText: '${ui.cornerRadius.round()} px',
-            value: ui.cornerRadius,
-            min: 0,
-            max: 20,
-            divisions: 20,
-            onChanged: (v) => apply(ui.copyWith(cornerRadius: v)),
-          ),
-          // 2. 卡片文字大小
-          _SliderRow(
-            label: '卡片文字大小',
-            valueText: '${(ui.cardTextScale * 100).round()}%',
-            value: ui.cardTextScale,
-            min: UiSettings.textScaleMin,
-            max: UiSettings.textScaleMax,
-            divisions: 50,
-            onChanged: (v) => apply(ui.copyWith(cardTextScale: v)),
-          ),
-          // 3. 显示教室
-          SwitchListTile(
-            title: const Text(
-              '显示教室',
-              style: TextStyle(fontWeight: FontWeight.w500),
-            ),
-            value: ui.showClassroom,
-            onChanged: (v) => apply(ui.copyWith(showClassroom: v)),
-          ),
-          // 4. 显示老师
-          SwitchListTile(
-            title: const Text(
-              '显示老师',
-              style: TextStyle(fontWeight: FontWeight.w500),
-            ),
-            value: ui.showTeacher,
-            onChanged: (v) => apply(ui.copyWith(showTeacher: v)),
-          ),
-          // 5. 显示备注
-          SwitchListTile(
-            title: const _InfoTitle(
-              title: '显示备注',
-              message: '备注以小字显示在卡片上',
-            ),
-            value: ui.showNote,
-            onChanged: (v) => apply(ui.copyWith(showNote: v)),
-          ),
-        ], indent: 16),
-        // 6. 全局显示字体（_FontSection，从原位置整体移入，控件本身不动）
-        _FontSection(ui: ui, apply: apply),
-
-        // ── 第 4 组「导航与交互动效」（沉底）────────────────────
-        const _Header('导航与交互动效'),
-        // 1. 显示底部导航栏（原页首「底部栏显示」开关，移到底部；
-        //    开关文案与行为不变）
-        // （219 复审优化：外层已 watch 同一 provider，内层 Consumer 多余，
-        //  复用外层 ui/apply，行为不变）
-        SwitchListTile(
-          secondary: const SettingsIconBox(icon: Icons.smartphone_outlined, category: SettingsIconCategory.appearance),
-          title: const Text(
-            '底部栏显示',
-            style: TextStyle(fontWeight: FontWeight.w500),
-          ),
-          subtitle: const Text(
-            '开启后主页底部显示底部栏，可一键切换课表与设置；关闭后设置改从右上角菜单进入',
-          ),
-          value: ui.showBottomBar,
-          onChanged: (v) => apply(ui.copyWith(showBottomBar: v)),
-        ),
-        // 2. 页面切换动效（原「切换动效」三选一，原样）
-        // （219 复审优化：同上，复用外层 ui/apply）
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const ListTile(
-              leading: SettingsIconBox(icon: Icons.animation_outlined, category: SettingsIconCategory.appearance),
-              title: Text(
-                '切换动效',
-                style: TextStyle(fontWeight: FontWeight.w500),
-              ),
-              subtitle: Text('课表与设置之间切换时的动效，默认柔和'),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(56, 0, 16, 12),
-              child: Wrap(
-                spacing: AppSpacing.s,
-                runSpacing: AppSpacing.s,
-                children: [
-                  for (final style in ShellTransitionStyle.values)
-                    // WB_SPEC_230 第 6.1 节：系统 ChoiceChip（选中态左侧插勾、
-                    // 宽度跳动）统一换成手搓 AppChoiceChip
-                    AppChoiceChip(
-                      key: shellTransitionChipKey(style),
-                      label: style.label,
-                      selected: ui.shellTransitionStyle == style,
-                      onSelected: () => apply(
-                        ui.copyWith(shellTransitionStyle: style),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }
 }
+
+/// 深浅模式：56dp 标准行，右端 3 选项 SegmentedButton（§2 控件映射）。
+class _ThemeModeRow extends StatelessWidget {
+  const _ThemeModeRow({
+    required this.themeMode,
+    required this.onChanged,
+  });
+
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: kSettingsSingleRowHeight,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            const Expanded(
+              child: Text(
+                '深浅模式',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            SegmentedButton<ThemeMode>(
+              segments: const [
+                ButtonSegment<ThemeMode>(
+                  value: ThemeMode.system,
+                  label: Text('跟随系统'),
+                ),
+                ButtonSegment<ThemeMode>(
+                  value: ThemeMode.light,
+                  label: Text('浅色'),
+                ),
+                ButtonSegment<ThemeMode>(
+                  value: ThemeMode.dark,
+                  label: Text('深色'),
+                ),
+              ],
+              selected: {themeMode},
+              showSelectedIcon: false,
+              style: const ButtonStyle(
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                padding: WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 6),
+                ),
+                textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 12)),
+              ),
+              onSelectionChanged: (s) => onChanged(s.first),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 界面主题色入口行右侧的紧凑色点（§3.1 文案「● 可可棕」）。
+class _ThemeDot extends StatelessWidget {
+  const _ThemeDot({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 16,
+        height: 16,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      );
+}
+
+/// 显示字体入口行的当前值回显（标题以现代码为准，只读不改）。
+String fontLabelOf(String fontId) {
+  final imported = FontsService.byId(fontId);
+  if (imported != null) return '${imported.name}（导入）';
+  return switch (fontId) {
+    'lxgw' => '霞鹜文楷',
+    'zcool' => '站酷快乐体',
+    'smiley' => '得意黑',
+    'noto' => '思源黑体',
+    _ => '系统默认',
+  };
+}
+
 
 /// 条目标题 + 旁挂 ⓘ 说明按钮（WB_SPEC_205 第 9 节）
 ///
@@ -1567,55 +1607,6 @@ class _Header extends StatelessWidget {
               .onSurfaceVariant
               .withValues(alpha: 0.6),
         ),
-      ),
-    );
-  }
-}
-
-class _SliderRow extends StatelessWidget {
-  const _SliderRow({
-    required this.label,
-    required this.valueText,
-    required this.value,
-    required this.min,
-    required this.max,
-    required this.divisions,
-    required this.onChanged,
-  });
-
-  final String label;
-  final String valueText;
-  final double value;
-  final double min;
-  final double max;
-  final int divisions;
-  final ValueChanged<double> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
-      child: Row(
-        children: [
-          // 2.0.7 Taste 化：滑杆行标题字重 medium
-          SizedBox(
-            width: 108,
-            child: Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-          ),
-          Expanded(
-            child: Slider(
-              value: value,
-              min: min,
-              max: max,
-              divisions: divisions,
-              onChanged: onChanged,
-            ),
-          ),
-          SizedBox(
-            width: 52,
-            child: Text(valueText, textAlign: TextAlign.right),
-          ),
-        ],
       ),
     );
   }
@@ -2137,17 +2128,27 @@ class _PreviewGridPainter extends CustomPainter {
 
 /// 显示字体区（1.2.1）：内置五款单选 + 用户导入字体（列表/导入/删除）。
 /// 导入字体的注册表在 FontsService（静态），本组件用本地状态触发重建。
-class _FontSection extends StatefulWidget {
-  const _FontSection({required this.ui, required this.apply});
+/// WB_SPEC_228 §4.3：228 专项子页用 [FontSettingsSection.inline] 平铺形态。
+class FontSettingsSection extends StatefulWidget {
+  const FontSettingsSection({
+    super.key,
+    required this.ui,
+    required this.apply,
+    this.inline = false,
+  });
 
   final UiSettings ui;
   final void Function(UiSettings next) apply;
 
+  /// true = 第 3 层子页内的线框平铺形态（字体网格 + 框外导入按钮）
+  final bool inline;
+
   @override
-  State<_FontSection> createState() => _FontSectionState();
+  State<FontSettingsSection> createState() => FontSettingsSectionState();
 }
 
-class _FontSectionState extends State<_FontSection> {
+class FontSettingsSectionState extends State<FontSettingsSection> {
+
   bool _importing = false;
 
   Future<void> _importFont() async {
@@ -2201,8 +2202,81 @@ class _FontSectionState extends State<_FontSection> {
     if (mounted) setState(() {});
   }
 
+  /// WB_SPEC_228 §4.3：第 3 层《显示字体》子页内全平铺——线框内字体网格，
+  /// 框外只留导入/删除入口与说明。选项点击仍走原 `apply(copyWith(fontId:))`。
+  Widget _inlineBody(BuildContext context) {
+    final ui = widget.ui;
+    final imported = FontsService.fonts;
+    final selectedImported = FontsService.byId(ui.fontId);
+    const builtins = [
+      (id: 'system', name: '系统默认', family: null),
+      (id: 'lxgw', name: '霞鹜文楷', family: 'LXGWWenKai'),
+      (id: 'zcool', name: '站酷快乐体', family: 'ZCOOLKuaiLe'),
+      (id: 'smiley', name: '得意黑', family: 'SmileySans'),
+      (id: 'noto', name: '思源黑体', family: 'NotoSansSC'),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SettingsLineFrame(
+          title: '字体',
+          children: [
+            for (final f in builtins)
+              _FontOptionRow(
+                name: f.name,
+                fontFamily: f.family,
+                selected: ui.fontId == f.id,
+                onTap: () => widget.apply(ui.copyWith(fontId: f.id)),
+              ),
+            for (final f in imported)
+              _FontOptionRow(
+                name: '${f.name}（导入）',
+                fontFamily: f.family,
+                selected: ui.fontId == f.id,
+                onTap: () => widget.apply(ui.copyWith(fontId: f.id)),
+              ),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Row(
+            children: [
+              OutlinedButton.icon(
+                icon: _importing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.add_circle_outline, size: 18),
+                label: const Text('导入字体文件'),
+                onPressed: _importing ? null : _importFont,
+              ),
+              if (selectedImported != null) ...[
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('删除所选字体'),
+                  onPressed: () => _removeFont(selectedImported),
+                ),
+              ],
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Text(
+            '从手机里选 TTF / OTF 字体，导入后立即全 App 生效',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.inline) return _inlineBody(context);
     final ui = widget.ui;
     final imported = FontsService.fonts;
     // 当前选中的导入字体（若有）；final 便于在下方删除按钮闭包里安全判空
@@ -2310,6 +2384,56 @@ class _FontSectionState extends State<_FontSection> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// §4.3 字体网格行：56dp 平铺，选中打勾，字体名用自身字体渲染。
+class _FontOptionRow extends StatelessWidget {
+  const _FontOptionRow({
+    required this.name,
+    required this.fontFamily,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String name;
+  final String? fontFamily;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        height: kSettingsSingleRowHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: fontFamily,
+                  ),
+                ),
+              ),
+              if (selected)
+                Icon(
+                  Icons.check,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

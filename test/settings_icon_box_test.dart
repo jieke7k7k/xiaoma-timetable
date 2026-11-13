@@ -296,7 +296,7 @@ void main() {
       }
     });
 
-    testWidgets('首页：chevron 20dp、分隔线 indent 72、分组标题 onSurfaceVariant 60%',
+    testWidgets('首页：chevron 20dp、线框分隔线 indent 16、分组标题 onSurfaceVariant 60%',
         (tester) async {
       await pumpPage(tester, const SettingsPage());
       // 期望值从泵入的主题里取：ColorScheme.light() 在当前 Flutter 里
@@ -315,7 +315,7 @@ void main() {
       expect(dividers, findsWidgets);
       for (final element in dividers.evaluate()) {
         final divider = element.widget as Divider;
-        expect(divider.indent, 72, reason: '分隔线应与标题文字左缘对齐（x=72）');
+        expect(divider.indent, 16, reason: 'WB_SPEC_228 §7：框内分隔线左右缩进 16');
         expect(divider.endIndent, 16);
         expect(divider.thickness, 0.5);
       }
@@ -329,13 +329,14 @@ void main() {
       }
     });
 
-    testWidgets('首页 ⋮ 菜单：权限自检→schedule，关于→system', (tester) async {
+    testWidgets('权限自检移入首页数据与安全组（data），⋮ 只留关于（system）',
+        (tester) async {
       await pumpPage(tester, const SettingsPage());
+      expect(categoryOfRow(tester, '权限自检'), SettingsIconCategory.data);
       await tester.tap(find.byIcon(Icons.more_vert));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 300));
-      expect(categoryOfRow(tester, '权限自检'),
-          SettingsIconCategory.schedule);
+      expect(find.byType(PopupMenuItem<String>), findsOneWidget);
       expect(categoryOfRow(tester, '关于小马课表'),
           SettingsIconCategory.system);
     });

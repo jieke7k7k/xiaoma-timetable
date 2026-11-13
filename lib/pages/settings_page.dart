@@ -9,6 +9,7 @@ import '../ui/app_popup_menu.dart';
 import '../ui/app_styles.dart';
 import '../ui/bottom_bar_metrics.dart';
 import '../ui/settings_icon_box.dart';
+import '../ui/settings_line_frame.dart';
 
 /// 设置页（QQ 式分级 → WB_SPEC_218 第 ④ 节重组为三大分组）
 ///
@@ -50,8 +51,6 @@ class SettingsPage extends ConsumerWidget {
 
     final themeMode =
         ref.watch(themeSettingsProvider).value ?? ThemeMode.system;
-    // WB_SPEC_222：组内分隔线颜色取自当前主题（_divideRows 需传 scheme）。
-    final scheme = Theme.of(context).colorScheme;
     final themeLabel = switch (themeMode) {
       ThemeMode.light => '浅色',
       ThemeMode.dark => '深色',
@@ -87,70 +86,81 @@ class SettingsPage extends ConsumerWidget {
               : AppSpacing.m,
         ),
         children: [
-          const _GroupHeader('课表与学期'),
-          ..._divideRows(scheme, [
-            _EntryTile(
-              icon: Icons.badge_outlined,
-              category: SettingsIconCategory.schedule,
-              title: '当前学期与周次',
-              subtitle: semesterSubtitle,
-              route: '/settings-semester',
-            ),
-            const _EntryTile(
-              icon: Icons.handyman_outlined,
-              category: SettingsIconCategory.schedule,
-              title: '课表工具箱',
-              subtitle: '搜索、空闲时段、考试倒计时',
-              route: '/course-tools',
-            ),
-            // WB_SPEC_219：节次时间设置入口从外观二级页移入设置首页「课表与学期」组
-            const _EntryTile(
-              icon: Icons.schedule_outlined,
-              category: SettingsIconCategory.schedule,
-              title: '节次时间设置',
-              subtitle: '自定义每节课上下课时间',
-              route: '/time-settings',
-            ),
-          ]),
+          // WB_SPEC_228 §7：三大分组统一走线框形态 A；§8 权限自检移入本页
+          SettingsLineFrame(
+            title: '课表与学期',
+            children: [
+              _EntryTile(
+                icon: Icons.badge_outlined,
+                category: SettingsIconCategory.schedule,
+                title: '当前学期与周次',
+                subtitle: semesterSubtitle,
+                route: '/settings-semester',
+              ),
+              const _EntryTile(
+                icon: Icons.handyman_outlined,
+                category: SettingsIconCategory.schedule,
+                title: '课表工具箱',
+                subtitle: '搜索、空闲时段、考试倒计时',
+                route: '/course-tools',
+              ),
+              const _EntryTile(
+                icon: Icons.schedule_outlined,
+                category: SettingsIconCategory.schedule,
+                title: '节次时间设置',
+                subtitle: '自定义每节课上下课时间',
+                route: '/time-settings',
+              ),
+            ],
+          ),
+          SettingsLineFrame(
+            title: '展示与桌面',
+            children: [
+              _EntryTile(
+                icon: Icons.palette_outlined,
+                category: SettingsIconCategory.appearance,
+                title: '外观与底栏',
+                subtitle: appearanceSubtitle,
+                route: '/settings-appearance',
+              ),
+              const _EntryTile(
+                icon: Icons.widgets_outlined,
+                category: SettingsIconCategory.appearance,
+                title: '桌面小组件',
+                subtitle: '今日课程小组件的添加说明',
+                route: '/settings-widget',
+              ),
+              _ReminderEntryTile(subtitle: reminderSubtitle),
+            ],
+          ),
+          SettingsLineFrame(
+            title: '数据与安全',
+            children: [
+              const _EntryTile(
+                icon: Icons.backup_outlined,
+                category: SettingsIconCategory.data,
+                title: '数据备份与换机',
+                subtitle: '本地导出、恢复与换机迁移（纯本地存储）',
+                route: '/settings-data',
+              ),
+              // §8：权限自检从 AppBar ⋮ 菜单移入设置首页，路由与自检逻辑不动
+              const _EntryTile(
+                icon: Icons.shield_outlined,
+                category: SettingsIconCategory.data,
+                title: '权限自检',
+                subtitle: '通知、精确闹钟与电池优化授权状态',
+                route: '/settings-permissions',
+              ),
+            ],
+          ),
           const SizedBox(height: AppSpacing.group),
-          const _GroupHeader('展示与桌面'),
-          ..._divideRows(scheme, [
-            _EntryTile(
-              icon: Icons.palette_outlined,
-              category: SettingsIconCategory.appearance,
-              title: '外观与底栏',
-              subtitle: appearanceSubtitle,
-              route: '/settings-appearance',
-            ),
-            const _EntryTile(
-              icon: Icons.widgets_outlined,
-              category: SettingsIconCategory.appearance,
-              title: '桌面小组件',
-              subtitle: '今日课程小组件的添加说明',
-              route: '/settings-widget',
-            ),
-            // 上课提醒入口行：提醒没开时不检查权限、不显示任何提示；提醒开了
-            // 但缺权限时，行尾挂柔和琥珀色「待完善」徽标（见 _ReminderEntryTile）。
-            _ReminderEntryTile(subtitle: reminderSubtitle),
-          ]),
-          const SizedBox(height: AppSpacing.group),
-          const _GroupHeader('数据与安全'),
-          ..._divideRows(scheme, [
-            const _EntryTile(
-              icon: Icons.backup_outlined,
-              category: SettingsIconCategory.data,
-              title: '数据备份与换机',
-              subtitle: '本地导出、恢复与换机迁移（纯本地存储）',
-              route: '/settings-data',
-            ),
-          ]),
         ],
       ),
     );
   }
 
   /// AppBar 右上角 ⋮ 更多菜单（WB_SPEC_218 第 ④ 节）：
-  /// 权限自检、关于小马课表——原路由不动，仅触发按钮从 ListView 移到菜单。
+  /// WB_SPEC_228 §8：权限自检已移入首页「数据与安全」组，⋮ 只留「关于小马课表」。
   ///
   /// WB_SPEC_230 第 3.1 节：外壳（圆角 16、米白底、阴影）改由 `main.dart` 的
   /// 全局 `popupMenuTheme` 统一给，这里只留 position 相关的 offset；菜单项
@@ -164,12 +174,6 @@ class SettingsPage extends ConsumerWidget {
       offset: const Offset(-8, 48),
       onSelected: (route) => Navigator.pushNamed(context, route),
       itemBuilder: (ctx) => [
-        buildAppPopupMenuItem<String>(
-          value: '/settings-permissions',
-          icon: Icons.shield_outlined,
-          category: SettingsIconCategory.schedule,
-          title: '权限自检',
-        ),
         buildAppPopupMenuItem<String>(
           value: '/about',
           icon: Icons.info_outline,
@@ -216,55 +220,6 @@ class _EntryTile extends StatelessWidget {
       onTap: () => Navigator.pushNamed(context, route),
     );
   }
-}
-
-/// 分组小标题（2.0.7 起沿用 settings_sections 同款：13 号、semibold、正文主色）。
-///
-/// WB_SPEC_222：字号 13、字重 w600、间距保持现状；颜色由正文主色改为
-/// onSurfaceVariant 60%（弱化标题、突出内容），小标题不上彩色。
-class _GroupHeader extends StatelessWidget {
-  const _GroupHeader(this.title);
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          color: Theme.of(context)
-              .colorScheme
-              .onSurfaceVariant
-              .withValues(alpha: 0.6),
-        ),
-      ),
-    );
-  }
-}
-
-/// 把同一组内连续行用轻量分隔线隔开（与 settings_sections 的 Taste 口径一致）。
-///
-/// WB_SPEC_222：分隔线对齐标题文字左缘——ListTile 标题起始位置是
-/// max(minLeadingWidth=40, leading 宽) + horizontalTitleGap=16，再加内容边距左 16，
-/// 文字左缘在 x=72（Argon 给的 64 漏算了 40dp leading 槽宽，已纠正）。
-List<Widget> _divideRows(ColorScheme scheme, List<Widget> rows) {
-  return [
-    for (var i = 0; i < rows.length; i++) ...[
-      if (i > 0)
-        Divider(
-          height: 1,
-          thickness: 0.5,
-          color: scheme.outlineVariant.withValues(alpha: 0.2),
-          indent: 72,
-          endIndent: 16,
-        ),
-      rows[i],
-    ],
-  ];
 }
 
 /// 上课提醒入口行（Argon 方案 Q3）。
