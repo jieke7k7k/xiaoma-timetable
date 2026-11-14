@@ -243,7 +243,7 @@ void main() {
           'ui_settings',
           const UiSettings(showBottomBar: true).encode(),
         );
-        await Dao.instance.setSetting('v250_defaults_migrated', '1');
+        await Dao.instance.setSetting(UiSettingsNotifier.kDefaultsMigratedKey, '1');
       });
       await tester.runAsync(() async {
         await tester.pumpWidget(

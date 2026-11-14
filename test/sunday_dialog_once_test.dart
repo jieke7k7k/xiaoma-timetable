@@ -10,6 +10,7 @@ import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/main.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
+import 'package:xiaoma_timetable/providers/providers.dart';
 import 'package:xiaoma_timetable/services/sunday_dialog_service.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
 import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
@@ -247,7 +248,7 @@ void main() {
         'ui_settings',
         const UiSettings(showBottomBar: true).encode(),
       );
-      await Dao.instance.setSetting('v250_defaults_migrated', '1');
+      await Dao.instance.setSetting(UiSettingsNotifier.kDefaultsMigratedKey, '1');
     });
 
     await tester.runAsync(() async {

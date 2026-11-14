@@ -496,7 +496,7 @@ void main() {
       expect(ui.showBottomBar, isFalse, reason: '老用户升级后底栏默认关');
       expect(ui.showClassBroadcast, isTrue, reason: '老用户升级后播报默认开');
 
-      expect(await Dao.instance.getSetting('v250_defaults_migrated'), '1');
+      expect(await Dao.instance.getSetting(UiSettingsNotifier.kDefaultsMigratedKey), '1');
       final stored = UiSettings.fromEncoded(
         await Dao.instance.getSetting('ui_settings'),
       );
@@ -509,7 +509,7 @@ void main() {
         'ui_settings',
         '{"showBottomBar": true, "showClassBroadcast": false}',
       );
-      await Dao.instance.setSetting('v250_defaults_migrated', '1');
+      await Dao.instance.setSetting(UiSettingsNotifier.kDefaultsMigratedKey, '1');
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
@@ -525,7 +525,7 @@ void main() {
       final ui = await container.read(uiSettingsProvider.future);
       expect(ui.showBottomBar, isFalse);
       expect(ui.showClassBroadcast, isTrue);
-      expect(await Dao.instance.getSetting('v250_defaults_migrated'), '1');
+      expect(await Dao.instance.getSetting(UiSettingsNotifier.kDefaultsMigratedKey), '1');
       // 迁移不碰提醒开关与其它设置键（不弹权限、不改通知）
       expect(await Dao.instance.getSetting('reminder.enabled'), isNull);
     });

@@ -134,7 +134,7 @@ void main() {
   Future<void> seedUi(WidgetTester tester, UiSettings settings) async {
     await tester.runAsync(() async {
       await Dao.instance.setSetting('ui_settings', settings.encode());
-      await Dao.instance.setSetting('v250_defaults_migrated', '1');
+      await Dao.instance.setSetting(UiSettingsNotifier.kDefaultsMigratedKey, '1');
     });
   }
 
@@ -262,7 +262,7 @@ void main() {
         'ui_settings',
         '{"showBottomBar": true, "bottomBarStyle": "capsule"}',
       );
-      await Dao.instance.setSetting('v250_defaults_migrated', '1');
+      await Dao.instance.setSetting(UiSettingsNotifier.kDefaultsMigratedKey, '1');
     });
     final raw = await tester.runAsync(
       () => Dao.instance.getSetting('ui_settings'),

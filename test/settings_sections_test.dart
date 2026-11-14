@@ -5,6 +5,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:xiaoma_timetable/database/dao.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
+import 'package:xiaoma_timetable/providers/providers.dart';
 import 'package:xiaoma_timetable/pages/settings_sections.dart';
 import 'package:xiaoma_timetable/ui/app_choice_chip.dart';
 import 'package:xiaoma_timetable/ui/settings_entry_row.dart';
@@ -56,7 +57,7 @@ void main() {
         'ui_settings',
         UiSettings(showBottomBar: showBottomBar).encode(),
       );
-      await Dao.instance.setSetting('v250_defaults_migrated', '1');
+      await Dao.instance.setSetting(UiSettingsNotifier.kDefaultsMigratedKey, '1');
       await tester.pumpWidget(
         const ProviderScope(
           child: MaterialApp(home: AppearanceSettingsPage()),

@@ -10,6 +10,7 @@ import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/main.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
+import 'package:xiaoma_timetable/providers/providers.dart';
 import 'package:xiaoma_timetable/ui/bottom_bar_metrics.dart';
 import 'package:xiaoma_timetable/pages/week_view_page.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
@@ -106,7 +107,7 @@ void main() {
       );
       // 2.5.0（WB_SPEC_233 §6）：立一次性迁移标志，免得启动时把预置值
       // 覆盖成新默认（底栏默认关）
-      await Dao.instance.setSetting('v250_defaults_migrated', '1');
+      await Dao.instance.setSetting(UiSettingsNotifier.kDefaultsMigratedKey, '1');
     });
 
     await tester.runAsync(() async {
