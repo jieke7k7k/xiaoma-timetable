@@ -1132,10 +1132,10 @@ class _PermissionSummaryTileState extends State<_PermissionSummaryTile> {
 /// 页首实时预览 + 4 个分组（色彩与主题 / 课表网格与表头 / 课程卡片样式与字体 /
 /// 导航与交互动效）。只移动位置与分组，控件、provider、字段、行为原样。
 /// 节次时间入口移到设置首页；立即刷新桌面小部件、部件状态移到 WidgetSettingsPage。
-/// 外观父页（WB_SPEC_228 §3）：只剩 1 个实时预览 + 8 行入口。
+/// 外观父页（WB_SPEC_228 §3）：只剩 1 个实时预览 + 7 行入口。
 ///
 /// 全部细节控件按 §4 对照表搬进 4 个专项子页；父页不再出现宫格、滑杆、
-/// 竖排三按钮，只保留导航入口与两个留在本页的控件（深浅模式、底部栏开关）。
+/// 竖排三按钮，只保留导航入口与留在本页的控件（深浅模式）。
 /// 三处 Argon 第四轮补齐：主题色收成行（宫格进 BottomSheet）、同步链收进
 /// 课程配色面板底部、切换动效收成单行（选项进 BottomSheet）。
 class _AppearanceGroup extends ConsumerWidget {
