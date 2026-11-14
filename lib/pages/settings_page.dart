@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../services/permission_service.dart';
 import '../utils/route_observer.dart';
@@ -29,19 +28,15 @@ import '../ui/settings_line_frame.dart';
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key, this.isEmbeddedInShell = false});
 
-  /// 是否作为壳内一级视图（底部栏开启时）显示（WB_SPEC_213 第 2 节）。
+  /// 是否作为壳内一级视图显示（WB_SPEC_213 第 2 节）。
   ///
-  /// 由构造参数**静态**决定，不绑定响应式的 showBottomBar 状态：
-  /// 壳内（true）永远不显示左上角返回箭头、列表底部加胶囊安全留白；
+  /// 由构造参数**静态**决定，不绑定响应式的界面设置状态：
+  /// 壳内（true）永远不显示左上角返回箭头、列表底部加标签栏安全留白；
   /// Push 路由进入（false，默认）永远显示返回箭头、维持常规留白。
   final bool isEmbeddedInShell;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 底部栏形态（WB_SPEC_216 第 1 节）：壳内列表底部留白要按形态算
-    // （标签栏 64 / 胶囊 0 占位式，口径同主页网格，见 ui/bottom_bar_metrics.dart）
-    final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
-
     // 动态副标题三处（WB_SPEC_218 第 ④ 节：状态外露、入口收拢）
     final semester = ref.watch(currentSemesterProvider).value;
     final todayWeek = ref.watch(todayWeekProvider);
@@ -56,7 +51,8 @@ class SettingsPage extends ConsumerWidget {
       ThemeMode.dark => '深色',
       _ => '跟随系统',
     };
-    final barLabel = ui.showBottomBar ? '标签栏' : '底栏已关';
+    // WB_SPEC_234：底栏无条件常显，「底栏已关」这一态已不存在，副标题恒为标签栏
+    const barLabel = '标签栏';
     final appearanceSubtitle = '$themeLabel · $barLabel';
 
     final reminder = ref.watch(reminderSettingsProvider).value;
@@ -81,7 +77,6 @@ class SettingsPage extends ConsumerWidget {
           bottom: isEmbeddedInShell
               ? bottomBarGridBottomPadding(
                   MediaQuery.paddingOf(context).bottom,
-                  showBottomBar: ui.showBottomBar,
                 )
               : AppSpacing.m,
         ),

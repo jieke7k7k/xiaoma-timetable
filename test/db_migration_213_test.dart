@@ -223,7 +223,7 @@ void main() {
       'reminder_advance_minutes': '15',
       'ongoing_enabled': '0',
       'lunch_after_section': '5',
-      'ui_settings': '{"showBottomBar":true}',
+      'ui_settings': '{"cellHeight":46}',
       'onboarding_done': '1',
     };
     for (final e in kept.entries) {
@@ -290,7 +290,7 @@ void main() {
     expect(byKey['reminder_advance_minutes'], '15');
     expect(byKey['ongoing_enabled'], '0');
     expect(byKey['lunch_after_section'], '5');
-    expect(byKey['ui_settings'], '{"showBottomBar":true}');
+    expect(byKey['ui_settings'], '{"cellHeight":46}');
     expect(byKey['onboarding_done'], '1');
 
     // 3) 业务数据一行不丢、字段不变

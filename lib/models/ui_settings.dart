@@ -43,12 +43,16 @@ enum ShellTransitionStyle {
 /// `bottomBarStyle` 字段整体删除；旧库里的 `bottomBarStyle` 值（`tab` /
 /// `capsule` / `bar`）读取时直接忽略，不影响其它字段。
 ///
-/// 2.5.0（WB_SPEC_233 §6）同版本重发：`showBottomBar` 默认 true → false、
-/// `showClassBroadcast` 默认 false → true。构造函数与 [fromEncoded] 的回退值
-/// 两处同时改齐（本类没有 `defaults()` 工厂，别去别处找第三处）；已装机的
-/// 老用户由 `UiSettingsNotifier.build()` 里的一次性迁移
-/// （app_settings 的 `v250_defaults_migrated` 标志）覆盖一次，此后用户
-/// 自己再开关不受影响。
+/// 2.5.0（WB_SPEC_233 §6）同版本重发：`showClassBroadcast` 默认 false → true。
+/// 构造函数与 [fromEncoded] 的回退值两处同时改齐（本类没有 `defaults()` 工厂，
+/// 别去别处找第三处）；已装机的老用户由 `UiSettingsNotifier.build()` 里的
+/// 一次性迁移（app_settings 的 `v250_defaults_migrated` 标志）覆盖一次，
+/// 此后用户自己再开关不受影响。
+///
+/// 2.5.0（WB_SPEC_234）同版本重发：底部栏改为无条件常显，原先控制它的开关
+/// 字段整体删除。旧库 JSON 里残留的同名键读取时直接忽略（[fromEncoded] 只读
+/// 已知键，不报错、不参与迁移），库里的旧键留着无害，下次整体保存时被
+/// [encode] 写出的新 map 覆盖掉。
 class UiSettings {
   const UiSettings({
     this.cellHeight = 46,
@@ -71,8 +75,6 @@ class UiSettings {
     this.showClassBroadcast = true,
     this.autoFitHeight = true,
     this.highlightTodayColumn = false,
-    // WB_SPEC_233 §6：底部栏默认改为关（主页右上角 ⋮ 菜单里有「设置」入口）
-    this.showBottomBar = false,
     this.shellTransitionStyle = ShellTransitionStyle.fadeThroughOfficial,
     // 默认 true：新构造的值都是「已决策」的（显式传入或新默认），不参与迁移；
     // 只有从旧库读到、无此键的 'fade-parallax' 才按旧默认迁移（见 fromEncoded）
@@ -160,13 +162,6 @@ class UiSettings {
   /// 今天整列边框高亮开关（1.2.6）：1.2.5 的整列边框改为可关，默认关
   final bool highlightTodayColumn;
 
-  /// 底部栏开关：主页底部是否显示标签栏（课表/设置切换键）。默认关
-  /// （2.5.0 WB_SPEC_233 起由默认开翻转为默认关：关掉后设置从主页右上角
-  /// ⋮ 菜单进入；旧库由 v250_defaults_migrated 一次性迁移）。
-  /// 用户手动开关后持久化记忆，下次启动仍保持。旧数据无此字段时按默认关兜底，
-  /// 绝不为 null 导致启动白屏。
-  final bool showBottomBar;
-
   /// 壳内一级视图切换动效（2026-11-05）：三种都做，做成开关让用户自己选，
   /// 默认柔和（官方淡入）。旧数据无此字段、值为 null、值为未知字符串时一律按默认兜底。
   final ShellTransitionStyle shellTransitionStyle;
@@ -214,7 +209,6 @@ class UiSettings {
     bool? showClassBroadcast,
     bool? autoFitHeight,
     bool? highlightTodayColumn,
-    bool? showBottomBar,
     ShellTransitionStyle? shellTransitionStyle,
     bool? shellTransitionStyleMigrated,
   }) {
@@ -239,7 +233,6 @@ class UiSettings {
       showClassBroadcast: showClassBroadcast ?? this.showClassBroadcast,
       autoFitHeight: autoFitHeight ?? this.autoFitHeight,
       highlightTodayColumn: highlightTodayColumn ?? this.highlightTodayColumn,
-      showBottomBar: showBottomBar ?? this.showBottomBar,
       shellTransitionStyle: shellTransitionStyle ?? this.shellTransitionStyle,
       // 显式改动效 = 用户主动选择，立迁移标记，免得下次加载又被当成旧默认迁走
       shellTransitionStyleMigrated:
@@ -269,7 +262,6 @@ class UiSettings {
     'showClassBroadcast': showClassBroadcast,
     'autoFitHeight': autoFitHeight,
     'highlightTodayColumn': highlightTodayColumn,
-    'showBottomBar': showBottomBar,
     'shellTransitionStyle': shellTransitionStyle.id,
     'shellTransitionStyleMigrated': shellTransitionStyleMigrated,
   };
@@ -336,9 +328,6 @@ class UiSettings {
         showClassBroadcast: bl('showClassBroadcast', true),
         autoFitHeight: bl('autoFitHeight', true),
         highlightTodayColumn: bl('highlightTodayColumn', false),
-        // 反序列化容错：旧数据无此字段或字段为 null 时一律按新默认关兜底
-        // （2.5.0 WB_SPEC_233 由默认开翻转为默认关）
-        showBottomBar: bl('showBottomBar', false),
         // 动效容错：缺失/null/未知值一律回默认「柔和」（见上方迁移逻辑）
         shellTransitionStyle: shellStyle,
         shellTransitionStyleMigrated: styleMigrated || needsMigration,

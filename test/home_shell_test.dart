@@ -24,10 +24,10 @@ import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 /// [HomeTabBar]；旧库里的 `bottomBarStyle` 字段整体忽略：
 /// 1. 默认渲染：WeekViewPage + 标签栏（HomeTabBar），恒两键［课表｜设置］；
 /// 2. 点「设置」键切到壳内设置根页，且无左上角返回箭头；
-/// 3. 关栏→再开栏恢复标签栏；
-/// 4. 旧库里残留的 `bottomBarStyle`（`capsule` / `bar`）读取后直接忽略，
+/// 3. 旧库里残留的 `bottomBarStyle`（`capsule` / `bar`）读取后直接忽略，
 ///    仍出标签栏，不会无栏、不会崩；
-/// 5. 关栏（showBottomBar=false）时不出栏，右上角菜单仍能进设置（带返回箭头）。
+/// 4. 2.5.0（WB_SPEC_234）：底部栏开关整体删除，栏体恒在——壳永远是单层壳、
+///    不再有「关栏回单页」形态，右上角菜单里也不再出现「设置」项。
 ///
 /// HomeShell 的启动联动 / WeekViewPage 的公告检查会走平台通道与网络，这里用
 /// PackageInfo 打桩 + HttpOverrides 阻断网络，并把首帧放进 runAsync 里让真实
@@ -129,8 +129,8 @@ void main() {
     await pumpUntil(tester, find.byIcon(Icons.more_vert));
   }
 
-  /// 2.5.0（WB_SPEC_233 §6）起底部栏默认关：验证壳/标签栏的用例必须把开关
-  /// 显式写进库；同时立一次性迁移标志，免得启动时被迁移覆盖回新默认。
+  /// 立一次性迁移标志，免得启动时把预置值覆盖成新默认（播报默认开）。
+  /// WB_SPEC_234 起底部栏开关已删除，壳形态与开关无关，这里只预置动效等字段。
   Future<void> seedUi(WidgetTester tester, UiSettings settings) async {
     await tester.runAsync(() async {
       await Dao.instance.setSetting('ui_settings', settings.encode());
@@ -141,7 +141,7 @@ void main() {
   testWidgets('默认形态＝标签栏：WeekViewPage + HomeTabBar 恒两键，无 IndexedStack/NavigationBar', (
     tester,
   ) async {
-    await seedUi(tester, const UiSettings(showBottomBar: true));
+    await seedUi(tester, const UiSettings());
     await pumpHome(tester);
 
     // 课表一级视图 + 标签栏都存在
@@ -198,7 +198,7 @@ void main() {
   });
 
   testWidgets('点设置键切到壳内设置根页，且无返回箭头', (tester) async {
-    await seedUi(tester, const UiSettings(showBottomBar: true));
+    await seedUi(tester, const UiSettings());
     await pumpHome(tester);
 
     // 此刻栏上的「设置」键是切换入口（2026-11-05：默认动效双页常驻，
@@ -231,50 +231,19 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('关栏→再开栏：恢复标签栏', (tester) async {
-    // 先关栏（模拟用户在外观页关掉底部栏）
-    await seedUi(tester, const UiSettings(showBottomBar: false));
-    await pumpHome(tester);
-    expect(find.byType(HomeTabBar), findsNothing, reason: '关栏时不出任何栏');
-
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(HomeShell)),
-    );
-    // 只把开关打开：应恢复标签栏
-    await tester.runAsync(
-      () => container
-          .read(uiSettingsProvider.notifier)
-          .updateWith((s) => s.copyWith(showBottomBar: true)),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    expect(find.byType(HomeTabBar), findsOneWidget);
-
-    await tester.pump(const Duration(seconds: 11));
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('旧 bottomBarStyle 字段整体忽略：有栏且是标签栏（升级残留不无栏、不崩）', (tester) async {
-    // 模拟老用户升级：库里存着已删除的旧样式 id "capsule" / "bar"
+  testWidgets('旧 bottomBarStyle 与残留底栏开关键整体忽略：仍是标签栏、不崩', (tester) async {
+    // 模拟老用户升级：库里存着已删除的旧样式 id "capsule" / "bar"，
+    // 以及 WB_SPEC_234 已删字段遗留的布尔键
     await tester.runAsync(() async {
       await Dao.instance.setSetting(
         'ui_settings',
-        '{"showBottomBar": true, "bottomBarStyle": "capsule"}',
+        '{"showBottomBar": false, "bottomBarStyle": "capsule"}',
       );
       await Dao.instance.setSetting(UiSettingsNotifier.kDefaultsMigratedKey, '1');
     });
-    final raw = await tester.runAsync(
-      () => Dao.instance.getSetting('ui_settings'),
-    );
-    expect(
-      UiSettings.fromEncoded(raw).showBottomBar,
-      isTrue,
-      reason: '旧样式字段忽略后，其它字段仍照常解码',
-    );
 
     await pumpHome(tester);
-    // 有栏，且是标签栏（不是「未知样式 → 无栏」）
+    // 有栏，且是标签栏（不是「未知样式 → 无栏」）；残留键既不复活开关也不崩
     expect(find.byType(HomeTabBar), findsOneWidget);
     expect(tester.takeException(), isNull);
 
@@ -282,31 +251,8 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('关栏：不出底部栏；右上角菜单仍能进设置（逻辑不变）', (tester) async {
-    // 预置「底部栏关闭」，壳直接渲染单页课表（真实写库放 runAsync，假时钟不会推进真实 IO）
-    await seedUi(tester, const UiSettings(showBottomBar: false));
-    await pumpHome(tester);
-
-    expect(find.byType(WeekViewPage), findsOneWidget);
-    expect(find.byType(HomeTabBar), findsNothing);
-
-    // 右上角「更多」菜单里的「设置」项（关栏时恢复显示）→ Push 设置页，有返回箭头
-    await tester.tap(find.byIcon(Icons.more_vert));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.text('设置').last);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-
-    expect(find.byType(SettingsPage), findsOneWidget);
-    expect(find.byType(BackButton), findsOneWidget);
-
-    await tester.pump(const Duration(seconds: 11));
-    await tester.pumpWidget(const SizedBox());
-  });
-
   testWidgets('切换动效默认＝柔和（官方 FadeThrough），点设置切页、点课表切回', (tester) async {
-    await seedUi(tester, const UiSettings(showBottomBar: true));
+    await seedUi(tester, const UiSettings());
     await pumpHome(tester);
 
     // 默认动效是 B：PageTransitionSwitcher 挂载（旧页会卸载、不常驻保活）
@@ -334,7 +280,6 @@ void main() {
     await seedUi(
       tester,
       const UiSettings(
-        showBottomBar: true,
         shellTransitionStyle: ShellTransitionStyle.fadeThroughParallax,
       ),
     );
@@ -367,7 +312,6 @@ void main() {
     await seedUi(
       tester,
       const UiSettings(
-        showBottomBar: true,
         shellTransitionStyle: ShellTransitionStyle.fadeThroughOfficial,
       ),
     );
@@ -391,7 +335,6 @@ void main() {
     await seedUi(
       tester,
       const UiSettings(
-        showBottomBar: true,
         shellTransitionStyle: ShellTransitionStyle.quickFade,
       ),
     );

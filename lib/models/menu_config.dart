@@ -230,11 +230,11 @@ List<MenuItemSpec> visibleMenuItems(MenuConfig config) {
 
 /// 主页右上角菜单的运行时去重结果（WB_SPEC_213 第 4 节）。
 ///
-/// 底部栏开启（[showBottomBar] 为 true）时过滤掉固定的「设置」项——设置改由
-/// 悬浮胶囊进入；关闭时恢复显示。纯函数、只做运行时过滤，**绝不修改 [config]**
-/// 持久化的显隐/排序配置数组；菜单管理页仍用 [visibleMenuItems]（不受去重影响）。
-List<MenuItemSpec> homeMenuItems(MenuConfig config, {required bool showBottomBar}) {
+/// 底部栏恒在（WB_SPEC_234 起开关已删除），设置改由底部栏进入，所以这里
+/// **永远**过滤掉固定的「设置」项。纯函数、只做运行时过滤，**绝不修改
+/// [config]** 持久化的显隐/排序配置数组；菜单管理页仍用 [visibleMenuItems]
+/// （不受去重影响）。
+List<MenuItemSpec> homeMenuItems(MenuConfig config) {
   final items = visibleMenuItems(config);
-  if (!showBottomBar) return items;
   return [for (final e in items) if (e.id != 'settings') e];
 }

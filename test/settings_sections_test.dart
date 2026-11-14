@@ -43,19 +43,16 @@ void main() {
 
   /// 拉高画布（分组 y 坐标可比较）+ 等首帧异步 provider 就绪
   ///
-  /// 2.5.0（WB_SPEC_233 §6）底部栏默认关：本组用例按「底栏开」的老语义断言
-  /// 8 行结构，这里预置开关 + 一次性迁移标志（否则启动时被迁移覆盖成默认关）。
-  Future<void> pumpAppearance(
-    WidgetTester tester, {
-    bool showBottomBar = true,
-  }) async {
+  /// 2.5.0（WB_SPEC_234）底部栏恒在、开关行已删：这里预置一次性迁移标志只为
+  /// 避免启动迁移改写其它值，不再需要预置任何底栏开关。
+  Future<void> pumpAppearance(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1200, 6000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.runAsync(() async {
       await Dao.instance.setSetting(
         'ui_settings',
-        UiSettings(showBottomBar: showBottomBar).encode(),
+        const UiSettings().encode(),
       );
       await Dao.instance.setSetting(UiSettingsNotifier.kDefaultsMigratedKey, '1');
       await tester.pumpWidget(
@@ -73,19 +70,22 @@ void main() {
   double y(WidgetTester tester, String text) =>
       tester.getTopLeft(find.text(text)).dy;
 
-  group('WB_SPEC_228 §3：外观父页只剩 1 预览 + 8 行', () {
-    testWidgets('3 个线框组、6 个入口行 + 1 深浅模式行 + 1 开关行',
+  group('WB_SPEC_228 §3：外观父页只剩 1 预览 + 7 行（WB_SPEC_234 删开关行后）', () {
+    testWidgets('3 个线框组、6 个入口行 + 1 深浅模式行（开关行已删）',
         (tester) async {
       await pumpAppearance(tester);
       expect(find.byType(SettingsLineFrame), findsNWidgets(3));
       expect(find.byType(SettingsEntryRow), findsNWidgets(6));
-      expect(find.byType(SettingsSwitchRow), findsOneWidget);
+      // 底部栏开关行删除后，外观父页已无任何 SettingsSwitchRow
+      // （「深浅模式」是 _ThemeModeRow 的 SegmentedButton，不是开关行）
+      expect(find.byType(SettingsSwitchRow), findsNothing);
       expect(find.byType(Preview), findsOneWidget);
       expect(find.text('深浅模式'), findsOneWidget);
-      expect(find.text('底部栏显示'), findsOneWidget);
+      // 底部栏开关行整行删除（底栏恒在）
+      expect(find.text('底部栏显示'), findsNothing);
     });
 
-    testWidgets('8 行标题齐全（色彩与字体 4 / 排版 2 / 导航 2）',
+    testWidgets('7 行标题齐全（色彩与字体 4 / 排版 2 / 导航 1）',
         (tester) async {
       await pumpAppearance(tester);
       for (final title in [
@@ -95,7 +95,6 @@ void main() {
         '显示字体',
         '课表网格与表头',
         '课程卡片样式',
-        '底部栏显示',
         '切换动效',
       ]) {
         expect(find.text(title), findsOneWidget,
@@ -126,10 +125,10 @@ void main() {
       }
     });
 
-    testWidgets('3 组顺序：色彩与字体 → 课表排版与细节 → 导航与底栏',
+    testWidgets('3 组顺序：色彩与字体 → 课表排版与细节 → 导航',
         (tester) async {
       await pumpAppearance(tester);
-      const groups = ['色彩与字体', '课表排版与细节', '导航与底栏'];
+      const groups = ['色彩与字体', '课表排版与细节', '导航'];
       for (final g in groups) {
         expect(find.text(g), findsOneWidget, reason: '分组「$g」应在外观父页');
       }
@@ -224,29 +223,17 @@ void main() {
     });
   });
 
-  testWidgets('外观父页：底部栏显示开关默认关（2.5.0 翻转）、点开即时切换', (tester) async {
-    await pumpAppearance(tester, showBottomBar: false);
-    final tile = find.widgetWithText(SwitchListTile, '底部栏显示');
-    expect(tile, findsOneWidget);
-    expect(tester.widget<SwitchListTile>(tile).value, isFalse);
-    expect(
-      find.text('关闭后可从主页右上角菜单进入设置'),
-      findsOneWidget,
-    );
-    // 联动 ①：底部栏关时切换动效行整体不在
-    expect(find.text('切换动效'), findsNothing);
-
-    await tester.ensureVisible(tile);
-    await tester.pumpAndSettle();
-    await tester.tap(tile);
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 400)),
-    );
-    for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-    expect(tester.widget<SwitchListTile>(tile).value, isTrue);
-    // 联动 ①：开栏后切换动效行回来
+  testWidgets('外观父页：没有「底部栏显示」开关，切换动效行永远显示（WB_SPEC_234）',
+      (tester) async {
+    await pumpAppearance(tester);
+    // 开关行整行删除：标题、副标题、「底栏已关」文案都不该再出现在外观父页
+    expect(find.text('底部栏显示'), findsNothing);
+    expect(find.text('关闭后可从主页右上角菜单进入设置'), findsNothing);
+    expect(find.textContaining('底栏已关'), findsNothing);
+    // 组标题不再提底栏
+    expect(find.text('导航'), findsOneWidget);
+    expect(find.text('导航与底栏'), findsNothing);
+    // 切换动效行不再受任何开关约束，无条件显示
     expect(find.text('切换动效'), findsOneWidget);
   });
 

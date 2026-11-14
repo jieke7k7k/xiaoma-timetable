@@ -53,26 +53,23 @@ void main() {
       expect(items.single.id, 'settings');
     });
 
-    test('homeMenuItems：底部栏开时过滤「设置」，关时恢复，且不修改原配置（2.1.2 第 4 节）', () {
+    test('homeMenuItems：永远过滤「设置」，且不修改原配置（2.1.2 第 4 节；2.5.0 WB_SPEC_234）', () {
       final cfg = MenuConfig.defaults();
       final raw = visibleMenuItems(cfg);
       expect(raw.last.id, 'settings');
 
-      final deduped = homeMenuItems(cfg, showBottomBar: true);
+      // 底栏恒在（WB_SPEC_234 起开关字段已删），设置只从底部栏进，永远过滤
+      final deduped = homeMenuItems(cfg);
       expect(deduped.length, 6);
       expect(deduped.any((e) => e.id == 'settings'), isFalse);
       expect(deduped.first.id, 'course-search');
-
-      final restored = homeMenuItems(cfg, showBottomBar: false);
-      expect(restored.length, 7);
-      expect(restored.last.id, 'settings');
 
       // 去重只发生在运行时过滤，绝不修改持久化配置
       expect(visibleMenuItems(cfg).length, 7);
       expect(cfg.items.every((e) => e.visible), isTrue);
     });
 
-    test('homeMenuItems：六项全关 + 底部栏开 → 去重后为空（由调用方触发更多工具兜底）', () {
+    test('homeMenuItems：六项全关 → 去重后为空（由调用方触发更多工具兜底）', () {
       var cfg = MenuConfig.defaults();
       for (final e in cfg.items) {
         cfg = cfg.copyWithVisible(e.id, false);
@@ -81,8 +78,7 @@ void main() {
       expect(visibleMenuItems(cfg).length, 1);
       expect(visibleMenuItems(cfg).single.id, 'settings');
       // 去重后为空
-      expect(homeMenuItems(cfg, showBottomBar: true), isEmpty);
-      expect(homeMenuItems(cfg, showBottomBar: false).length, 1);
+      expect(homeMenuItems(cfg), isEmpty);
     });
 
     test('copyWithVisible：只改目标项，其余项不变', () {

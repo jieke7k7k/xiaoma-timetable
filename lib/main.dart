@@ -32,7 +32,6 @@ import 'pages/section_rules_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/settings_sections.dart';
 import 'pages/time_settings_page.dart';
-import 'pages/week_view_page.dart';
 import 'providers/providers.dart';
 import 'widgets/home_tab_bar.dart';
 
@@ -473,12 +472,12 @@ class _RootGate extends ConsumerWidget {
 /// 根页面只剩周课表主页 WeekViewPage；2.1.3 起底部胶囊恒为两键［课表｜设置］
 /// （WB_SPEC_214：解锁展开与第三个键随对应功能一并删除）。
 ///
-/// 2.1.2 起按 `UiSettings.showBottomBar`（默认开）二选一：
-/// - 开：单层壳结构，壳内承载［课表、设置根页］两个一级视图，原地淡入淡出切换，
-///   底部栏恒两键；设置根页作为一级视图、无返回箭头。
-/// - 关：恢复为 2.1.1 单页结构，设置从右上角菜单 Push 进入（300ms 右滑、有返回箭头）。
+/// 2.5.0（WB_SPEC_234）：底部栏开关整体删除，底栏无条件常显，这里**永远是**
+/// 单层壳结构——壳内承载［课表、设置根页］两个一级视图，原地淡入淡出切换，
+/// 底部栏恒为标签栏两键［课表｜设置］；设置根页作为一级视图、无返回箭头；
+/// 壳内 Tab 恒为课表起。
 ///
-/// 2.1.5（WB_SPEC_216 第 1 节）：开栏时底部栏是图标+文字标签栏——整宽贴住
+/// 2.1.5（WB_SPEC_216 第 1 节）：底部栏是图标+文字标签栏——整宽贴住
 /// 屏幕底边、顶部一条细分割线，两格等宽（图标在上、文字在下），选中态图标与
 /// 文字同为琥珀黄；贴底不悬浮（无悬浮间距、无悬浮阴影）。
 ///
@@ -574,25 +573,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   Widget build(BuildContext context) {
     final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
 
-    // 防困死（WB_SPEC_213 追加第 3 条）：在外观页关掉底部栏的瞬间，把壳内
-    // Tab 静默重置回课表（不 setState、不播淡入淡出动画）。此刻 build 已经
-    // 返回裸 WeekViewPage、壳整体卸载，趁外观页还在顶层遮挡时静默完成；
-    // 从外观页返回后落在课表视图。下一次再开底部栏时 `_tab` 已是课表。
-    ref.listen(uiSettingsProvider, (prev, next) {
-      final wasOn = prev?.value?.showBottomBar ?? true;
-      final isOn = next.value?.showBottomBar ?? true;
-      if (wasOn && !isOn) {
-        _tab = HomeShellTab.schedule;
-      }
-    });
-
-    if (!ui.showBottomBar) {
-      // 2.1.1 结构：关底栏时恢复为单页，设置从右上角菜单 Push 进入（300ms 右滑）
-      return const WeekViewPage();
-    }
-
-    // 2.1.2（WB_SPEC_213 第 2 节）：开底栏时升级为单层壳结构
+    // 2.1.2（WB_SPEC_213 第 2 节）：单层壳结构
     // 2.1.5（WB_SPEC_216 第 1 节）：默认形态为图标+文字标签栏，通栏形态已删除
+    // 2.5.0（WB_SPEC_234）：底部栏开关已删除，壳恒存在，不再有「关栏回单页」分支
     return PopScope(
       // 壳内非课表视图时，系统返回先切回课表，再按一次才退出 App
       canPop: _tab == HomeShellTab.schedule,

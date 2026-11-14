@@ -580,10 +580,9 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
     // 设置页改完返回主页立即按新配置重建，无需重启 App
     final menuConfig =
         ref.watch(menuConfigProvider).value ?? MenuConfig.defaults();
-    // 2.1.2（WB_SPEC_213 第 4 节）：底部栏开启时右上角菜单运行时过滤掉「设置」项，
-    // 关闭时恢复。去重前的完整菜单用于「六项全关」兜底判定（按去重前配置判断）。
-    final rawMenuItems = visibleMenuItems(menuConfig);
-    final menuItems = homeMenuItems(menuConfig, showBottomBar: ui.showBottomBar);
+    // 2.1.2（WB_SPEC_213 第 4 节）：右上角菜单运行时过滤掉「设置」项
+    // （WB_SPEC_234 起底栏恒在，过滤永远生效，设置只从底部栏进）。
+    final menuItems = homeMenuItems(menuConfig);
     // WB-202 第 3 项补充：学期就绪后才创建 PageController，初始页即当前显示周
     // （标题与网格首帧一致，不再出现「标题第 6 周、网格第 1 周」）。
     // 创建后本页生命周期内只此一个实例；dispose 里统一回收。
@@ -803,22 +802,12 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
             },
           ),
           // 「更多」菜单（2.1.0 WB_SPEC_212 第 2/4 节；2.1.2 WB_SPEC_213 第 4 节）：
-          // 按菜单配置动态生成，可见项在前、固定「设置」殿后；底部栏开时运行时
-          // 过滤掉「设置」。六项全关且底栏关（去重前只有设置一项）时右上角直接
-          // 齿轮进设置；六项全关且底栏开（去重后为空）时触发「更多工具」兜底——
-          // 弹菜单列全部六项工具，不出现空菜单、不出现齿轮直进设置。
+          // 按菜单配置动态生成，可见项在前、固定「设置」殿后但永远被过滤；
+          // 六项工具全关时去重后为空，触发「更多工具」兜底——弹菜单列全部六项
+          // 工具，不出现空菜单（WB_SPEC_234 起底栏恒在，已无齿轮直进设置的分支）。
           // WB_SPEC_223：PopupMenuButton 没有 onPressed 可守卫，展开时改渲染
           // 一个同图标的普通按钮（只收起）；收起时照常渲染菜单。
-          if (rawMenuItems.length <= 1 && !ui.showBottomBar)
-            IconButton(
-              tooltip: '设置',
-              icon: const Icon(Icons.settings),
-              onPressed: () {
-                if (_guardJumper()) return;
-                Navigator.pushNamed(context, '/settings');
-              },
-            )
-          else if (jumperOpen)
+          if (jumperOpen)
             IconButton(
               tooltip: '更多',
               icon: const Icon(Icons.more_vert),
@@ -1377,13 +1366,12 @@ class _GridArea extends ConsumerWidget {
             (constraints.maxWidth - timeAxisWidth - 1) / columnCount;
         // 底部安全留白（WB_SPEC_213 网格处理；2.1.5 按栏高分档）：
         // 只加在滚动视图底部，不改外框高度、不改外层 Column/Expanded 约束、
-        // 不因读取 showBottomBar 导致课表组件 Key 变化或 ScrollController 重建。
-        // 口径统一在 ui/bottom_bar_metrics.dart：开栏 64（栏体实测高度）另加
-        // 底部安全区、关栏 16——既不会让内容被栏遮住，也不会留白过大
+        // 不因读取底部栏状态导致课表组件 Key 变化或 ScrollController 重建。
+        // 口径统一在 ui/bottom_bar_metrics.dart：栏高 64（栏体实测高度）另加
+        // 底部安全区——既不会让内容被栏遮住，也不会留白过大
         // （WB_SPEC_216 第 2 节：滚动到底最后一节必须完整露出）。
         final bottomInset = bottomBarGridBottomPadding(
           MediaQuery.paddingOf(context).bottom,
-          showBottomBar: ui.showBottomBar,
         );
         // 行高：默认用界面设置的固定格子高度；开启「自适应一屏」（B1）时
         // 按可用高度均分——先扣掉底部留白与分隔带高度再均分，整表恰好一屏。

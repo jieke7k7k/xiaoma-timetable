@@ -1219,24 +1219,17 @@ class _AppearanceGroup extends ConsumerWidget {
           ],
         ),
 
-        // ── 第 3 组「导航与底栏」2 行 ─────────────────────────────
-        // 联动 ①：底部栏显示关时，切换动效行整个不进 children，
-        // 因而不留空位、不留分隔线（条件渲染，见 §1 例外条款）。
+        // ── 第 3 组「导航」1 行 ───────────────────────────────────
+        // WB_SPEC_234：底部栏开关行整行删除（底栏无条件常显），切换动效行
+        // 不再受任何开关约束，无条件进 children、永远显示。
         SettingsLineFrame(
-          title: '导航与底栏',
+          title: '导航',
           children: [
-            SettingsSwitchRow(
-              title: '底部栏显示',
-              subtitle: '关闭后可从主页右上角菜单进入设置',
-              value: ui.showBottomBar,
-              onChanged: (v) => apply(ui.copyWith(showBottomBar: v)),
+            SettingsEntryRow(
+              title: '切换动效',
+              value: ui.shellTransitionStyle.label,
+              onTap: () => _openTransitionSheet(context, ui, apply),
             ),
-            if (ui.showBottomBar)
-              SettingsEntryRow(
-                title: '切换动效',
-                value: ui.shellTransitionStyle.label,
-                onTap: () => _openTransitionSheet(context, ui, apply),
-              ),
           ],
         ),
         const SizedBox(height: AppSpacing.group),

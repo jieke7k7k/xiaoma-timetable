@@ -75,9 +75,11 @@ void main() {
   });
 
   /// 手机尺寸视口（逻辑 390×844）
+  ///
+  /// WB_SPEC_234：底部栏恒在，开关已删，这里不再有 showBottomBar 形参——
+  /// 不传参即唯一形态（栏在、留白恒为栏高）。
   Future<void> pumpHome(
     WidgetTester tester, {
-    required bool showBottomBar,
     bool autoFitHeight = false,
     double cellHeight = 96,
     double safeAreaBottom = 0,
@@ -102,11 +104,10 @@ void main() {
         UiSettings(
           autoFitHeight: autoFitHeight,
           cellHeight: cellHeight,
-          showBottomBar: showBottomBar,
         ).encode(),
       );
       // 2.5.0（WB_SPEC_233 §6）：立一次性迁移标志，免得启动时把预置值
-      // 覆盖成新默认（底栏默认关）
+      // 覆盖成新默认（播报默认开）。WB_SPEC_234 起底栏开关已删，无需预置开关。
       await Dao.instance.setSetting(UiSettingsNotifier.kDefaultsMigratedKey, '1');
     });
 
@@ -195,7 +196,7 @@ void main() {
   testWidgets('标签栏（默认）：滚动到底最后一节完整露出，留白 == 栏高 + 安全区', (
     tester,
   ) async {
-    await pumpHome(tester, showBottomBar: true);
+    await pumpHome(tester);
     expect(find.byType(HomeTabBar), findsOneWidget);
 
     final lastNo = await lastSection(tester);
@@ -204,7 +205,7 @@ void main() {
     expect(m.bar, isNotNull);
     // 留白口径：64（栏高） + 0（无安全区）
     expect(m.inset, kBottomBarTabHeight);
-    expect(m.inset, bottomBarGridBottomPadding(0, showBottomBar: true));
+    expect(m.inset, bottomBarGridBottomPadding(0));
     // 内容底边恰好落在栏顶：不遮半行、也不空一截
     final contentBottom = m.viewport.bottom - m.inset;
     expect(contentBottom, closeTo(m.bar!.top, 1.0));
@@ -219,28 +220,29 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('关栏：滚动到底最后一节完整露出，留白 16（不被任何栏遮挡）', (tester) async {
-    await pumpHome(tester, showBottomBar: false);
-    expect(find.byType(HomeTabBar), findsNothing);
+  testWidgets('无参调用即开栏留白：栏在、留白恒为栏高 64、不被遮挡', (tester) async {
+    // WB_SPEC_234：底栏恒在，pumpHome 不再有开关形参——「不传参」就是默认
+    // （也是唯一）形态：栏体一定在，留白恒为 64 + 安全区
+    await pumpHome(tester);
+    expect(find.byType(HomeTabBar), findsOneWidget);
 
     final lastNo = await lastSection(tester);
     await scrollToBottom(tester);
     final m = gridMetrics(tester);
-    expect(m.bar, isNull);
-    expect(m.inset, kBottomBarHiddenInset);
-    expect(m.inset, 16);
+    expect(m.bar, isNotNull, reason: '底栏恒在，不可能出现无栏形态');
+    expect(m.inset, kBottomBarTabHeight);
     final contentBottom = m.viewport.bottom - m.inset;
-    expect(contentBottom, closeTo(m.viewport.bottom - 16, 1.0));
+    expect(contentBottom, closeTo(m.bar!.top, 1.0));
     final last = tester.getRect(find.text('$lastNo').first);
     expect(last.top, greaterThanOrEqualTo(0));
-    expect(last.bottom, lessThanOrEqualTo(m.viewport.bottom - 16 + 0.5));
+    expect(last.bottom, lessThanOrEqualTo(m.bar!.top + 0.5));
 
     await tester.pump(const Duration(seconds: 11));
     await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('带底部安全区 34：标签栏留白 == 64 + 34，安全区只加一次', (tester) async {
-    await pumpHome(tester, showBottomBar: true, safeAreaBottom: 34);
+    await pumpHome(tester, safeAreaBottom: 34);
     final barRect = tester.getRect(find.byType(HomeTabBar));
     expect(barRect.height, kBottomBarTabHeight + 34, reason: '栏体自己吃掉安全区');
 
@@ -248,7 +250,7 @@ void main() {
     await scrollToBottom(tester);
     final m = gridMetrics(tester);
     expect(m.inset, barRect.height, reason: '留白 == 栏高（含安全区）');
-    expect(m.inset, bottomBarGridBottomPadding(34, showBottomBar: true));
+    expect(m.inset, bottomBarGridBottomPadding(34));
     final contentBottom = m.viewport.bottom - m.inset;
     expect(contentBottom, closeTo(m.bar!.top, 1.0));
     final last = tester.getRect(find.text('$lastNo').first);
@@ -259,7 +261,7 @@ void main() {
   });
 
   testWidgets('自适应一屏：开栏时整周恰好一屏，纵向不用滚动', (tester) async {
-    await pumpHome(tester, showBottomBar: true, autoFitHeight: true);
+    await pumpHome(tester, autoFitHeight: true);
     expect(find.byType(HomeTabBar), findsOneWidget);
 
     // 2.1.7 同版本修复：行高先扣底栏留白再均分，整周总高 + 留白 == 视口高，
@@ -284,7 +286,7 @@ void main() {
   });
 
   testWidgets('分隔带：页内带子只留底色、不画文字（复查 Bug 5）', (tester) async {
-    await pumpHome(tester, showBottomBar: true);
+    await pumpHome(tester);
 
     // 午休/晚间各只出现一次：固定时间轴占位画的名称。页内带子以前每页
     // 都画一份居中「午休 12:00–14:00」，切周滑到中途会双份重影；

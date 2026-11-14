@@ -473,18 +473,16 @@ void main() {
     });
   });
 
-  // ── §6 默认值翻转 + 一次性迁移 ─────────────────────────────────
-  group('§6 两默认值翻转 + 一次性迁移', () {
-    test('默认值：底部栏默认关、上课播报默认开（构造与反序列化两处一致）', () {
+  // ── §6 播报默认值翻转 + 一次性迁移 ─────────────────────────────
+  group('§6 播报默认值翻转 + 一次性迁移', () {
+    test('默认值：上课播报默认开（构造与反序列化两处一致）', () {
       const ui = UiSettings();
-      expect(ui.showBottomBar, isFalse);
       expect(ui.showClassBroadcast, isTrue);
       final fromEmpty = UiSettings.fromEncoded('{}');
-      expect(fromEmpty.showBottomBar, isFalse);
       expect(fromEmpty.showClassBroadcast, isTrue);
     });
 
-    test('标志位未置：老库两值被翻成新默认并落盘，标志置 1', () async {
+    test('标志位未置：老库播报被翻成新默认并落盘，标志置 1', () async {
       await Dao.instance.setSetting(
         'ui_settings',
         '{"showBottomBar": true, "showClassBroadcast": false}',
@@ -493,29 +491,29 @@ void main() {
       addTearDown(container.dispose);
 
       final ui = await container.read(uiSettingsProvider.future);
-      expect(ui.showBottomBar, isFalse, reason: '老用户升级后底栏默认关');
       expect(ui.showClassBroadcast, isTrue, reason: '老用户升级后播报默认开');
 
       expect(await Dao.instance.getSetting(UiSettingsNotifier.kDefaultsMigratedKey), '1');
       final stored = UiSettings.fromEncoded(
         await Dao.instance.getSetting('ui_settings'),
       );
-      expect(stored.showBottomBar, isFalse, reason: '迁移结果要落盘');
-      expect(stored.showClassBroadcast, isTrue);
+      expect(stored.showClassBroadcast, isTrue, reason: '迁移结果要落盘');
+      // 旧 JSON 里残留的底部栏开关键（WB_SPEC_234 已删字段）不阻塞解码，
+      // 迁移也不再写它，落盘后的新 JSON 里自然没有这个键
+      expect(stored.toJson().containsKey('showBottomBar'), isFalse);
     });
 
-    test('标志位置 1 后：用户手动改的值不再被覆盖', () async {
+    test('标志位置 1 后：用户手动改的播报值不再被覆盖', () async {
       await Dao.instance.setSetting(
         'ui_settings',
-        '{"showBottomBar": true, "showClassBroadcast": false}',
+        '{"showClassBroadcast": false}',
       );
       await Dao.instance.setSetting(UiSettingsNotifier.kDefaultsMigratedKey, '1');
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
       final ui = await container.read(uiSettingsProvider.future);
-      expect(ui.showBottomBar, isTrue, reason: '只跑一次，用户自己的开关说了算');
-      expect(ui.showClassBroadcast, isFalse);
+      expect(ui.showClassBroadcast, isFalse, reason: '只跑一次，用户自己的开关说了算');
     });
 
     test('新安装（库里没有 ui_settings）：直接吃新默认并立标志', () async {
@@ -523,7 +521,6 @@ void main() {
       addTearDown(container.dispose);
 
       final ui = await container.read(uiSettingsProvider.future);
-      expect(ui.showBottomBar, isFalse);
       expect(ui.showClassBroadcast, isTrue);
       expect(await Dao.instance.getSetting(UiSettingsNotifier.kDefaultsMigratedKey), '1');
       // 迁移不碰提醒开关与其它设置键（不弹权限、不改通知）

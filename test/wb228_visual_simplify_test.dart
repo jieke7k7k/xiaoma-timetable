@@ -68,9 +68,9 @@ void main() {
     }
   }
 
-  group('联动 ①：底部栏显示关时隐藏切换动效行', () {
-    testWidgets('开 → 有切换动效行；关 → 整行消失且不留分隔线', (tester) async {
-      final fake = _FakeUiNotifier(const UiSettings(showBottomBar: true));
+  group('切换动效行永远显示（WB_SPEC_234 删掉底栏开关后）', () {
+    testWidgets('任意界面设置下切换动效行都在，不随设置变化消失', (tester) async {
+      final fake = _FakeUiNotifier(const UiSettings());
       final overrides = [
         uiSettingsProvider.overrideWith(() => fake),
       ];
@@ -82,20 +82,20 @@ void main() {
 
       expect(find.text('切换动效'), findsOneWidget);
       expect(find.byType(SettingsEntryRow), findsNWidgets(6));
-      final dividersWhenShown = tester
+      final dividersBefore = tester
           .widgetList<Divider>(find.byType(Divider))
           .length;
 
-      // 关掉底部栏 → 切换动效行整体不进 children
-      fake.set(const UiSettings(showBottomBar: false));
+      // 改任意一项界面设置（与底栏无关的主题色）→ 切换动效行仍在、行数与
+      // 分隔线数都不变（此前「关栏→整行消失」的联动已随开关一并删除）
+      fake.set(const UiSettings(colorSchemeId: 'grape'));
       await tester.pumpAndSettle();
 
-      expect(find.text('切换动效'), findsNothing);
-      expect(find.byType(SettingsEntryRow), findsNWidgets(5));
-      // 「不留分隔线」：组内少了一行，分隔线也应少一条
+      expect(find.text('切换动效'), findsOneWidget);
+      expect(find.byType(SettingsEntryRow), findsNWidgets(6));
       expect(
         tester.widgetList<Divider>(find.byType(Divider)).length,
-        dividersWhenShown - 1,
+        dividersBefore,
       );
     });
   });
@@ -236,12 +236,12 @@ void main() {
       tester.view.physicalSize = const Size(1200, 6000);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
-      // 2.5.0（WB_SPEC_233 §6）底部栏默认关：外观父页「8 行」的老语义需要
-      // 底栏开，这里预置开关 + 一次性迁移标志，避免被启动迁移覆盖。
+      // 2.5.0（WB_SPEC_233 §6）播报默认开：预置一次性迁移标志，避免被启动
+      // 迁移覆盖；WB_SPEC_234 起底栏开关已删，不再需要预置它。
       await tester.runAsync(() async {
         await Dao.instance.setSetting(
           'ui_settings',
-          const UiSettings(showBottomBar: true).encode(),
+          const UiSettings().encode(),
         );
         await Dao.instance.setSetting(UiSettingsNotifier.kDefaultsMigratedKey, '1');
       });
@@ -261,11 +261,12 @@ void main() {
       }
     }
 
-    testWidgets('外观父页 8 行 + 3 个线框组', (tester) async {
+    testWidgets('外观父页 7 行 + 3 个线框组（WB_SPEC_234 删开关行后）', (tester) async {
       await pumpRoutes(tester, '/settings-appearance');
       expect(find.byType(SettingsLineFrame), findsNWidgets(3));
       expect(find.byType(SettingsEntryRow), findsNWidgets(6));
-      expect(find.byType(SettingsSwitchRow), findsOneWidget);
+      // 底部栏开关行删除后，外观父页已无任何 SettingsSwitchRow
+      expect(find.byType(SettingsSwitchRow), findsNothing);
       expect(find.byType(Preview), findsOneWidget);
       // 父页不得再直接出现滑杆 / 竖排三按钮
       expect(find.byType(Slider), findsNothing);

@@ -124,7 +124,7 @@ void main() {
     await tester.runAsync(() async {
       await Dao.instance.setSetting(
         'ui_settings',
-        const UiSettings(showBottomBar: true).encode(),
+        const UiSettings().encode(),
       );
       await Dao.instance.setSetting(UiSettingsNotifier.kDefaultsMigratedKey, '1');
     });

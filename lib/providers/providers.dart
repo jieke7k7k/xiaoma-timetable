@@ -792,17 +792,15 @@ class UiSettingsNotifier extends AsyncNotifier<UiSettings> {
     final stored = UiSettings.fromEncoded(
       await Dao.instance.getSetting('ui_settings'),
     );
-    // 2.5.0 两默认值翻转（底部栏默认关、上课播报默认开）：老装机用户库里
-    // 存的是旧默认值写下的字段，光改默认值救不回来，这里覆盖一次并立标志。
-    // 只跑一次——标志为 1 后用户自己的开关不再被覆盖。
+    // 2.5.0 上课播报默认值翻转（默认开）：老装机用户库里存的是旧默认值写下的
+    // 字段，光改默认值救不回来，这里覆盖一次并立标志。只跑一次——标志为 1 后
+    // 用户自己的开关不再被覆盖。（WB_SPEC_234 起底部栏开关字段已整体删除，
+    // 底栏无条件常显，这里不再覆盖它，也不需要新的迁移。）
     // 新安装：库里无 ui_settings 键时 fromEncoded 已给新默认，这里的
     // copyWith 是等值操作，无害；全程只读写 app_settings 键值，不碰权限/通知。
     final migratedFlag = await Dao.instance.getSetting(kDefaultsMigratedKey);
     if (migratedFlag != '1') {
-      final migrated = stored.copyWith(
-        showBottomBar: false,
-        showClassBroadcast: true,
-      );
+      final migrated = stored.copyWith(showClassBroadcast: true);
       await Dao.instance.setSetting('ui_settings', migrated.encode());
       await Dao.instance.setSetting(kDefaultsMigratedKey, '1');
       return migrated;

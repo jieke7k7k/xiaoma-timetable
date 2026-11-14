@@ -25,8 +25,8 @@ void main() {
       expect(ui.showWeekParity, isFalse); // 2.0.1 标题单双周默认关
       // 2.5.0（WB_SPEC_233 §6）：上课播报默认关 → 默认开
       expect(ui.showClassBroadcast, isTrue);
-      // 2.5.0（WB_SPEC_233 §6）：底部栏默认开 → 默认关
-      expect(ui.showBottomBar, isFalse);
+      // 2.5.0（WB_SPEC_234）：底部栏开关字段整体删除，这里不再有默认值可断言
+      expect(ui.toJson().containsKey('showBottomBar'), isFalse);
       expect(UiSettings.fromEncoded('').cellHeight, 46);
       expect(UiSettings.fromEncoded('坏掉的 json').cellHeight, 46);
     });
@@ -51,7 +51,6 @@ void main() {
         showClassBroadcast: true,
         autoFitHeight: true,
         highlightTodayColumn: true,
-        showBottomBar: false,
       );
       final back = UiSettings.fromEncoded(ui.encode());
       expect(back.cellHeight, 64);
@@ -72,16 +71,20 @@ void main() {
       expect(back.showClassBroadcast, isTrue);
       expect(back.autoFitHeight, isTrue);
       expect(back.highlightTodayColumn, isTrue);
-      expect(back.showBottomBar, isFalse);
     });
 
-    test('showBottomBar 反序列化容错：缺失/null/非 bool 一律回默认关', () {
-      // 2.5.0（WB_SPEC_233 §6）：默认由开翻转为关，兜底值同步改为 false
-      expect(UiSettings.fromEncoded('{}').showBottomBar, isFalse);
-      expect(UiSettings.fromEncoded('{"showBottomBar": null}').showBottomBar, isFalse);
-      expect(UiSettings.fromEncoded('{"showBottomBar": "yes"}').showBottomBar, isFalse);
-      expect(UiSettings.fromEncoded('{"showBottomBar": false}').showBottomBar, isFalse);
-      expect(UiSettings.fromEncoded('{"showBottomBar": true}').showBottomBar, isTrue);
+    test('旧库残留底部栏开关键：读取时整键忽略，不报错、其余字段照常解出', () {
+      // 2.5.0（WB_SPEC_234）：底部栏开关字段整体删除。旧 JSON 里残留的同名键
+      // 直接忽略——不参与迁移、不影响其它字段；下次 encode 不再写出该键。
+      final back = UiSettings.fromEncoded(
+        '{"showBottomBar": false, "showClassBroadcast": true, "cellHeight": 64}',
+      );
+      expect(back.cellHeight, 64);
+      expect(back.showClassBroadcast, isTrue);
+      expect(back.toJson().containsKey('showBottomBar'), isFalse);
+      // 键存在但类型离谱（null / 非 bool）也不崩，照常回默认
+      expect(UiSettings.fromEncoded('{"showBottomBar": null}').cellHeight, 46);
+      expect(UiSettings.fromEncoded('{"showBottomBar": "yes"}').cellHeight, 46);
     });
 
     test('shellTransitionStyle 反序列化容错：缺失/null/未知值一律回默认柔和', () {
@@ -168,8 +171,8 @@ void main() {
         '{"cellHeight": 64, "bottomBarStyle": "capsule"}',
       );
       expect(back.cellHeight, 64);
-      // 旧库无 showBottomBar 字段 → 按 2.5.0 新默认关兜底（WB_SPEC_233 §6）
-      expect(back.showBottomBar, isFalse);
+      // 旧库残留的底部栏开关键（2.5.0 WB_SPEC_234 已整体删除该字段）不参与解码，
+      // 也不影响其它字段——这里只确认 cellHeight 正常、encode 不再写出该键
       expect(const UiSettings().toJson().containsKey('bottomBarStyle'), isFalse);
       expect(
         UiSettings.fromEncoded('{"bottomBarStyle": "bar"}').cellHeight,

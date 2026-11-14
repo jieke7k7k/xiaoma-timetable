@@ -76,7 +76,7 @@ void main() {
       expect(material.color, isNotNull, reason: '栏体背景取表面色');
       // 留白口径用的就是这一栏的实测高度
       expect(
-        bottomBarGridBottomInset(showBottomBar: true),
+        bottomBarGridBottomInset(),
         tester.getSize(find.byType(HomeTabBar)).height,
       );
     });
@@ -360,31 +360,15 @@ void main() {
   });
 
   group('几何常量与网格留白口径', () {
-    test('两态留白：关栏 16 / 开栏 64', () {
-      // 关栏：16（沿用 2.1.3）
-      expect(bottomBarGridBottomInset(showBottomBar: false), 16);
-      // 开栏：64 = 该 widget 实测高度
-      expect(
-        bottomBarGridBottomInset(showBottomBar: true),
-        kBottomBarTabHeight,
-      );
+    test('留白恒为栏高 64（WB_SPEC_234 起无「关栏 16」分档）', () {
+      expect(bottomBarGridBottomInset(), kBottomBarTabHeight);
       expect(kBottomBarTabHeight, HomeTabBar.height);
     });
 
     test('叠加底部安全区：安全区只加一次，不重复计算', () {
-      expect(
-        bottomBarGridBottomPadding(34, showBottomBar: true),
-        34 + kBottomBarTabHeight,
-      );
-      expect(
-        bottomBarGridBottomPadding(34, showBottomBar: false),
-        34 + 16,
-      );
+      expect(bottomBarGridBottomPadding(34), 34 + kBottomBarTabHeight);
       // 异常值（负数/无穷）按 0 处理，绝不把 NaN 塞进 EdgeInsets
-      expect(
-        bottomBarGridBottomPadding(-1, showBottomBar: true),
-        kBottomBarTabHeight,
-      );
+      expect(bottomBarGridBottomPadding(-1), kBottomBarTabHeight);
     });
   });
 }
