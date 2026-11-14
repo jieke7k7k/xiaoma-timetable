@@ -23,8 +23,10 @@ void main() {
       expect(ui.autoFitHeight, isTrue); // 1.2.5 起默认开
       expect(ui.highlightTodayColumn, isFalse); // 1.2.6 边框高亮默认关
       expect(ui.showWeekParity, isFalse); // 2.0.1 标题单双周默认关
-      expect(ui.showClassBroadcast, isFalse); // 2.0.1 上课播报默认关
-      expect(ui.showBottomBar, isTrue); // 2.1.2 底部栏默认开
+      // 2.5.0（WB_SPEC_233 §6）：上课播报默认关 → 默认开
+      expect(ui.showClassBroadcast, isTrue);
+      // 2.5.0（WB_SPEC_233 §6）：底部栏默认开 → 默认关
+      expect(ui.showBottomBar, isFalse);
       expect(UiSettings.fromEncoded('').cellHeight, 46);
       expect(UiSettings.fromEncoded('坏掉的 json').cellHeight, 46);
     });
@@ -73,11 +75,11 @@ void main() {
       expect(back.showBottomBar, isFalse);
     });
 
-    test('showBottomBar 反序列化容错：缺失/null/非 bool 一律回默认开', () {
-      // 2.1.2（WB_SPEC_213 第 1 节）：旧数据无此字段或为 null 时按默认开兜底
-      expect(UiSettings.fromEncoded('{}').showBottomBar, isTrue);
-      expect(UiSettings.fromEncoded('{"showBottomBar": null}').showBottomBar, isTrue);
-      expect(UiSettings.fromEncoded('{"showBottomBar": "yes"}').showBottomBar, isTrue);
+    test('showBottomBar 反序列化容错：缺失/null/非 bool 一律回默认关', () {
+      // 2.5.0（WB_SPEC_233 §6）：默认由开翻转为关，兜底值同步改为 false
+      expect(UiSettings.fromEncoded('{}').showBottomBar, isFalse);
+      expect(UiSettings.fromEncoded('{"showBottomBar": null}').showBottomBar, isFalse);
+      expect(UiSettings.fromEncoded('{"showBottomBar": "yes"}').showBottomBar, isFalse);
       expect(UiSettings.fromEncoded('{"showBottomBar": false}').showBottomBar, isFalse);
       expect(UiSettings.fromEncoded('{"showBottomBar": true}').showBottomBar, isTrue);
     });
@@ -166,7 +168,8 @@ void main() {
         '{"cellHeight": 64, "bottomBarStyle": "capsule"}',
       );
       expect(back.cellHeight, 64);
-      expect(back.showBottomBar, isTrue);
+      // 旧库无 showBottomBar 字段 → 按 2.5.0 新默认关兜底（WB_SPEC_233 §6）
+      expect(back.showBottomBar, isFalse);
       expect(const UiSettings().toJson().containsKey('bottomBarStyle'), isFalse);
       expect(
         UiSettings.fromEncoded('{"bottomBarStyle": "bar"}').cellHeight,

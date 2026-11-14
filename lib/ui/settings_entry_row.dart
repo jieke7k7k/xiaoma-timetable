@@ -12,6 +12,12 @@ const double kSettingsSliderRowHeight = 72;
 /// 标准入口行：56dp（带副标题时 72dp），标题左、副标题可选、右端 ›。
 ///
 /// 导航层级封顶 3 层：第 3 层专项子页全平铺，不再用本组件放 › 入口。
+///
+/// WB_SPEC_233 §3 对齐口径：标题独享 [Expanded]（吃掉全部剩余宽度），右侧
+/// 值区上界为**屏宽**的 45%（不是行宽 45%），内部 `MainAxisAlignment.end`
+/// 靠右排——全站所有入口行的 › 与值文字右缘因此落在同一条竖线上，
+/// 不会随标题/值的字长浮动。长值只在 45% 内做省略号，不挤爆标题。
+/// 切勿把值改成 `Expanded`（会把左右五五开、腰斩长标题，并让色块+文字行左偏）。
 class SettingsEntryRow extends StatelessWidget {
   const SettingsEntryRow({
     super.key,
@@ -81,23 +87,36 @@ class SettingsEntryRow extends StatelessWidget {
                   ],
                 ),
               ),
-              if (valueWidget != null) valueWidget!,
-              if (value != null)
-                Flexible(
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: Text(
-                      value!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.right,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
+              // WB_SPEC_233 §3：右侧值区定宽上界（屏宽 45%），内部靠右排。
+              // 标题已独享 Expanded，把本块推到最右边缘，箭头因此恒在同一竖线上。
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width * 0.45,
                 ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (valueWidget != null) valueWidget!,
+                    if (value != null)
+                      Flexible(
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Text(
+                            value!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.right,
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
               if (showChevron) ...[
                 const SizedBox(width: 6),
                 Icon(

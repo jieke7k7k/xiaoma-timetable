@@ -784,9 +784,30 @@ final bandSettingsProvider =
 /// 界面设置状态（1.1.1）：整体 JSON 持久化到 app_settings 的 ui_settings 键。
 /// 改动即落库并通知全 App（主题色/字体在 MaterialApp 层监听，格子外观在周视图监听）。
 class UiSettingsNotifier extends AsyncNotifier<UiSettings> {
+  /// WB_SPEC_233 §6.2 一次性迁移标志（app_settings 键）
+  static const String kDefaultsMigratedKey = 'v250_defaults_migrated';
+
   @override
   Future<UiSettings> build() async {
-    return UiSettings.fromEncoded(await Dao.instance.getSetting('ui_settings'));
+    final stored = UiSettings.fromEncoded(
+      await Dao.instance.getSetting('ui_settings'),
+    );
+    // 2.5.0 两默认值翻转（底部栏默认关、上课播报默认开）：老装机用户库里
+    // 存的是旧默认值写下的字段，光改默认值救不回来，这里覆盖一次并立标志。
+    // 只跑一次——标志为 1 后用户自己的开关不再被覆盖。
+    // 新安装：库里无 ui_settings 键时 fromEncoded 已给新默认，这里的
+    // copyWith 是等值操作，无害；全程只读写 app_settings 键值，不碰权限/通知。
+    final migratedFlag = await Dao.instance.getSetting(kDefaultsMigratedKey);
+    if (migratedFlag != '1') {
+      final migrated = stored.copyWith(
+        showBottomBar: false,
+        showClassBroadcast: true,
+      );
+      await Dao.instance.setSetting('ui_settings', migrated.encode());
+      await Dao.instance.setSetting(kDefaultsMigratedKey, '1');
+      return migrated;
+    }
+    return stored;
   }
 
   /// 整体替换（设置页每次调节都走这里）：先落库再发状态，保证重启后一致

@@ -42,6 +42,13 @@ enum ShellTransitionStyle {
 /// 2.1.7 同版本修复：底部栏只剩新标签栏一种形态，`BottomBarStyle` 枚举与
 /// `bottomBarStyle` 字段整体删除；旧库里的 `bottomBarStyle` 值（`tab` /
 /// `capsule` / `bar`）读取时直接忽略，不影响其它字段。
+///
+/// 2.5.0（WB_SPEC_233 §6）同版本重发：`showBottomBar` 默认 true → false、
+/// `showClassBroadcast` 默认 false → true。构造函数与 [fromEncoded] 的回退值
+/// 两处同时改齐（本类没有 `defaults()` 工厂，别去别处找第三处）；已装机的
+/// 老用户由 `UiSettingsNotifier.build()` 里的一次性迁移
+/// （app_settings 的 `v250_defaults_migrated` 标志）覆盖一次，此后用户
+/// 自己再开关不受影响。
 class UiSettings {
   const UiSettings({
     this.cellHeight = 46,
@@ -59,10 +66,13 @@ class UiSettings {
     this.fontId = 'system',
     this.showParityLabel = true,
     this.showWeekParity = false,
-    this.showClassBroadcast = false,
+    // WB_SPEC_233 §6：上课播报默认改为开（2.5.0 真机反馈，用户口头纠正过
+    // 「上课提醒」应为「上课播报」）。旧库由 v250_defaults_migrated 一次性迁移。
+    this.showClassBroadcast = true,
     this.autoFitHeight = true,
     this.highlightTodayColumn = false,
-    this.showBottomBar = true,
+    // WB_SPEC_233 §6：底部栏默认改为关（主页右上角 ⋮ 菜单里有「设置」入口）
+    this.showBottomBar = false,
     this.shellTransitionStyle = ShellTransitionStyle.fadeThroughOfficial,
     // 默认 true：新构造的值都是「已决策」的（显式传入或新默认），不参与迁移；
     // 只有从旧库读到、无此键的 'fade-parallax' 才按旧默认迁移（见 fromEncoded）
@@ -138,7 +148,8 @@ class UiSettings {
   /// 2.0.1 删掉药丸、由它统一控制标题后缀，默认改为关（只影响没手动改过的用户）。
   final bool showWeekParity;
 
-  /// 主页顶部是否显示上课播报（当前/下一节课状态条，2.0.1），默认关。
+  /// 主页顶部是否显示上课播报（当前/下一节课状态条，2.0.1），默认开
+  /// （2.5.0 WB_SPEC_233 起由默认关翻转为默认开，见 v250_defaults_migrated）。
   /// 只影响主页顶部那条播报条，常驻通知不受此开关控制。
   final bool showClassBroadcast;
 
@@ -149,8 +160,10 @@ class UiSettings {
   /// 今天整列边框高亮开关（1.2.6）：1.2.5 的整列边框改为可关，默认关
   final bool highlightTodayColumn;
 
-  /// 底部栏开关：主页底部是否显示标签栏（课表/设置切换键）。默认开；
-  /// 用户关闭后持久化记忆，下次启动仍保持关闭。旧数据无此字段时按默认开兜底，
+  /// 底部栏开关：主页底部是否显示标签栏（课表/设置切换键）。默认关
+  /// （2.5.0 WB_SPEC_233 起由默认开翻转为默认关：关掉后设置从主页右上角
+  /// ⋮ 菜单进入；旧库由 v250_defaults_migrated 一次性迁移）。
+  /// 用户手动开关后持久化记忆，下次启动仍保持。旧数据无此字段时按默认关兜底，
   /// 绝不为 null 导致启动白屏。
   final bool showBottomBar;
 
@@ -320,11 +333,12 @@ class UiSettings {
         fontId: st('fontId', 'system'),
         showParityLabel: bl('showParityLabel', true),
         showWeekParity: bl('showWeekParity', false),
-        showClassBroadcast: bl('showClassBroadcast', false),
+        showClassBroadcast: bl('showClassBroadcast', true),
         autoFitHeight: bl('autoFitHeight', true),
         highlightTodayColumn: bl('highlightTodayColumn', false),
-        // 反序列化容错：旧数据无此字段或字段为 null 时一律按默认开兜底（true）
-        showBottomBar: bl('showBottomBar', true),
+        // 反序列化容错：旧数据无此字段或字段为 null 时一律按新默认关兜底
+        // （2.5.0 WB_SPEC_233 由默认开翻转为默认关）
+        showBottomBar: bl('showBottomBar', false),
         // 动效容错：缺失/null/未知值一律回默认「柔和」（见上方迁移逻辑）
         shellTransitionStyle: shellStyle,
         shellTransitionStyleMigrated: styleMigrated || needsMigration,

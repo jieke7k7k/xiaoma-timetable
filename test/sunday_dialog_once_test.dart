@@ -9,6 +9,7 @@ import 'package:xiaoma_timetable/database/dao.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/main.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
+import 'package:xiaoma_timetable/models/ui_settings.dart';
 import 'package:xiaoma_timetable/services/sunday_dialog_service.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
 import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
@@ -238,6 +239,16 @@ void main() {
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+
+    // 2.5.0（WB_SPEC_233 §6）底部栏默认关：本文件要切「设置」Tab，
+    // 预置「底栏开」+ 一次性迁移标志（否则启动时被迁移覆盖成默认关）。
+    await tester.runAsync(() async {
+      await Dao.instance.setSetting(
+        'ui_settings',
+        const UiSettings(showBottomBar: true).encode(),
+      );
+      await Dao.instance.setSetting('v250_defaults_migrated', '1');
+    });
 
     await tester.runAsync(() async {
       await HttpOverrides.runZoned(

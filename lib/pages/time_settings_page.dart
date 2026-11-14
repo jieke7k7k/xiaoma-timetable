@@ -15,8 +15,8 @@ import '../widgets/app_dialog.dart';
 /// 父页从「4 张卡 + 13 节全平铺」收成「2 行入口 + 上/下/晚三段折叠」：
 /// - 「节次数量与分段」进专项子页（[SectionRulesBody] 承接原 4 张卡的控件，
 ///   绑定、校验、持久化一字未动）；
-/// - 三段共用一个大框（线框形态 A），默认只展开当前时段；
-/// - 单节卡片 72dp → 56dp。
+/// - 三段各成独立线框（2.5.0 WB_SPEC_233 §5.1 去套娃），默认只展开当前时段；
+/// - 单节卡片 72dp → 56dp，2.5.0 起去 ▷/▢ 大按钮，改「第 X 节」+ 两个时间块。
 class TimeSettingsPage extends ConsumerWidget {
   const TimeSettingsPage({super.key});
 
@@ -57,61 +57,88 @@ class TimeSettingsPage extends ConsumerWidget {
             ],
           ),
 
-          // §5：三段共用一个大框；午休随上午组、晚餐随下午组
-          SettingsLineFrame(
-            title: '各节上下课时间（点击时间直接修改）',
-            dividers: false,
-            children: [
-              _BandTile(
-                key: const Key('time_band_morning'),
-                title: '上午',
-                count: morning.length,
-                timeRange: morning.isEmpty
-                    ? null
-                    : '${morning.first.startTime}–${morning.last.endTime}',
-                expanded: initialBand == TimeBand.morning,
-                children: [
-                  for (final s in morning) _buildSlotCard(context, ref, s),
-                ],
-              ),
-              if (morning.isNotEmpty && afternoon.isNotEmpty)
-                _buildIntervalRow(context, '午休', morning.last.endTime,
-                    afternoon.first.startTime),
-              _BandTile(
-                key: const Key('time_band_afternoon'),
-                title: '下午',
-                count: afternoon.length,
-                timeRange: afternoon.isEmpty
-                    ? null
-                    : '${afternoon.first.startTime}–${afternoon.last.endTime}',
-                expanded: initialBand == TimeBand.afternoon,
-                children: [
-                  for (final s in afternoon) _buildSlotCard(context, ref, s),
-                ],
-              ),
-              if (afternoon.isNotEmpty && evening.isNotEmpty)
-                _buildIntervalRow(context, '晚餐', afternoon.last.endTime,
-                    evening.first.startTime),
-              _BandTile(
-                key: const Key('time_band_evening'),
-                title: '晚上',
-                count: evening.length,
-                timeRange: evening.isEmpty
-                    ? null
-                    : '${evening.first.startTime}–${evening.last.endTime}',
-                expanded: initialBand == TimeBand.evening,
-                tailHint: true,
-                children: [
-                  for (final s in evening) _buildSlotCard(context, ref, s),
-                ],
-              ),
-            ],
-          ),
+          // §5（233 重构）：组标题留在框外，上午 / 下午 / 晚上各成独立线框，
+          // 框内只放一个段头；午休 / 晚餐间隔行移到框与框之间的留白区。
+          // 「默认展开当前时段」保持现状（跟随时钟走，不固定上午）。
+          const SettingsGroupHeader('各节上下课时间（点击时间直接修改）'),
+          if (morning.isNotEmpty)
+            SettingsLineFrame(
+              title: '上午',
+              showTitle: false,
+              dividers: false,
+              children: [
+                _BandTile(
+                  key: const Key('time_band_morning'),
+                  title: '上午',
+                  sectionRange: _sectionRange(morning),
+                  timeRange: _timeRange(morning),
+                  expanded: initialBand == TimeBand.morning,
+                  children: [
+                    for (final s in morning) _buildSlotCard(context, ref, s),
+                  ],
+                ),
+              ],
+            ),
+          if (morning.isNotEmpty && afternoon.isNotEmpty)
+            _buildIntervalRow(context, '午休', morning.last.endTime,
+                afternoon.first.startTime),
+          if (afternoon.isNotEmpty)
+            SettingsLineFrame(
+              title: '下午',
+              showTitle: false,
+              dividers: false,
+              children: [
+                _BandTile(
+                  key: const Key('time_band_afternoon'),
+                  title: '下午',
+                  sectionRange: _sectionRange(afternoon),
+                  timeRange: _timeRange(afternoon),
+                  expanded: initialBand == TimeBand.afternoon,
+                  children: [
+                    for (final s in afternoon) _buildSlotCard(context, ref, s),
+                  ],
+                ),
+              ],
+            ),
+          if (afternoon.isNotEmpty && evening.isNotEmpty)
+            _buildIntervalRow(context, '晚餐', afternoon.last.endTime,
+                evening.first.startTime),
+          if (evening.isNotEmpty)
+            SettingsLineFrame(
+              title: '晚上',
+              showTitle: false,
+              dividers: false,
+              children: [
+                _BandTile(
+                  key: const Key('time_band_evening'),
+                  title: '晚上',
+                  sectionRange: _sectionRange(evening),
+                  timeRange: _timeRange(evening),
+                  expanded: initialBand == TimeBand.evening,
+                  tailHint: true,
+                  children: [
+                    for (final s in evening) _buildSlotCard(context, ref, s),
+                  ],
+                ),
+              ],
+            ),
           const SizedBox(height: AppSpacing.group),
         ],
       ),
     );
   }
+
+  /// 段头节次范围：按实际分段的节次起止算（14 节时晚上是 10–14 节，
+  /// 不得按默认 13 节写死 10–13）。
+  String _sectionRange(List<TimeSlot> band) {
+    final first = band.first.section;
+    final last = band.last.section;
+    return first == last ? '（第 $first 节）' : '（第 $first–$last 节）';
+  }
+
+  /// 段头时段范围（空段不显示由调用方判空，这里只处理非空）
+  String _timeRange(List<TimeSlot> band) =>
+      '${band.first.startTime} – ${band.last.endTime}';
 
   /// 一键套用弹层：只列现代码已有的「常用大节时间」，行为与原按钮一致。
   void _openPresetSheet(BuildContext context, WidgetRef ref) {
@@ -204,44 +231,98 @@ class TimeSettingsPage extends ConsumerWidget {
         minute: int.tryParse(parts[1]) ?? 0);
   }
 
-  /// §5：单节卡片 72dp → 56dp
+  /// §5.2（233 重构）：单节行 56dp，左侧「第 X 节」，右侧两个极简时间块
+  /// `[开始] – [结束]`（不再是 ▷ / ▢ 两个大按钮）。点时间块仍弹 showTimePicker。
   Widget _buildSlotCard(
       BuildContext context, WidgetRef ref, TimeSlot slot) {
+    final scheme = Theme.of(context).colorScheme;
     return SizedBox(
       height: kSettingsSingleRowHeight,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           children: [
-            SizedBox(
-              width: 26,
+            Text(
+              '第 ${slot.section} 节',
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: scheme.onSurface,
+              ),
+            ),
+            const Spacer(),
+            _SlotTimeChip(
+              key: ValueKey('slot_time_${slot.section}_start'),
+              text: slot.startTime,
+              semanticLabel: '第 ${slot.section} 节上课时间',
+              onTap: () => _pickTime(context, ref, slot, true),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
               child: Text(
-                '${slot.section}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w500),
+                '–',
+                style: TextStyle(fontSize: 13, color: scheme.outline),
               ),
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _pickTime(context, ref, slot, true),
-                icon: const Icon(Icons.play_arrow_outlined, size: 16),
-                label: Text(slot.startTime),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 6),
-              child: Text('~'),
-            ),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _pickTime(context, ref, slot, false),
-                icon: const Icon(Icons.stop_outlined, size: 16),
-                label: Text(slot.endTime),
-              ),
+            _SlotTimeChip(
+              key: ValueKey('slot_time_${slot.section}_end'),
+              text: slot.endTime,
+              semanticLabel: '第 ${slot.section} 节下课时间',
+              onTap: () => _pickTime(context, ref, slot, false),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// §5.2：极简时间块（68×30、圆角 8、无描边、13.5sp w600 等宽数字）。
+///
+/// 仍是可点按钮（点按区域就是这个 68×30 的块），点开 showTimePicker。
+class _SlotTimeChip extends StatelessWidget {
+  const _SlotTimeChip({
+    super.key,
+    required this.text,
+    required this.onTap,
+    required this.semanticLabel,
+  });
+
+  final String text;
+  final VoidCallback onTap;
+  final String semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Semantics(
+        label: semanticLabel,
+        button: true,
+        child: Container(
+          width: 68,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            // 浅色 #F3F4F6 / 深色 #222428（规格 §5.2 定值），无描边
+            color: dark ? const Color(0xFF222428) : const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            text,
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurface,
+              // 等宽数字：两个块宽高一致，时间换位也不抖
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
         ),
       ),
     );
@@ -261,11 +342,14 @@ TimeBand currentTimeBand(DateTime now) {
 }
 
 /// 三段折叠之一：默认展开当前时段；`tailHint` 只在晚上段末尾显示提示。
+///
+/// §5.3（233 重构）：段头左右分栏——左「上午（第 1–5 节）」，右「08:00 – 12:00」
+/// 与 ExpansionTile 自带箭头；箭头位置随 title 结构走，不另画。
 class _BandTile extends StatelessWidget {
   const _BandTile({
     super.key,
     required this.title,
-    required this.count,
+    required this.sectionRange,
     required this.expanded,
     required this.children,
     this.tailHint = false,
@@ -273,29 +357,62 @@ class _BandTile extends StatelessWidget {
   });
 
   final String title;
-  final int count;
+
+  /// 节次范围（如「（第 1–5 节）」），按实际分段点算
+  final String sectionRange;
+
   final bool expanded;
   final List<Widget> children;
   final bool tailHint;
 
-  /// 段头时段范围（如 08:00–12:00），空段为 null 时不显示（Kimi 228 复审低 4）。
+  /// 段头时段范围（如 08:00 – 12:00），空段为 null 时不显示
   final String? timeRange;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return ExpansionTile(
       initiallyExpanded: expanded,
+      // §5.3：段头 52dp
+      minTileHeight: 52,
+      tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+      childrenPadding: EdgeInsets.zero,
       title: Row(
         children: [
-          Text(title, style: const TextStyle(fontSize: 16)),
-          const SizedBox(width: 8),
-          Text(
-            '$count 节${timeRange == null ? '' : ' · $timeRange'}',
-            style: TextStyle(
-              fontSize: 12,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+          Expanded(
+            child: Row(
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    sectionRange,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 13, color: scheme.outline),
+                  ),
+                ),
+              ],
             ),
           ),
+          if (timeRange != null)
+            Text(
+              timeRange!,
+              style: TextStyle(
+                fontSize: 13.5,
+                color: scheme.outline,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          // 与 ExpansionTile 自带箭头之间留 4dp
+          const SizedBox(width: 4),
         ],
       ),
       children: [
@@ -313,24 +430,20 @@ class _BandTile extends StatelessWidget {
   }
 }
 
-/// 段间间隔信息行：由上一段最后一节的 endTime 到下一段第一节的 startTime 自动算出
+/// 段间间隔信息行（§5.1）：移到框外留白区，纯文字居中、无图标无 emoji、36dp 高。
+///
+/// 时长仍由上一段最后一节的 endTime 到下一段第一节的 startTime 自动算出。
 Widget _buildIntervalRow(
     BuildContext context, String label, String from, String to) {
   final minutes = _minutesBetween(from, to);
   final colorScheme = Theme.of(context).colorScheme;
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
-    child: Row(
-      children: [
-        Icon(Icons.access_time, size: 16, color: colorScheme.outline),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            '$label $from – $to · ${_formatDuration(minutes)}',
-            style: TextStyle(color: colorScheme.outline, fontSize: 13),
-          ),
-        ),
-      ],
+  return SizedBox(
+    height: 36,
+    child: Center(
+      child: Text(
+        '$label $from – $to · ${_formatDuration(minutes)}',
+        style: TextStyle(color: colorScheme.outline, fontSize: 13),
+      ),
     ),
   );
 }

@@ -119,6 +119,16 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
+    // 2.5.0（WB_SPEC_233 §6）底部栏默认关：本文件多数用例走真实 provider 且
+    // 依赖「点底部栏」的场景，这里预置「底栏开」+ 一次性迁移标志以保持原语义。
+    await tester.runAsync(() async {
+      await Dao.instance.setSetting(
+        'ui_settings',
+        const UiSettings(showBottomBar: true).encode(),
+      );
+      await Dao.instance.setSetting('v250_defaults_migrated', '1');
+    });
+
     await tester.runAsync(() async {
       await HttpOverrides.runZoned(
         () async {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:xiaoma_timetable/database/dao.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/main.dart' show appRoutes;
 import 'package:xiaoma_timetable/models/ui_settings.dart';
@@ -190,10 +191,12 @@ void main() {
           TimeBand.evening);
     });
 
-    testWidgets('三段共用一个大框，且默认只展开当前时段', (tester) async {
+    testWidgets('三段各成独立框（233 §5.1 去套娃），且默认只展开当前时段', (tester) async {
       await pumpPage(tester, home: const TimeSettingsPage());
       final expected = currentTimeBand(DateTime.now());
-      expect(find.byType(SettingsLineFrame), findsNWidgets(2));
+      // 全局规则框 1 个 + 三段各一个框 = 4 个（233 前是「三段共用一个大框」= 2 个）
+      expect(find.byType(SettingsLineFrame), findsNWidgets(4));
+      expect(find.byType(ExpansionTile), findsNWidgets(3));
       for (final band in TimeBand.values) {
         final tile = tester.widget<ExpansionTile>(
           find.descendant(
@@ -209,11 +212,22 @@ void main() {
       }
     });
 
-    testWidgets('段头显示时段范围（Kimi 228 复审低 4）', (tester) async {
+    testWidgets('段头左右分栏：左「上午（第 1–5 节）」右「08:00 – 12:00」', (tester) async {
       await pumpPage(tester, home: const TimeSettingsPage());
-      expect(find.text('5 节 · 08:00–12:00'), findsOneWidget);
-      expect(find.text('4 节 · 14:00–17:10'), findsOneWidget);
-      expect(find.text('4 节 · 18:00–21:10'), findsOneWidget);
+      // 组标题留在框外（不再当框标题）
+      expect(find.text('各节上下课时间（点击时间直接修改）'), findsOneWidget);
+      // 节次范围按实际分段点算：上午 1–5、下午 6–9、晚上 10–13（默认 13 节）
+      expect(find.text('（第 1–5 节）'), findsOneWidget);
+      expect(find.text('（第 6–9 节）'), findsOneWidget);
+      expect(find.text('（第 10–13 节）'), findsOneWidget);
+      expect(find.text('08:00 – 12:00'), findsOneWidget);
+      expect(find.text('14:00 – 17:10'), findsOneWidget);
+      expect(find.text('18:00 – 21:10'), findsOneWidget);
+      // 左侧名称在右侧时间左边（左右分栏，不是上下堆叠）
+      final name = tester.getTopLeft(find.text('上午'));
+      final time = tester.getTopLeft(find.text('08:00 – 12:00'));
+      expect(time.dx, greaterThan(name.dx));
+      expect(time.dy, closeTo(name.dy, 8));
     });
   });
 
@@ -222,6 +236,15 @@ void main() {
       tester.view.physicalSize = const Size(1200, 6000);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
+      // 2.5.0（WB_SPEC_233 §6）底部栏默认关：外观父页「8 行」的老语义需要
+      // 底栏开，这里预置开关 + 一次性迁移标志，避免被启动迁移覆盖。
+      await tester.runAsync(() async {
+        await Dao.instance.setSetting(
+          'ui_settings',
+          const UiSettings(showBottomBar: true).encode(),
+        );
+        await Dao.instance.setSetting('v250_defaults_migrated', '1');
+      });
       await tester.runAsync(() async {
         await tester.pumpWidget(
           ProviderScope(

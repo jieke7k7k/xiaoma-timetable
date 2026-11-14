@@ -95,16 +95,19 @@ void main() {
     // 预置界面设置：滚动组关掉「行高自适应一屏」并把格高拉到上限，
     // 保证网格可滚（13 节 × 96 + 两条带子 ≈ 1296，远超一屏）；
     // 一屏组反过来开自适应，断言整周恰好一屏
-    await tester.runAsync(
-      () => Dao.instance.setSetting(
+    await tester.runAsync(() async {
+      await Dao.instance.setSetting(
         'ui_settings',
         UiSettings(
           autoFitHeight: autoFitHeight,
           cellHeight: cellHeight,
           showBottomBar: showBottomBar,
         ).encode(),
-      ),
-    );
+      );
+      // 2.5.0（WB_SPEC_233 §6）：立一次性迁移标志，免得启动时把预置值
+      // 覆盖成新默认（底栏默认关）
+      await Dao.instance.setSetting('v250_defaults_migrated', '1');
+    });
 
     await tester.runAsync(() async {
       await HttpOverrides.runZoned(

@@ -322,6 +322,14 @@ class SimpleTimetableApp extends ConsumerWidget {
         // 状态栏透明（露出 AppBar 同背景色，不再有顶部空白带），浅色下状态栏图标用深色保证可辨。
         appBarTheme: const AppBarTheme(
           toolbarHeight: 48,
+          // WB_SPEC_233 §4：M3 默认 scrolledUnderElevation=3 会把 surfaceTint
+          // （可可棕种子色）以约 8% 浓度叠到顶栏上，列表上滑穿过下沿时顶栏
+          // 变米棕色。这里同主页周视图（week_view_page）的口径，关掉染色与
+          // 投影。不写 backgroundColor：未设 scaffoldBackgroundColor 时
+          // AppBar 与 Scaffold 默认都是 colorScheme.surface，本来就同色。
+          surfaceTintColor: Colors.transparent,
+          scrolledUnderElevation: 0,
+          elevation: 0,
           systemOverlayStyle: SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
             statusBarIconBrightness: Brightness.dark,
@@ -372,6 +380,10 @@ class SimpleTimetableApp extends ConsumerWidget {
         // 2.0.9：深色下状态栏图标用浅色保证可辨，其余与浅色一致。
         appBarTheme: const AppBarTheme(
           toolbarHeight: 48,
+          // WB_SPEC_233 §4：深色同款，滚动与不滚动都不变色
+          surfaceTintColor: Colors.transparent,
+          scrolledUnderElevation: 0,
+          elevation: 0,
           systemOverlayStyle: SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
             statusBarIconBrightness: Brightness.light,

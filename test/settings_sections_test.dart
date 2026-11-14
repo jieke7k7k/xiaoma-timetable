@@ -41,11 +41,22 @@ void main() {
   });
 
   /// 拉高画布（分组 y 坐标可比较）+ 等首帧异步 provider 就绪
-  Future<void> pumpAppearance(WidgetTester tester) async {
+  ///
+  /// 2.5.0（WB_SPEC_233 §6）底部栏默认关：本组用例按「底栏开」的老语义断言
+  /// 8 行结构，这里预置开关 + 一次性迁移标志（否则启动时被迁移覆盖成默认关）。
+  Future<void> pumpAppearance(
+    WidgetTester tester, {
+    bool showBottomBar = true,
+  }) async {
     tester.view.physicalSize = const Size(1200, 6000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.runAsync(() async {
+      await Dao.instance.setSetting(
+        'ui_settings',
+        UiSettings(showBottomBar: showBottomBar).encode(),
+      );
+      await Dao.instance.setSetting('v250_defaults_migrated', '1');
       await tester.pumpWidget(
         const ProviderScope(
           child: MaterialApp(home: AppearanceSettingsPage()),
@@ -212,15 +223,17 @@ void main() {
     });
   });
 
-  testWidgets('外观父页：底部栏显示开关默认开、点击即时切换', (tester) async {
-    await pumpAppearance(tester);
+  testWidgets('外观父页：底部栏显示开关默认关（2.5.0 翻转）、点开即时切换', (tester) async {
+    await pumpAppearance(tester, showBottomBar: false);
     final tile = find.widgetWithText(SwitchListTile, '底部栏显示');
     expect(tile, findsOneWidget);
-    expect(tester.widget<SwitchListTile>(tile).value, isTrue);
+    expect(tester.widget<SwitchListTile>(tile).value, isFalse);
     expect(
       find.text('关闭后可从主页右上角菜单进入设置'),
       findsOneWidget,
     );
+    // 联动 ①：底部栏关时切换动效行整体不在
+    expect(find.text('切换动效'), findsNothing);
 
     await tester.ensureVisible(tile);
     await tester.pumpAndSettle();
@@ -231,9 +244,9 @@ void main() {
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(tester.widget<SwitchListTile>(tile).value, isFalse);
-    // 联动 ①：底部栏关时切换动效行整体消失
-    expect(find.text('切换动效'), findsNothing);
+    expect(tester.widget<SwitchListTile>(tile).value, isTrue);
+    // 联动 ①：开栏后切换动效行回来
+    expect(find.text('切换动效'), findsOneWidget);
   });
 
   testWidgets('外观父页：没有「底部栏样式」选项（只有新标签栏一种形态）',
@@ -258,7 +271,7 @@ void main() {
     }
     expect(find.byType(AppInfoIconButton), findsNothing);
     expect(find.text('每节课提前提醒，App 被杀后也能准时响铃'), findsOneWidget);
-    expect(find.text('主页顶部显示当前/下一节课状态条，默认关'), findsOneWidget);
+    expect(find.text('主页顶部显示当前/下一节课状态条，默认开'), findsOneWidget);
     expect(find.text('通知栏常驻显示今日剩余或明日课程预告'), findsOneWidget);
   });
 

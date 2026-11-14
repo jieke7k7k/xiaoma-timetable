@@ -54,6 +54,12 @@ import '../widgets/empty_state.dart';
 /// 实时预览「今天整列边框」覆盖层的 Key：测试据此断言开关开/关时该层的有无。
 const Key kPreviewTodayHighlightKey = ValueKey('preview_today_highlight');
 
+/// WB_SPEC_233 §2：预览的两条基准分界线（表头下沿 / 时间列右沿）。
+///
+/// 它们与 `showGridLines` 开关无关、恒定显示；课程区十字线仍只在开关打开时画。
+const Key kPreviewHeaderBaselineKey = ValueKey('preview_header_baseline');
+const Key kPreviewAxisBaselineKey = ValueKey('preview_axis_baseline');
+
 /// 把同一组内连续行用轻量分隔线隔开（与 settings_page 的 Taste 口径一致）。
 ///
 /// WB_SPEC_222：分隔线 thickness 0.5、outlineVariant 20%，对齐标题文字左缘。
@@ -385,7 +391,7 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
                   '上课播报',
                   style: TextStyle(fontWeight: FontWeight.w500),
                 ),
-                subtitle: const Text('主页顶部显示当前/下一节课状态条，默认关'),
+                subtitle: const Text('主页顶部显示当前/下一节课状态条，默认开'),
                 value: ui.showClassBroadcast,
                 onChanged: (v) => ref
                     .read(uiSettingsProvider.notifier)
@@ -1872,13 +1878,25 @@ class Preview extends StatelessWidget {
       today.add(const Duration(days: 1)),
       today.add(const Duration(days: 2)),
     ];
+    // WB_SPEC_233 §2：外框与基准分界线统一用 SettingsLineFrame 的同一套
+    // Token（浅色 #E5E7EB / 深色纯白 9%），不再用偏淡的 scheme.outlineVariant
+    // （浅可可棕底上对比度不足 1.15:1，真机看着像外框缺了一段）。
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final lineColor = dark
+        ? Colors.white.withValues(alpha: SettingsLineFrame.kDarkBorderAlpha)
+        : SettingsLineFrame.kLightBorder;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: scheme.outlineVariant),
           borderRadius: BorderRadius.circular(AppRadii.card),
           color: scheme.surface,
+        ),
+        // 边框改画在 foregroundDecoration：表头底色与网格都压不住它，
+        // 整圈 1.0px 边框始终清晰闭合（§2.2 防遮挡条款）。
+        foregroundDecoration: BoxDecoration(
+          border: Border.all(color: lineColor, width: 1.0),
+          borderRadius: BorderRadius.circular(AppRadii.card),
         ),
         clipBehavior: Clip.antiAlias,
         // 窄屏时从右侧裁切，如同透过窗口看真实课表的一角
@@ -1952,6 +1970,13 @@ class Preview extends StatelessWidget {
                     ],
                   ),
                 ),
+                // WB_SPEC_233 §2：表头下沿基准分界线（常显，不受网格线开关
+                // 控制；课程区十字线仍只在 showGridLines 开时画）
+                Container(
+                  key: kPreviewHeaderBaselineKey,
+                  height: 0.5,
+                  color: lineColor,
+                ),
                 SizedBox(
                   height: rowH * _rows,
                   child: Row(
@@ -2003,6 +2028,18 @@ class Preview extends StatelessWidget {
                         width: colW * _showCols,
                         child: Stack(
                           children: [
+                            // WB_SPEC_233 §2：左侧时间列右沿基准分界线（常显，
+                            // 不受网格线开关控制）
+                            Positioned(
+                              left: 0,
+                              top: 0,
+                              bottom: 0,
+                              width: 0.5,
+                              child: ColoredBox(
+                                key: kPreviewAxisBaselineKey,
+                                color: lineColor,
+                              ),
+                            ),
                             if (ui.showGridLines)
                               CustomPaint(
                                 size: Size(colW * _showCols, rowH * _rows),
@@ -2011,7 +2048,7 @@ class Preview extends StatelessWidget {
                                   rowH: rowH,
                                   rows: _rows,
                                   cols: _showCols,
-                                  color: scheme.outlineVariant,
+                                  color: lineColor,
                                 ),
                               ),
                             _previewCard(_sampleA, 0, 0, 2, colW, rowH),

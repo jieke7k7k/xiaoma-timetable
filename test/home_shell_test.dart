@@ -129,9 +129,19 @@ void main() {
     await pumpUntil(tester, find.byIcon(Icons.more_vert));
   }
 
+  /// 2.5.0（WB_SPEC_233 §6）起底部栏默认关：验证壳/标签栏的用例必须把开关
+  /// 显式写进库；同时立一次性迁移标志，免得启动时被迁移覆盖回新默认。
+  Future<void> seedUi(WidgetTester tester, UiSettings settings) async {
+    await tester.runAsync(() async {
+      await Dao.instance.setSetting('ui_settings', settings.encode());
+      await Dao.instance.setSetting('v250_defaults_migrated', '1');
+    });
+  }
+
   testWidgets('默认形态＝标签栏：WeekViewPage + HomeTabBar 恒两键，无 IndexedStack/NavigationBar', (
     tester,
   ) async {
+    await seedUi(tester, const UiSettings(showBottomBar: true));
     await pumpHome(tester);
 
     // 课表一级视图 + 标签栏都存在
@@ -188,6 +198,7 @@ void main() {
   });
 
   testWidgets('点设置键切到壳内设置根页，且无返回箭头', (tester) async {
+    await seedUi(tester, const UiSettings(showBottomBar: true));
     await pumpHome(tester);
 
     // 此刻栏上的「设置」键是切换入口（2026-11-05：默认动效双页常驻，
@@ -222,12 +233,7 @@ void main() {
 
   testWidgets('关栏→再开栏：恢复标签栏', (tester) async {
     // 先关栏（模拟用户在外观页关掉底部栏）
-    await tester.runAsync(
-      () => Dao.instance.setSetting(
-        'ui_settings',
-        const UiSettings(showBottomBar: false).encode(),
-      ),
-    );
+    await seedUi(tester, const UiSettings(showBottomBar: false));
     await pumpHome(tester);
     expect(find.byType(HomeTabBar), findsNothing, reason: '关栏时不出任何栏');
 
@@ -251,12 +257,13 @@ void main() {
 
   testWidgets('旧 bottomBarStyle 字段整体忽略：有栏且是标签栏（升级残留不无栏、不崩）', (tester) async {
     // 模拟老用户升级：库里存着已删除的旧样式 id "capsule" / "bar"
-    await tester.runAsync(
-      () => Dao.instance.setSetting(
+    await tester.runAsync(() async {
+      await Dao.instance.setSetting(
         'ui_settings',
         '{"showBottomBar": true, "bottomBarStyle": "capsule"}',
-      ),
-    );
+      );
+      await Dao.instance.setSetting('v250_defaults_migrated', '1');
+    });
     final raw = await tester.runAsync(
       () => Dao.instance.getSetting('ui_settings'),
     );
@@ -277,12 +284,7 @@ void main() {
 
   testWidgets('关栏：不出底部栏；右上角菜单仍能进设置（逻辑不变）', (tester) async {
     // 预置「底部栏关闭」，壳直接渲染单页课表（真实写库放 runAsync，假时钟不会推进真实 IO）
-    await tester.runAsync(
-      () => Dao.instance.setSetting(
-        'ui_settings',
-        const UiSettings(showBottomBar: false).encode(),
-      ),
-    );
+    await seedUi(tester, const UiSettings(showBottomBar: false));
     await pumpHome(tester);
 
     expect(find.byType(WeekViewPage), findsOneWidget);
@@ -304,6 +306,7 @@ void main() {
   });
 
   testWidgets('切换动效默认＝柔和（官方 FadeThrough），点设置切页、点课表切回', (tester) async {
+    await seedUi(tester, const UiSettings(showBottomBar: true));
     await pumpHome(tester);
 
     // 默认动效是 B：PageTransitionSwitcher 挂载（旧页会卸载、不常驻保活）
@@ -328,12 +331,11 @@ void main() {
   });
 
   testWidgets('切换动效 A：灵动，双页常驻、切页正常', (tester) async {
-    await tester.runAsync(
-      () => Dao.instance.setSetting(
-        'ui_settings',
-        const UiSettings(
-          shellTransitionStyle: ShellTransitionStyle.fadeThroughParallax,
-        ).encode(),
+    await seedUi(
+      tester,
+      const UiSettings(
+        showBottomBar: true,
+        shellTransitionStyle: ShellTransitionStyle.fadeThroughParallax,
       ),
     );
     await pumpHome(tester);
@@ -362,12 +364,11 @@ void main() {
   });
 
   testWidgets('切换动效 B：柔和（官方 FadeThrough），切页正常', (tester) async {
-    await tester.runAsync(
-      () => Dao.instance.setSetting(
-        'ui_settings',
-        const UiSettings(
-          shellTransitionStyle: ShellTransitionStyle.fadeThroughOfficial,
-        ).encode(),
+    await seedUi(
+      tester,
+      const UiSettings(
+        showBottomBar: true,
+        shellTransitionStyle: ShellTransitionStyle.fadeThroughOfficial,
       ),
     );
     await pumpHome(tester);
@@ -387,12 +388,11 @@ void main() {
   });
 
   testWidgets('切换动效 C：疾速，双页常驻、切页正常', (tester) async {
-    await tester.runAsync(
-      () => Dao.instance.setSetting(
-        'ui_settings',
-        const UiSettings(
-          shellTransitionStyle: ShellTransitionStyle.quickFade,
-        ).encode(),
+    await seedUi(
+      tester,
+      const UiSettings(
+        showBottomBar: true,
+        shellTransitionStyle: ShellTransitionStyle.quickFade,
       ),
     );
     await pumpHome(tester);
