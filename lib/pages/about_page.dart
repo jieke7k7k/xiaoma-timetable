@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/channel_service.dart';
 import '../ui/app_styles.dart';
+import '../utils/app_haptics.dart';
 import '../widgets/app_dialog.dart';
 
 /// 关于页（1.2.4）：版本号、检查更新、公告入口、更新日志、开源许可、
@@ -106,24 +107,23 @@ class _AboutPageState extends State<AboutPage> {
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('以后再说'),
-          ),
+          // WB_SPEC_235 跟进 §1-5 / §4：更新对话框四键走标准 action 构造
+          AppDialogAction(label: '以后再说', onPressed: () => Navigator.pop(ctx)),
           if (latest.releaseUrl.isNotEmpty)
-            TextButton(
+            AppDialogAction(
+              label: '更新说明',
               onPressed: () {
                 Navigator.pop(ctx);
                 _launch(latest.releaseUrl);
               },
-              child: const Text('更新说明'),
             ),
-          FilledButton(
+          AppDialogAction(
+            label: '去下载',
+            primary: true,
             onPressed: () {
               Navigator.pop(ctx);
               if (latest.downloadUrl.isNotEmpty) _launch(latest.downloadUrl);
             },
-            child: const Text('去下载'),
           ),
         ],
       ),
@@ -146,10 +146,8 @@ class _AboutPageState extends State<AboutPage> {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('知道了'),
-          ),
+          // WB_SPEC_235 跟进 §1-5：隐私说明的「知道了」= 轻点档
+          AppDialogAction(label: '知道了', onPressed: () => Navigator.pop(ctx)),
         ],
       ),
     );
@@ -220,7 +218,13 @@ class _AboutPageState extends State<AboutPage> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.chevron_right),
-            onTap: () => _checkUpdate(manual: true),
+            // WB_SPEC_235 跟进 §1-5：关于页 8 行入口全部轻点档
+            // （`enableFeedback: false` 关掉 ListTile 自带反馈防双震）
+            onTap: () {
+              AppHaptics.tap();
+              _checkUpdate(manual: true);
+            },
+            enableFeedback: false,
           ),
           ListTile(
             leading: const Icon(Icons.campaign_outlined),
@@ -245,53 +249,79 @@ class _AboutPageState extends State<AboutPage> {
               ],
             ),
             onTap: () async {
+              AppHaptics.tap();
               await Navigator.pushNamed(context, '/announcements');
               final seen = await ChannelService.seenIds();
               if (mounted) setState(() => _seen = seen);
             },
+            enableFeedback: false,
           ),
           ListTile(
             leading: const Icon(Icons.history_outlined),
             title: const Text('更新日志'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.pushNamed(context, '/changelog'),
+            onTap: () {
+              AppHaptics.tap();
+              Navigator.pushNamed(context, '/changelog');
+            },
+            enableFeedback: false,
           ),
           ListTile(
             leading: const Icon(Icons.help_outline),
             title: const Text('使用帮助'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.pushNamed(context, '/help'),
+            onTap: () {
+              AppHaptics.tap();
+              Navigator.pushNamed(context, '/help');
+            },
+            enableFeedback: false,
           ),
           ListTile(
             leading: const Icon(Icons.privacy_tip_outlined),
             title: const Text('隐私说明'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: _showPrivacy,
+            onTap: () {
+              AppHaptics.tap();
+              _showPrivacy();
+            },
+            enableFeedback: false,
           ),
           ListTile(
             leading: const Icon(Icons.gavel_outlined),
             title: const Text('开源许可'),
             subtitle: const Text('第三方库与字体的许可声明'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => showLicensePage(
-              context: context,
-              applicationName: '小马课表',
-              applicationVersion: _pkg?.version,
-            ),
+            onTap: () {
+              AppHaptics.tap();
+              showLicensePage(
+                context: context,
+                applicationName: '小马课表',
+                applicationVersion: _pkg?.version,
+              );
+            },
+            enableFeedback: false,
           ),
           ListTile(
             leading: const Icon(Icons.feedback_outlined),
             title: const Text('问题反馈'),
             subtitle: const Text('到公开通道仓提 Issue'),
             trailing: const Icon(Icons.open_in_new, size: 18),
-            onTap: () => _launch(ChannelService.issuesUrl),
+            onTap: () {
+              AppHaptics.tap();
+              _launch(ChannelService.issuesUrl);
+            },
+            enableFeedback: false,
           ),
           ListTile(
             leading: const Icon(Icons.home_outlined),
             title: const Text('项目主页'),
             subtitle: const Text('公开通道仓（版本与公告发布处）'),
             trailing: const Icon(Icons.open_in_new, size: 18),
-            onTap: () => _launch(ChannelService.homeUrl),
+            onTap: () {
+              AppHaptics.tap();
+              _launch(ChannelService.homeUrl);
+            },
+            enableFeedback: false,
           ),
           const SizedBox(height: 24),
         ],

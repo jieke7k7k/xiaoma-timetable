@@ -15,6 +15,7 @@ import '../services/backup_service.dart';
 import '../services/notification_service.dart';
 import '../services/ongoing_notice_service.dart';
 import '../services/widget_service.dart';
+import '../utils/app_haptics.dart';
 import '../widgets/app_dialog.dart';
 
 /// 数据管理页（1.2.4）：存储占用总览 + 备份/恢复快捷入口 + 恢复出厂。
@@ -227,14 +228,24 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
             title: const Text('备份到文件'),
             subtitle: const Text('导出全部数据为 JSON 文件，换机/重装可恢复'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: _exportBackup,
+            // WB_SPEC_235 跟进 §1-6：三个数据入口行 = 轻点档
+            // （确认框本身走 showAppConfirmDialog，破坏性那档在弹窗里）
+            onTap: () {
+              AppHaptics.tap();
+              _exportBackup();
+            },
+            enableFeedback: false,
           ),
           ListTile(
             leading: const Icon(Icons.restore_outlined),
             title: const Text('从备份恢复'),
             subtitle: const Text('选择备份 JSON，恢复前会再次确认（覆盖现有数据）'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: _restoreBackup,
+            onTap: () {
+              AppHaptics.tap();
+              _restoreBackup();
+            },
+            enableFeedback: false,
           ),
           // 只读：自动备份由 App 启动时静默完成（约每 7 天一份，保留最近 3 份）
           FutureBuilder<DateTime?>(
@@ -258,7 +269,11 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
             title: Text('恢复出厂', style: TextStyle(color: scheme.error)),
             subtitle: const Text('清空全部学期、课程、设置与导入字体，不可撤销'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: _factoryReset,
+            onTap: () {
+              AppHaptics.tap();
+              _factoryReset();
+            },
+            enableFeedback: false,
           ),
           const SizedBox(height: 24),
         ],

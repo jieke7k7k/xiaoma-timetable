@@ -13,6 +13,7 @@ import '../providers/providers.dart';
 import '../services/ocr_service.dart';
 import '../services/pdf_import.dart';
 import '../ui/app_styles.dart';
+import '../utils/app_haptics.dart';
 import '../utils/ics_parser.dart';
 import '../utils/morandi_palette.dart';
 import '../database/dao.dart';
@@ -113,7 +114,12 @@ class _ImportPageState extends ConsumerState<ImportPage> {
           '${isCurrent ? " · 当前学期" : ""}',
         ),
         trailing: TextButton(
-          onPressed: () => _pickTarget(context),
+          // WB_SPEC_235 跟进 §1-2：目标学期卡的「更改」入口 = 轻点档
+          style: TextButton.styleFrom(enableFeedback: false),
+          onPressed: () {
+            AppHaptics.tap();
+            _pickTarget(context);
+          },
           child: const Text('更改'),
         ),
       ),
@@ -162,7 +168,12 @@ class _ImportPageState extends ConsumerState<ImportPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: InkWell(
                 borderRadius: BorderRadius.circular(AppRadii.card),
-                onTap: () => _createNewSemester(sheetContext),
+                // WB_SPEC_235 跟进 §1-2：弹层里的「新建学期」默认项 = 轻点档
+                onTap: () {
+                  AppHaptics.tap();
+                  _createNewSemester(sheetContext);
+                },
+                enableFeedback: false,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 14,
@@ -228,14 +239,24 @@ class _ImportPageState extends ConsumerState<ImportPage> {
                   '开学 ${s.startDate} · 共 ${s.totalWeeks} 周'
                   '${s.id == currentId ? " · 当前使用中" : ""}',
                 ),
-                onTap: () => Navigator.pop(sheetContext, s),
+                // WB_SPEC_235 跟进 §1-2 + §2：点学期行 = 选择档（select）
+                onTap: () {
+                  AppHaptics.select();
+                  Navigator.pop(sheetContext, s);
+                },
+                enableFeedback: false,
               ),
             const SizedBox(height: 8),
             // 3. 底部主按钮：默认已勾新建，点它同样进新建表单
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: FilledButton(
-                onPressed: () => _createNewSemester(sheetContext),
+                // WB_SPEC_235 跟进 §1-2：弹层底部主按钮「继续（新建学期）」= 轻点档
+                style: FilledButton.styleFrom(enableFeedback: false),
+                onPressed: () {
+                  AppHaptics.tap();
+                  _createNewSemester(sheetContext);
+                },
                 child: const Text('继续（新建学期）'),
               ),
             ),
@@ -362,12 +383,21 @@ class _ImportPageState extends ConsumerState<ImportPage> {
             ListTile(
               leading: const Icon(Icons.photo_camera_outlined),
               title: const Text('拍照'),
-              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+              // WB_SPEC_235 跟进 §1-2：拍照 / 相册两个选择项 = 轻点档
+              onTap: () {
+                AppHaptics.tap();
+                Navigator.pop(ctx, ImageSource.camera);
+              },
+              enableFeedback: false,
             ),
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('从相册选择'),
-              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+              onTap: () {
+                AppHaptics.tap();
+                Navigator.pop(ctx, ImageSource.gallery);
+              },
+              enableFeedback: false,
             ),
           ],
         ),
@@ -497,7 +527,9 @@ class _ImportPageState extends ConsumerState<ImportPage> {
         title: '导入失败',
         content: SingleChildScrollView(child: Text(message)),
         actions: [
-          TextButton(
+          // WB_SPEC_235 跟进 §1-3 / §4：三个按钮走标准 action 构造（轻点档）
+          AppDialogAction(
+            label: '复制错误报告',
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: report));
               if (ctx.mounted) Navigator.pop(ctx);
@@ -507,15 +539,12 @@ class _ImportPageState extends ConsumerState<ImportPage> {
                 );
               }
             },
-            child: const Text('复制错误报告'),
           ),
-          TextButton(
+          AppDialogAction(label: '重新选择', onPressed: () => Navigator.pop(ctx)),
+          AppDialogAction(
+            label: '返回',
+            primary: true,
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('重新选择'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('返回'),
           ),
         ],
       ),
@@ -563,7 +592,13 @@ class _ImportTile extends StatelessWidget {
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
         trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
+        // WB_SPEC_235 跟进 §1-1：四个导入入口（ICS / 拍照 OCR / PDF / 教务官网）
+        // = 轻点档；`enableFeedback: false` 关掉 ListTile 自带反馈防双震
+        onTap: () {
+          AppHaptics.tap();
+          onTap();
+        },
+        enableFeedback: false,
       ),
     );
   }

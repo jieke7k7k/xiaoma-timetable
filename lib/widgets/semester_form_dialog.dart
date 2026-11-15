@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../models/semester.dart';
 import '../providers/providers.dart';
+import '../utils/app_haptics.dart';
 import '../utils/week_calc.dart';
 import 'app_dialog.dart';
 import 'semester_start_dialog.dart';
@@ -243,7 +244,12 @@ class SemesterFormDialogState extends ConsumerState<SemesterFormDialog> {
             title: const Text('开学日期'),
             subtitle: Text(dateText),
             trailing: const Icon(Icons.chevron_right),
-            onTap: _pickDate,
+            // WB_SPEC_235 跟进 §1-15：表单内「开学日期」= 选择档
+            onTap: () {
+              AppHaptics.select();
+              _pickDate();
+            },
+            enableFeedback: false,
           ),
           // WB_SPEC_224 第 3.4 节：把「自动对齐到周一」这条既有行为说清楚（行为不变）
           // left: 40 对齐上方 ListTile 的 leading 图标缩进（复审优化 1：魔法数留口径说明）
@@ -281,10 +287,18 @@ class SemesterFormDialogState extends ConsumerState<SemesterFormDialog> {
         ),
       ),
       actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(context), child: const Text('取消')),
-        FilledButton(
-            onPressed: _submit, child: Text(editing ? '保存' : '创建')),
+        // WB_SPEC_235 跟进 §1-15 / §4：弹窗按钮走标准 action 构造
+        AppDialogAction(
+          label: '取消',
+          onPressed: () => Navigator.pop(context),
+        ),
+        AppDialogAction(
+          label: editing ? '保存' : '创建',
+          primary: true,
+          // 保存/创建 = 落库类动作 → 中档（§2）
+          haptic: AppDialogHaptic.medium,
+          onPressed: _submit,
+        ),
       ],
     );
   }

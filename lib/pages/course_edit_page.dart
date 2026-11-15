@@ -570,20 +570,27 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
           actions: [
             Row(
               children: [
-                TextButton(
+                // WB_SPEC_235 跟进 §1-15 / §4：外壳内手写按钮改走标准构造
+                AppDialogAction(
+                  label: '取消',
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('取消'),
                 ),
                 const Spacer(),
-                TextButton(
+                AppDialogAction(
+                  label: '放弃',
+                  // 视觉沿用原来的 error 色文字（234 表现不变）
+                  foreground: scheme.error,
+                  // 放弃改动 = 破坏性，给中档
+                  haptic: AppDialogHaptic.medium,
                   onPressed: () => Navigator.pop(ctx, 'discard'),
-                  style: TextButton.styleFrom(foregroundColor: scheme.error),
-                  child: const Text('放弃'),
                 ),
                 const SizedBox(width: AppSpacing.xs),
-                FilledButton(
+                AppDialogAction(
+                  label: '保存',
+                  primary: true,
+                  // 保存类 → 中档（§2）
+                  haptic: AppDialogHaptic.medium,
                   onPressed: () => Navigator.pop(ctx, 'save'),
-                  child: const Text('保存'),
                 ),
               ],
             ),
@@ -637,13 +644,16 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
           ),
         ),
         actions: [
-          TextButton(
+          // WB_SPEC_235 跟进 §1-15 / §4：外壳内手写按钮改走标准构造
+          AppDialogAction(
+            label: '返回修改',
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('返回修改'),
           ),
-          FilledButton(
+          AppDialogAction(
+            label: '仍要保存',
+            primary: true,
+            haptic: AppDialogHaptic.medium,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('仍要保存'),
           ),
         ],
       ),

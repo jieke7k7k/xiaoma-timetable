@@ -157,10 +157,13 @@ class TimeSettingsPage extends ConsumerWidget {
             ListTile(
               title: const Text('常用大节时间'),
               subtitle: const Text('第 1-2 节 09:40–12:00，第 3-4 节 14:00–16:20'),
+              // WB_SPEC_235 跟进：套用预设 = 轻点档
               onTap: () {
+                AppHaptics.tap();
                 Navigator.pop(ctx);
                 _applyPreset(context, ref);
               },
+              enableFeedback: false,
             ),
             ListTile(
               title: Text(
@@ -169,7 +172,12 @@ class TimeSettingsPage extends ConsumerWidget {
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
-              onTap: () => Navigator.pop(ctx),
+              // WB_SPEC_235 跟进：抽屉内的取消行 = 轻点档
+              onTap: () {
+                AppHaptics.tap();
+                Navigator.pop(ctx);
+              },
+              enableFeedback: false,
             ),
           ],
         ),
@@ -299,7 +307,12 @@ class _SlotTimeChip extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
-      onTap: onTap,
+      // WB_SPEC_235 跟进：节次时间 chip（上课/下课）= 轻点档
+      onTap: () {
+        AppHaptics.tap();
+        onTap();
+      },
+      enableFeedback: false,
       borderRadius: BorderRadius.circular(8),
       child: Semantics(
         label: semanticLabel,
@@ -713,7 +726,12 @@ class _TimeRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap,
+      // WB_SPEC_235 跟进：午休/晚餐时间行 = 轻点档
+      onTap: () {
+        AppHaptics.tap();
+        onTap();
+      },
+      enableFeedback: false,
       child: SizedBox(
         height: kSettingsSingleRowHeight,
         child: Padding(

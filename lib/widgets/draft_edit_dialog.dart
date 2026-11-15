@@ -134,10 +134,16 @@ Future<Course?> showDraftEditDialog(
                 ),
               ),
               actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('取消')),
-                FilledButton(
+                // WB_SPEC_235 跟进 §1-15 / §4：弹窗按钮走标准 action 构造
+                AppDialogAction(
+                  label: '取消',
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+                AppDialogAction(
+                  label: '确定',
+                  primary: true,
+                  // 草稿改动落库前的一步确认（保存语义）→ 中档
+                  haptic: AppDialogHaptic.medium,
                   onPressed: () {
                     final name = nameController.text.trim();
                     if (name.isEmpty) {
@@ -172,7 +178,6 @@ Future<Course?> showDraftEditDialog(
                       ),
                     );
                   },
-                  child: const Text('确定'),
                 ),
               ],
             );

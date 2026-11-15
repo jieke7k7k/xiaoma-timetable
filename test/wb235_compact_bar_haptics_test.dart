@@ -4,10 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:xiaoma_timetable/database/dao.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
+import 'package:xiaoma_timetable/models/course.dart';
+import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
+import 'package:xiaoma_timetable/pages/about_page.dart';
+import 'package:xiaoma_timetable/pages/course_search_page.dart';
+import 'package:xiaoma_timetable/pages/course_tools_page.dart';
+import 'package:xiaoma_timetable/pages/import_page.dart';
+import 'package:xiaoma_timetable/pages/menu_manage_page.dart';
+import 'package:xiaoma_timetable/pages/settings_page.dart';
 import 'package:xiaoma_timetable/pages/settings_sections.dart';
 import 'package:xiaoma_timetable/providers/providers.dart';
 import 'package:xiaoma_timetable/ui/app_choice_chip.dart';
@@ -492,6 +501,254 @@ void main() {
       // 注释里说明「heavyImpact 禁用」是允许的，这里锁的是**平台调用**
       expect(src.contains('HapticFeedback.heavyImpact'), isFalse,
           reason: '§8 红线：heavy 档禁用');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 6. 补齐组（WB_SPEC_235 跟进 §1 十六组）
+  // -------------------------------------------------------------------------
+  group('补齐组（跟进 §1：缺口逐组覆盖）', () {
+    setUpAll(() {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+      PackageInfo.setMockInitialValues(
+        appName: '小马课表',
+        packageName: 'com.example.simple_timetable',
+        version: '2.5.0',
+        buildNumber: '39',
+        buildSignature: '',
+      );
+    });
+
+    late Database db;
+
+    setUp(() async {
+      db = await databaseFactoryFfi.openDatabase(
+        inMemoryDatabasePath,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: (d, v) => DbHelper.instance.createSchema(d),
+        ),
+      );
+      DbHelper.instance.useDatabaseForTest(db);
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    /// 建页：先给足画布让 ListView 把懒加载的行都建出来，
+    /// 再把建页与首帧异步一起丢进 runAsync（与 settings_page_test 同款）。
+    Future<void> pumpPage(WidgetTester tester, Widget page,
+        {Size size = const Size(1200, 4200)}) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.runAsync(() async {
+        await tester.pumpWidget(
+          ProviderScope(
+            child: MaterialApp(
+              home: page,
+              // 这些页的入口都是「点一下推一个路由」：给个桩路由，
+              // 免得没配 routes 时 pushNamed 抛 onUnknownRoute 异常
+              onGenerateRoute: (_) => MaterialPageRoute<void>(
+                builder: (_) => const Scaffold(body: Text('stub')),
+              ),
+            ),
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+      });
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    /// 点一下、断言只震了指定档位一次，再把可能推上来的路由/弹窗收掉。
+    ///
+    /// 收路由是必须的：这些入口点下去都会铺一层页面或弹窗，不收掉下一行点不到；
+    /// 用 `popUntil(isFirst)` 而不是点弹窗按钮，是为了不给断言掺进第二次震动。
+    Future<void> tapRow(
+      WidgetTester tester,
+      Finder target,
+      String expected, {
+      String? reason,
+    }) async {
+      advance();
+      calls.clear();
+      await tester.tap(target);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(calls, [expected], reason: reason);
+      calls.clear();
+      final nav = tester.state<NavigatorState>(find.byType(Navigator));
+      nav.popUntil((r) => r.isFirst);
+      // 退场动画要走完才能点下一行：不能用 pumpAndSettle——
+      // 「检查更新」那行会挂一个转圈的 CircularProgressIndicator（永不 settle）
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      calls.clear();
+    }
+
+    testWidgets('设置首页 _EntryTile 入口行 → tap，且 ListTile 自带反馈已关',
+        (tester) async {
+      await pumpPage(tester, const SettingsPage());
+
+      await tapRow(
+        tester,
+        find.text('课表工具箱'),
+        'HapticFeedbackType.lightImpact',
+        reason: '§1-8：设置首页全部入口行',
+      );
+      final tile = tester.widget<ListTile>(
+        find.ancestor(
+          of: find.text('课表工具箱'),
+          matching: find.byType(ListTile),
+        ),
+      );
+      expect(tile.enableFeedback, isFalse, reason: '关掉自带反馈，防双震');
+    });
+
+    testWidgets('课程工具箱 6 行 → 每行一次 tap', (tester) async {
+      await pumpPage(
+        tester,
+        const CourseToolsPage(),
+        size: const Size(1200, 4200),
+      );
+
+      for (final title in [
+        '课程搜索',
+        '空闲时段',
+        '考试倒计时',
+        '导出课表图片',
+        '日期备注',
+        '菜单管理',
+      ]) {
+        await tapRow(
+          tester,
+          find.text(title),
+          'HapticFeedbackType.lightImpact',
+          reason: '§1-7：$title',
+        );
+      }
+    });
+
+    testWidgets('关于页 8 行 → 每行一次 tap', (tester) async {
+      await pumpPage(tester, const AboutPage());
+
+      const rows = [
+        '检查更新',
+        '公告',
+        '更新日志',
+        '使用帮助',
+        '隐私说明',
+        '开源许可',
+        '问题反馈',
+        '项目主页',
+      ];
+      for (final title in rows) {
+        // 开源许可会压一个 LicensePage：只 pump 几帧，别等它的异步执照加载
+        await tapRow(
+          tester,
+          find.text(title),
+          'HapticFeedbackType.lightImpact',
+          reason: '§1-5：$title',
+        );
+      }
+    });
+
+    testWidgets('导入页 4 个导入入口 → 每个一次 tap', (tester) async {
+      // 需要一个目标学期，否则点下去会先弹「学期数据未加载完成」
+      final id = await tester.runAsync(() => Dao.instance.insertSemester(
+            const Semester(
+              name: '大三上学期',
+              startDate: '2026-09-07',
+              totalWeeks: 20,
+            ),
+          ));
+      await tester.runAsync(() => Dao.instance.setCurrentSemester(id!));
+
+      await pumpPage(tester, const ImportPage());
+
+      const entries = [
+        '导入 ICS 日历文件',
+        '拍照 / 相册识别课表',
+        '导入 PDF 课表文件',
+        '从教务官网导入',
+      ];
+      for (final title in entries) {
+        // 每次都会先弹「确认开学日期」，tapRow 里的 popUntil 顺手收掉
+        await tapRow(
+          tester,
+          find.text(title),
+          'HapticFeedbackType.lightImpact',
+          reason: '§1-1：$title',
+        );
+      }
+    });
+
+    testWidgets('课程搜索结果项 → tap（与同页清空键同档）', (tester) async {
+      final id = await tester.runAsync(() => Dao.instance.insertSemester(
+            const Semester(
+              name: '大三上学期',
+              startDate: '2026-09-07',
+              totalWeeks: 20,
+            ),
+          ));
+      await tester.runAsync(() => Dao.instance.setCurrentSemester(id!));
+      await tester.runAsync(() => Dao.instance.insertCourse(Course(
+            semesterId: id!,
+            name: '药理学',
+            teacher: '张老师',
+            classroom: '教3-201',
+            colorValue: 0xFF8FA3B0,
+            dayOfWeek: 1,
+            startSection: 1,
+            endSection: 2,
+            weeks: const [1, 2, 3],
+          )));
+
+      await pumpPage(tester, const CourseSearchPage());
+
+      await tester.enterText(find.byType(TextField), '药理');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      await tapRow(
+        tester,
+        find.text('药理学'),
+        'HapticFeedbackType.lightImpact',
+        reason: '§1-10：搜索结果项',
+      );
+    });
+
+    testWidgets('菜单管理显隐行：整行与开关都 select，只震一次', (tester) async {
+      await pumpPage(tester, const MenuManagePage());
+
+      // 整行点按（§3）
+      await tapRow(
+        tester,
+        find.byType(ListTile).first,
+        'HapticFeedbackType.selectionClick',
+        reason: '§3：整行 onTap 走 select',
+      );
+
+      // 开关本身
+      advance();
+      calls.clear();
+      await tester.tap(find.byType(Switch).first);
+      await settle(tester);
+      expect(calls, ['HapticFeedbackType.selectionClick'],
+          reason: '§3：Switch.onChanged 同样走 select');
+
+      final tile = tester.widget<ListTile>(find.byType(ListTile).first);
+      expect(tile.enableFeedback, isFalse, reason: '§3：关掉 ListTile 自带反馈');
+
+      // 陈旧注释必须已被替换（§3 要求以 AppHaptics 为准）
+      final src = File('lib/pages/menu_manage_page.dart').readAsStringSync();
+      expect(src.contains('Switch 自带反馈'), isFalse);
+      expect(src.contains('AppHaptics.select'), isTrue);
     });
   });
 }

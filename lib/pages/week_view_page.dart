@@ -194,13 +194,15 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
           title: a.title,
           content: AppDialogText(a.body),
           actions: [
-            FilledButton(
+            // WB_SPEC_235 跟进 §1-15 / §4：外壳内手写按钮改走标准构造
+            AppDialogAction(
+              label: '知道了',
+              primary: true,
               onPressed: () async {
                 Navigator.pop(ctx);
                 await ChannelService.markSeen([a.id]);
                 if (mounted) setState(() => _seenAnn.add(a.id));
               },
-              child: const Text('知道了'),
             ),
           ],
         ),
@@ -320,10 +322,13 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
               ),
               title: const Text('手动新建课程'),
               subtitle: const Text('逐项填写课程信息'),
+              // WB_SPEC_235 跟进：长按菜单行 = 轻点档
               onTap: () {
+                AppHaptics.tap();
                 Navigator.pop(ctx);
                 Navigator.pushNamed(context, '/course-edit');
               },
+              enableFeedback: false,
             ),
             ListTile(
               leading: const SettingsIconBox(
@@ -332,10 +337,13 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
               ),
               title: const Text('导入课表'),
               subtitle: const Text('ICS / 图片 OCR / PDF，支持冲突检测'),
+              // WB_SPEC_235 跟进：长按菜单行 = 轻点档
               onTap: () {
+                AppHaptics.tap();
                 Navigator.pop(ctx);
                 Navigator.pushNamed(context, '/import');
               },
+              enableFeedback: false,
             ),
             // WB_SPEC_224：不用再绕到学期管理里新建——这里直接建一个学期并切过去
             ListTile(
@@ -345,10 +353,13 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
               ),
               title: const Text('新建课表'),
               subtitle: const Text('新建一个学期，建好直接切换'),
+              // WB_SPEC_235 跟进：长按菜单行 = 轻点档
               onTap: () {
+                AppHaptics.tap();
                 Navigator.pop(ctx);
                 _createSemesterFromMenu();
               },
+              enableFeedback: false,
             ),
             const SizedBox(height: 8),
           ],
@@ -476,16 +487,18 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
           ],
         ),
         actions: [
-          TextButton(
+          // WB_SPEC_235 跟进 §1-15 / §4：弹窗按钮改走标准构造
+          AppDialogAction(
+            label: '全部考试倒计时',
             onPressed: () =>
                 Navigator.pushNamed(context, '/exam-countdown').then((_) {
-                  if (ctx.mounted) Navigator.pop(ctx);
-                }),
-            child: const Text('全部考试倒计时'),
+              if (ctx.mounted) Navigator.pop(ctx);
+            }),
           ),
-          FilledButton(
+          AppDialogAction(
+            label: '好的',
+            primary: true,
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('好的'),
           ),
         ],
       ),
@@ -510,17 +523,19 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
         title: '今天是周日',
         content: const AppDialogText('今天是周日，本周已结束'),
         actions: [
-          TextButton(
+          // WB_SPEC_235 跟进 §1-15 / §4：弹窗按钮改走标准构造
+          AppDialogAction(
+            label: '知道了',
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('知道了'),
           ),
           if (week < totalWeeks)
-            FilledButton(
+            AppDialogAction(
+              label: '看下周',
+              primary: true,
               onPressed: () {
                 Navigator.pop(ctx);
                 _jumpToWeek(week + 1);
               },
-              child: const Text('看下周'),
             ),
         ],
       ),
@@ -774,8 +789,11 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
           // WB_SPEC_223：跳转条展开时这一下只收起，不切换编辑模式。
           if (_editMode)
             TextButton.icon(
+              // WB_SPEC_235 跟进：编辑模式「完成」= 轻点档
+              style: TextButton.styleFrom(enableFeedback: false),
               onPressed: () {
                 if (_guardJumper()) return;
+                AppHaptics.tap();
                 setState(() => _editMode = false);
               },
               icon: const Icon(Icons.check, size: 18),
@@ -1059,7 +1077,12 @@ class _BackToWeekRail extends StatelessWidget {
       ),
       elevation: 2,
       child: InkWell(
-        onTap: onTap,
+        // WB_SPEC_235 跟进：「回到本周」竖条 = 轻点档
+        onTap: () {
+          AppHaptics.tap();
+          onTap();
+        },
+        enableFeedback: false,
         child: SizedBox(
           width: 30,
           child: Padding(
@@ -2035,15 +2058,27 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             FilledButton.icon(
-                              onPressed: () =>
-                                  Navigator.pushNamed(context, '/import'),
+                              // WB_SPEC_235 跟进：空周占位「导入课表」= 轻点档
+                              style: FilledButton.styleFrom(
+                                enableFeedback: false,
+                              ),
+                              onPressed: () {
+                                AppHaptics.tap();
+                                Navigator.pushNamed(context, '/import');
+                              },
                               icon: const Icon(Icons.upload_file_outlined),
                               label: const Text('导入课表'),
                             ),
                             const SizedBox(width: AppSpacing.m),
                             OutlinedButton.icon(
-                              onPressed: () =>
-                                  Navigator.pushNamed(context, '/course-edit'),
+                              // WB_SPEC_235 跟进：空周占位「手动加课」= 轻点档
+                              style: OutlinedButton.styleFrom(
+                                enableFeedback: false,
+                              ),
+                              onPressed: () {
+                                AppHaptics.tap();
+                                Navigator.pushNamed(context, '/course-edit');
+                              },
                               icon: const Icon(Icons.edit_outlined),
                               label: const Text('手动加课'),
                             ),
@@ -2331,10 +2366,13 @@ class _PositionedCourseCard extends StatelessWidget {
                   style: const TextStyle(fontSize: 12),
                 ),
                 trailing: const Icon(Icons.chevron_right),
+                // WB_SPEC_235 跟进：弹窗内课程行 = 轻点档
                 onTap: () {
+                  AppHaptics.tap();
                   Navigator.pop(ctx);
                   CourseDetailSheet.show(context, c);
                 },
+                enableFeedback: false,
               ),
             const SizedBox(height: 8),
           ],

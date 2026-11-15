@@ -96,8 +96,12 @@ class _FreeTimePageState extends ConsumerState<FreeTimePage> {
           ),
           if (week != todayWeek)
             TextButton.icon(
-              onPressed: () =>
-                  setState(() => _week = todayWeek < 1 ? 1 : todayWeek),
+              // WB_SPEC_235 跟进：「回到本周」= 轻点档
+              style: TextButton.styleFrom(enableFeedback: false),
+              onPressed: () {
+                AppHaptics.tap();
+                setState(() => _week = todayWeek < 1 ? 1 : todayWeek);
+              },
               icon: const Icon(Icons.today_outlined, size: 16),
               label: const Text('回到本周'),
             ),

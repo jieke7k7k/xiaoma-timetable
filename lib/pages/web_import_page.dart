@@ -317,8 +317,13 @@ class _WebImportPageState extends State<WebImportPage> {
               children: [
                 for (final action in diag.actions)
                   TextButton(
-                    onPressed: () => _runAction(action),
+                    // WB_SPEC_235 跟进 §1-4：诊断建议按钮 = 轻点档
+                    onPressed: () {
+                      AppHaptics.tap();
+                      _runAction(action);
+                    },
                     style: TextButton.styleFrom(
+                      enableFeedback: false,
                       visualDensity: VisualDensity.compact,
                       minimumSize: const Size(0, 32),
                       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -392,7 +397,15 @@ class _WebImportPageState extends State<WebImportPage> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton(onPressed: _go, child: const Text('打开')),
+                // WB_SPEC_235 跟进 §1-4：「打开」网址 = 轻点档
+                FilledButton(
+                  style: FilledButton.styleFrom(enableFeedback: false),
+                  onPressed: () {
+                    AppHaptics.tap();
+                    _go();
+                  },
+                  child: const Text('打开'),
+                ),
               ],
             ),
           ),
@@ -414,7 +427,13 @@ class _WebImportPageState extends State<WebImportPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _extracting ? null : _extract,
+        // WB_SPEC_235 跟进 §1-4：主按钮「抓取本页课表」= 轻点档
+        onPressed: _extracting
+            ? null
+            : () {
+                AppHaptics.tap();
+                _extract();
+              },
         icon: _extracting
             ? const SizedBox(
                 width: 18,

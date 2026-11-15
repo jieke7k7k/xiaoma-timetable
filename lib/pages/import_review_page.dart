@@ -394,9 +394,12 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
               ),
             ),
             actions: [
-              FilledButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('好的')),
+              // WB_SPEC_235 跟进 §1-15 / §4：外壳内的手写按钮改走标准构造
+              AppDialogAction(
+                label: '好的',
+                primary: true,
+                onPressed: () => Navigator.pop(ctx),
+              ),
             ],
           ),
         );
@@ -431,7 +434,12 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
             style: const TextStyle(fontSize: 13),
           ),
           InkWell(
-            onTap: () => setState(() => _extendTotalWeeks = !_extendTotalWeeks),
+            // WB_SPEC_235 跟进 §2：勾选行 = 选择档
+            onTap: () {
+              AppHaptics.select();
+              setState(() => _extendTotalWeeks = !_extendTotalWeeks);
+            },
+            enableFeedback: false,
             child: Row(
               children: [
                 Checkbox(
@@ -488,10 +496,14 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
               // 「查看 N 处差异 ▾」：切换差异区展开/收起；选「仅导入课程」时
               // 差异区永不显示，切换器也禁用（复审优化 1：消除无效点击）。
               InkWell(
+                // WB_SPEC_235 跟进：差异区展开/收起 = 轻点档
                 onTap: _scheduleChoice == _ScheduleChoice.useFile
-                    ? () => setState(
-                        () => _showScheduleDiffs = !_showScheduleDiffs)
+                    ? () {
+                        AppHaptics.tap();
+                        setState(() => _showScheduleDiffs = !_showScheduleDiffs);
+                      }
                     : null,
+                enableFeedback: false,
                 borderRadius: BorderRadius.circular(AppRadii.chip),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -693,7 +705,14 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _importing ? null : _addDraft,
+                    // WB_SPEC_235 跟进：手动补录 = 轻点档
+                    style: OutlinedButton.styleFrom(enableFeedback: false),
+                    onPressed: _importing
+                        ? null
+                        : () {
+                            AppHaptics.tap();
+                            _addDraft();
+                          },
                     icon: const Icon(Icons.add),
                     label: const Text('手动补录'),
                   ),
@@ -702,7 +721,14 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
                 Expanded(
                   flex: 2,
                   child: FilledButton.icon(
-                    onPressed: _importing ? null : _importAll,
+                    // WB_SPEC_235 跟进 §2：一键导入 = 落库类动作 → 中档
+                    style: FilledButton.styleFrom(enableFeedback: false),
+                    onPressed: _importing
+                        ? null
+                        : () {
+                            AppHaptics.medium();
+                            _importAll();
+                          },
                     icon: _importing
                         ? const SizedBox(
                             width: 16,
@@ -767,7 +793,12 @@ class _DraftCard extends StatelessWidget {
             onDelete();
           },
         ),
-        onTap: onTap,
+        // WB_SPEC_235 跟进：点草稿卡片进编辑器 = 轻点档
+        onTap: () {
+          AppHaptics.tap();
+          onTap();
+        },
+        enableFeedback: false,
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/course.dart';
+import '../utils/app_haptics.dart';
 import '../utils/conflict_detector.dart';
 import '../utils/import_planner.dart';
 import '../utils/week_parser.dart';
@@ -66,18 +67,36 @@ class _ImportConflictsPageState extends State<ImportConflictsPage> {
                   child: Wrap(
                     spacing: 8,
                     children: [
+                      // WB_SPEC_235 跟进 §1-12 / §2：三个「全部设为」是批量
+                      // **选择**，不是导航 → select 档
                       OutlinedButton(
-                        onPressed: () => _applyAll(ConflictResolution.skip),
+                        style: OutlinedButton.styleFrom(
+                          enableFeedback: false,
+                        ),
+                        onPressed: () {
+                          AppHaptics.select();
+                          _applyAll(ConflictResolution.skip);
+                        },
                         child: const Text('全部跳过'),
                       ),
                       OutlinedButton(
-                        onPressed: () =>
-                            _applyAll(ConflictResolution.overwrite),
+                        style: OutlinedButton.styleFrom(
+                          enableFeedback: false,
+                        ),
+                        onPressed: () {
+                          AppHaptics.select();
+                          _applyAll(ConflictResolution.overwrite);
+                        },
                         child: const Text('全部覆盖'),
                       ),
                       OutlinedButton(
-                        onPressed: () =>
-                            _applyAll(ConflictResolution.keepBoth),
+                        style: OutlinedButton.styleFrom(
+                          enableFeedback: false,
+                        ),
+                        onPressed: () {
+                          AppHaptics.select();
+                          _applyAll(ConflictResolution.keepBoth);
+                        },
                         child: const Text('全部保留'),
                       ),
                     ],
@@ -104,8 +123,14 @@ class _ImportConflictsPageState extends State<ImportConflictsPage> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(12),
+          // WB_SPEC_235 跟进 §1-12 / §2：主按钮「按此处理并导入」= 落库类
+          // 动作（保存语义）→ medium 档
           child: FilledButton.icon(
-            onPressed: () => Navigator.pop(context, _choices),
+            style: FilledButton.styleFrom(enableFeedback: false),
+            onPressed: () {
+              AppHaptics.medium();
+              Navigator.pop(context, _choices);
+            },
             icon: const Icon(Icons.check),
             label: Text('按此处理并导入（导入 $willImport 门 · 跳过 $willSkip 门）'),
           ),

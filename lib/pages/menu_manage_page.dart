@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/menu_config.dart';
 import '../providers/providers.dart';
 import '../ui/app_styles.dart';
+import '../utils/app_haptics.dart';
 
 /// 菜单管理子页（WB_SPEC_212 第 4 节）：路由 `/menu-manage`。
 ///
@@ -60,8 +61,12 @@ class MenuManagePage extends ConsumerWidget {
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.restore),
                   label: const Text('恢复默认'),
-                  onPressed: () =>
-                      ref.read(menuConfigProvider.notifier).reset(),
+                  // WB_SPEC_235 跟进 §1-16：「恢复默认」= 轻点档
+                  style: OutlinedButton.styleFrom(enableFeedback: false),
+                  onPressed: () {
+                    AppHaptics.tap();
+                    ref.read(menuConfigProvider.notifier).reset();
+                  },
                 ),
               ),
             ),
@@ -107,14 +112,27 @@ class _MenuRow extends StatelessWidget {
           Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
       ),
-      // 右侧：显隐开关（Switch 自带反馈，不加额外动画）
-      trailing: Switch(value: visible, onChanged: onVisibleChanged),
+      // 右侧：显隐开关。WB_SPEC_235 跟进 §3：震动一律以 AppHaptics 为准——
+      // 不再依赖 Switch 自带的系统反馈（下面 `enableFeedback: false` 已关掉），
+      // 也不再额外加动画
+      trailing: Switch(
+        value: visible,
+        onChanged: (v) {
+          AppHaptics.select();
+          onVisibleChanged(v);
+        },
+      ),
       // WB_SPEC_230 第 7 节 c：优先方案是换 SwitchListTile，但它的 secondary
       // 只能放在开关对面（LTR 下即右侧），而本行拖拽手柄必须钉在左侧——
       // 塞进 title 又会和整行点击抢手势（手柄拖拽与 onTap 触摸区打架）。
       // 故走规格给的退路：保留 ListTile + trailing Switch，补 onTap 让
       // 点整行文字与点开关行为一致。
-      onTap: () => onVisibleChanged(!visible),
+      // §3：整行点按与点开关走同一档（select），两条路径各震一次、不叠加
+      enableFeedback: false,
+      onTap: () {
+        AppHaptics.select();
+        onVisibleChanged(!visible);
+      },
     );
   }
 }

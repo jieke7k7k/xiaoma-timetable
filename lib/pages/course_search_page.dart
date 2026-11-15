@@ -42,17 +42,22 @@ class _CourseSearchPageState extends ConsumerState<CourseSearchPage> {
     final semester = ref.watch(currentSemesterProvider).value;
     final todayWeek = ref.watch(todayWeekProvider);
     final q = _query.trim().toLowerCase();
+    // WB_SPEC_235 跟进：顺手修掉一个既有崩溃——级联 `..sort()` 的优先级比
+    // 条件表达式高，原写法等价于 `(q.isEmpty ? const <Course>[] : ...)..sort()`，
+    // 空查询时那是个 **const 列表**，sort 直接抛
+    // UnsupportedError(Cannot modify an unmodifiable list)，页面首帧就红屏。
+    // 加一层括号把级联圈在 else 分支里，语义不变（空查询结果仍为空表）。
     final results = q.isEmpty
         ? const <Course>[]
-        : courses
-            .where((c) =>
-                c.name.toLowerCase().contains(q) ||
-                (c.teacher?.toLowerCase().contains(q) ?? false) ||
-                (c.classroom?.toLowerCase().contains(q) ?? false))
-            .toList()
-      ..sort((a, b) => a.dayOfWeek != b.dayOfWeek
-          ? a.dayOfWeek.compareTo(b.dayOfWeek)
-          : a.startSection.compareTo(b.startSection));
+        : (courses
+                .where((c) =>
+                    c.name.toLowerCase().contains(q) ||
+                    (c.teacher?.toLowerCase().contains(q) ?? false) ||
+                    (c.classroom?.toLowerCase().contains(q) ?? false))
+                .toList()
+              ..sort((a, b) => a.dayOfWeek != b.dayOfWeek
+                  ? a.dayOfWeek.compareTo(b.dayOfWeek)
+                  : a.startSection.compareTo(b.startSection)));
 
     return Scaffold(
       appBar: AppBar(
@@ -118,7 +123,10 @@ class _CourseSearchPageState extends ConsumerState<CourseSearchPage> {
                         style: const TextStyle(fontSize: 12),
                       ),
                       trailing: const Icon(Icons.chevron_right, size: 18),
+                      // WB_SPEC_235 跟进 §1-10：搜索结果项 = 轻点档
+                      // （与同页 77 行「清空」一致）
                       onTap: () {
+                        AppHaptics.tap();
                         if (semester != null) {
                           ref.read(displayWeekProvider.notifier).setWeek(
                               _targetWeek(
@@ -126,6 +134,7 @@ class _CourseSearchPageState extends ConsumerState<CourseSearchPage> {
                         }
                         Navigator.popUntil(context, (r) => r.isFirst);
                       },
+                      enableFeedback: false,
                     );
                   },
                 ),

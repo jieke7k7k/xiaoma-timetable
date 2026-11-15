@@ -95,14 +95,22 @@ class _StartConfirmDialogState extends State<_StartConfirmDialog> {
         ],
       ),
       actions: [
-        TextButton(
+        // WB_SPEC_235 跟进 §1-15 / §4：三键走标准 action 构造
+        AppDialogAction(
+          label: '取消',
           onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
         ),
-        TextButton(onPressed: _pickDate, child: const Text('改日期')),
-        FilledButton(
+        // 「改日期」= 换开学日期，属于选择类 → select 档（由标准构造代发，
+        // 这里不能再手写一次 AppHaptics，否则就是双写）
+        AppDialogAction(
+          label: '改日期',
+          haptic: AppDialogHaptic.select,
+          onPressed: _pickDate,
+        ),
+        AppDialogAction(
+          label: '确认无误',
+          primary: true,
           onPressed: () => Navigator.pop(context, _date),
-          child: const Text('确认无误'),
         ),
       ],
     );

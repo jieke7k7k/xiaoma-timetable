@@ -7,6 +7,7 @@ import '../models/time_slot.dart';
 import '../utils/override_effect.dart';
 import '../providers/providers.dart';
 import '../ui/app_select_field.dart';
+import '../utils/app_haptics.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/empty_state.dart';
 
@@ -178,12 +179,18 @@ class _CourseOverridePageState extends ConsumerState<CourseOverridePage> {
           ],
         ),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(d, false),
-              child: const Text('返回修改')),
-          FilledButton(
-              onPressed: () => Navigator.pop(d, true),
-              child: const Text('仍要保存')),
+          // WB_SPEC_235 跟进 §1-13 / §4：冲突确认框两键走标准 action 构造
+          AppDialogAction(
+            label: '返回修改',
+            onPressed: () => Navigator.pop(d, false),
+          ),
+          AppDialogAction(
+            label: '仍要保存',
+            primary: true,
+            // 保存语义 → 中档（§2）
+            haptic: AppDialogHaptic.medium,
+            onPressed: () => Navigator.pop(d, true),
+          ),
         ],
       ),
     );
@@ -301,7 +308,12 @@ class _CourseOverridePageState extends ConsumerState<CourseOverridePage> {
             title: const Text('本次停课'),
             subtitle: const Text('这一节不上课，也不再提醒；其他周不受影响'),
             value: _cancel,
-            onChanged: (v) => setState(() => _cancel = v),
+            // WB_SPEC_235 跟进 §2：开关类 = 选择档
+            onChanged: (v) {
+              AppHaptics.select();
+              setState(() => _cancel = v);
+            },
+            enableFeedback: false,
           ),
           if (!_cancel) ...[
             const SizedBox(height: 8),
@@ -366,8 +378,15 @@ class _CourseOverridePageState extends ConsumerState<CourseOverridePage> {
           ],
           const SizedBox(height: 24),
           FilledButton(
-            onPressed: _saving ? null : _save,
+            // WB_SPEC_235 跟进 §1-13 / §2：保存类主按钮 = 中档
+            onPressed: _saving
+                ? null
+                : () {
+                    AppHaptics.medium();
+                    _save();
+                  },
             style: FilledButton.styleFrom(
+              enableFeedback: false,
               minimumSize: const Size.fromHeight(48),
             ),
             child: Text(_cancel ? '确认停课' : '保存调整'),
@@ -376,8 +395,16 @@ class _CourseOverridePageState extends ConsumerState<CourseOverridePage> {
           if (_existing != null) ...[
             const SizedBox(height: 12),
             OutlinedButton(
-              onPressed: _saving ? null : _revert,
+              // WB_SPEC_235 跟进 §1-13：撤销入口 = 轻点档（撤销确认由
+              // showAppConfirmDialog 负责，不在这里再震一次）
+              onPressed: _saving
+                  ? null
+                  : () {
+                      AppHaptics.tap();
+                      _revert();
+                    },
               style: OutlinedButton.styleFrom(
+                enableFeedback: false,
                 minimumSize: const Size.fromHeight(48),
                 foregroundColor: Theme.of(context).colorScheme.error,
               ),

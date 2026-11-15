@@ -7,6 +7,7 @@ import '../ui/app_popup_menu.dart';
 import '../ui/app_styles.dart';
 import '../ui/settings_icon_box.dart';
 import '../ui/settings_line_frame.dart';
+import '../utils/app_haptics.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/semester_form_dialog.dart';
@@ -31,7 +32,11 @@ class SemesterManagePage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('学期管理'), centerTitle: true),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _createSemester(context, ref),
+        // WB_SPEC_235 跟进 §1-11：新建学期 FAB = 轻点档
+        onPressed: () {
+          AppHaptics.tap();
+          _createSemester(context, ref);
+        },
         icon: const Icon(Icons.add),
         label: const Text('新建学期'),
       ),
@@ -143,10 +148,14 @@ class SemesterManagePage extends ConsumerWidget {
                             ],
                           ],
                         ),
+                  // WB_SPEC_235 跟进 §1-11 / §2：点学期行 = 选择档（select）；
+                  // 当前学期不可切换，点了不震（没有状态变化就不该给反馈）
                   onTap: () {
                     if (isCurrent) return;
+                    AppHaptics.select();
                     _confirmSwitch(context, ref, s);
                   },
+                  enableFeedback: false,
                 ),
               );
             },
@@ -163,8 +172,12 @@ class SemesterManagePage extends ConsumerWidget {
               Text('加载学期列表失败：$e', textAlign: TextAlign.center),
               const SizedBox(height: 12),
               FilledButton.tonal(
-                onPressed: () =>
-                    ref.read(semestersProvider.notifier).reload(),
+                // WB_SPEC_235 跟进 §1-11：加载失败的重试 = 轻点档
+                style: FilledButton.styleFrom(enableFeedback: false),
+                onPressed: () {
+                  AppHaptics.tap();
+                  ref.read(semestersProvider.notifier).reload();
+                },
                 child: const Text('重试'),
               ),
             ],

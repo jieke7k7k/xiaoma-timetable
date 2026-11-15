@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/permission_service.dart';
 import '../ui/app_styles.dart';
+import '../utils/app_haptics.dart';
 
 /// 权限页（设置 → 权限）：三项权限的状态与补开入口
 ///
@@ -100,9 +101,14 @@ class _PermissionPageState extends State<PermissionPage> {
                     '上面某一项在你的系统上找不到时，可以到应用详情页里手动改',
                   ),
                   trailing: const Icon(Icons.chevron_right),
+                  // WB_SPEC_235 跟进 §1-16：应用详情页入口 = 轻点档
                   onTap: _working
                       ? null
-                      : () => _jump(PermissionService.instance.openAppDetails),
+                      : () {
+                          AppHaptics.tap();
+                          _jump(PermissionService.instance.openAppDetails);
+                        },
+                  enableFeedback: false,
                 ),
                 // WB_SPEC_231 第 4.5 节：常驻提醒可靠性 3 步说明（冷启动三连弹
                 // 删掉后，这里就是用户唯一能看到「怎么让提醒准时响」的地方）
@@ -219,7 +225,12 @@ class _ReliabilityStep extends StatelessWidget {
     );
     if (onTap == null) return content;
     return InkWell(
-      onTap: onTap,
+      // WB_SPEC_235 跟进 §1-16：「忽略电池优化」这一步整行可点 = 轻点档
+      onTap: () {
+        AppHaptics.tap();
+        onTap!();
+      },
+      enableFeedback: false,
       borderRadius: BorderRadius.circular(AppRadii.chip),
       child: content,
     );
@@ -278,7 +289,14 @@ class _PermissionTile extends StatelessWidget {
           ],
         ],
       ),
-      onTap: working ? null : onOpen,
+      // WB_SPEC_235 跟进 §1-16：三项授权行（本组件是唯一收口点）= 轻点档
+      onTap: working
+          ? null
+          : () {
+              AppHaptics.tap();
+              onOpen();
+            },
+      enableFeedback: false,
     );
   }
 }

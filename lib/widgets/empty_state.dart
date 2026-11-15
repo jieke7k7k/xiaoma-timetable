@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/app_haptics.dart';
+
 import '../ui/app_styles.dart';
 
 /// 统一空状态占位组件（阶段五·视觉打磨）
@@ -80,7 +82,13 @@ class EmptyState extends StatelessWidget {
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: AppSpacing.l),
               FilledButton.tonal(
-                onPressed: onAction,
+                // WB_SPEC_235 跟进：空状态里的行动按钮（重试/新建学期等）
+                // 全站共用本组件，一处收口即全覆盖
+                style: FilledButton.styleFrom(enableFeedback: false),
+                onPressed: () {
+                  AppHaptics.tap();
+                  onAction!();
+                },
                 child: Text(actionLabel!),
               ),
             ],

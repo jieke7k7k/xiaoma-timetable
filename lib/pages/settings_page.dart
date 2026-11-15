@@ -8,6 +8,7 @@ import '../ui/app_popup_menu.dart';
 import '../ui/app_styles.dart';
 import '../ui/bottom_bar_metrics.dart';
 import '../ui/settings_icon_box.dart';
+import '../utils/app_haptics.dart';
 import '../ui/settings_line_frame.dart';
 
 /// 设置页（QQ 式分级 → WB_SPEC_218 第 ④ 节重组为三大分组）
@@ -212,7 +213,13 @@ class _EntryTile extends StatelessWidget {
         size: 20,
         color: scheme.onSurfaceVariant.withValues(alpha: 0.6),
       ),
-      onTap: () => Navigator.pushNamed(context, route),
+      // WB_SPEC_235 跟进 §1-8：设置首页全部入口行（本组件是唯一收口点）
+      // = 轻点档；`enableFeedback: false` 关掉 ListTile 自带反馈防双震
+      onTap: () {
+        AppHaptics.tap();
+        Navigator.pushNamed(context, route);
+      },
+      enableFeedback: false,
     );
   }
 }
@@ -338,7 +345,12 @@ class _ReminderEntryTileState extends ConsumerState<_ReminderEntryTile>
           ),
         ],
       ),
-      onTap: () => Navigator.pushNamed(context, '/settings-reminders'),
+      // WB_SPEC_235 跟进 §1-8：上课提醒入口行同样轻点档
+      onTap: () {
+        AppHaptics.tap();
+        Navigator.pushNamed(context, '/settings-reminders');
+      },
+      enableFeedback: false,
     );
   }
 }

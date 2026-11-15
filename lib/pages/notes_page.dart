@@ -84,7 +84,12 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                             _confirmDelete(note);
                           },
                         ),
-                        onTap: () => _showEditor(note: note),
+                        // WB_SPEC_235 跟进 §1-9：点备注行进编辑器 = 轻点档
+                        onTap: () {
+                          AppHaptics.tap();
+                          _showEditor(note: note);
+                        },
+                        enableFeedback: false,
                       ),
                     ),
                 ],
@@ -103,7 +108,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       ),
       // WB_SPEC_230 第 7 节 a：全站三处 FAB 统一为 extended（带文字长条）
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showEditor(),
+        // WB_SPEC_235 跟进 §1-9：新建备注 FAB = 轻点档
+        onPressed: () {
+          AppHaptics.tap();
+          _showEditor();
+        },
         icon: const Icon(Icons.add),
         label: const Text('新增备注'),
       ),
@@ -150,7 +159,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                   title: Text(_dateTitle(noteDayKey(pickedDate))),
                   subtitle: Text(noteDayKey(pickedDate)),
                   trailing: const Icon(Icons.chevron_right),
+                  // WB_SPEC_235 跟进 §1-9 / §2：编辑器内「选日期」= 选择档
                   onTap: () async {
+                    AppHaptics.select();
                     final d = await showDatePicker(
                       context: ctx,
                       initialDate: pickedDate,
@@ -175,11 +186,16 @@ class _NotesPageState extends ConsumerState<NotesPage> {
             ),
           ),
           actions: [
-            TextButton(
+            // WB_SPEC_235 跟进 §1-15 / §4：弹窗按钮走标准 action 构造
+            AppDialogAction(
+              label: '取消',
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
             ),
-            FilledButton(
+            AppDialogAction(
+              label: '保存',
+              primary: true,
+              // 保存类 = 中档（§2）
+              haptic: AppDialogHaptic.medium,
               onPressed: () {
                 if (controller.text.trim().isEmpty) {
                   ScaffoldMessenger.of(ctx)
@@ -188,7 +204,6 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                 }
                 Navigator.pop(ctx, true);
               },
-              child: const Text('保存'),
             ),
           ],
         ),

@@ -135,7 +135,12 @@ class SemesterSettingsPage extends ConsumerWidget {
               ),
               subtitle: Text('${semester.startDate}（自动对齐到当周周一）'),
               trailing: const _Chevron(),
-              onTap: () => _pickStartDate(context, ref, semester.startDate),
+              // WB_SPEC_235 跟进：设置子页入口行（开学日期 = 选择档）
+              onTap: () {
+                AppHaptics.select();
+                _pickStartDate(context, ref, semester.startDate);
+              },
+              enableFeedback: false,
             ),
             ListTile(
               leading: const SettingsIconBox(icon: Icons.view_week_outlined, category: SettingsIconCategory.schedule),
@@ -145,7 +150,12 @@ class SemesterSettingsPage extends ConsumerWidget {
               ),
               subtitle: Text('${semester.totalWeeks} 周'),
               trailing: const _Chevron(),
-              onTap: () => _editTotalWeeks(context, ref, semester.totalWeeks),
+              // WB_SPEC_235 跟进：设置子页入口行 = 轻点档
+              onTap: () {
+                AppHaptics.tap();
+                _editTotalWeeks(context, ref, semester.totalWeeks);
+              },
+              enableFeedback: false,
             ),
           ]),
         ),
@@ -213,11 +223,16 @@ class SemesterSettingsPage extends ConsumerWidget {
           decoration: const InputDecoration(hintText: '如 20', suffixText: '周'),
         ),
         actions: [
-          TextButton(
+          // WB_SPEC_235 跟进 §1-15 / §4：弹窗按钮走标准 action 构造
+          AppDialogAction(
+            label: '取消',
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
           ),
-          FilledButton(
+          AppDialogAction(
+            label: '保存',
+            primary: true,
+            // 保存类 → 中档（§2）
+            haptic: AppDialogHaptic.medium,
             onPressed: () {
               final v = int.tryParse(controller.text.trim());
               if (v == null || v < 1 || v > 30) {
@@ -228,7 +243,6 @@ class SemesterSettingsPage extends ConsumerWidget {
               }
               Navigator.pop(ctx, v);
             },
-            child: const Text('保存'),
           ),
         ],
       ),
@@ -468,7 +482,12 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
                 ),
                 subtitle: Text('提前 $advance 分钟'),
                 trailing: const _Chevron(),
-                onTap: () => _pickAdvanceMinutes(ctx, ref),
+                // WB_SPEC_235 跟进：设置子页入口行 = 轻点档
+                onTap: () {
+                  AppHaptics.tap();
+                  _pickAdvanceMinutes(ctx, ref);
+                },
+                enableFeedback: false,
               );
             },
           ),
@@ -480,10 +499,13 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
   /// 精确闹钟降级提示：一行轻量文字（字号/字色沿用设置页副标题口径），点按跳设置
   Widget _exactAlarmHint(ColorScheme scheme) {
     return InkWell(
+      // WB_SPEC_235 跟进：精确闹钟提示行 = 轻点档
       onTap: () async {
+        AppHaptics.tap();
         await PermissionService.instance.openExactAlarmSettings();
         await _refreshExactAlarmState();
       },
+      enableFeedback: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(72, 0, 16, 12),
         child: Row(
@@ -589,7 +611,11 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
         duration: const Duration(seconds: 6),
         action: SnackBarAction(
           label: '去设置',
-          onPressed: () => PermissionService.instance.openBatterySettings(),
+          // WB_SPEC_235 跟进：SnackBar 里的动作按钮 = 轻点档
+          onPressed: () {
+            AppHaptics.tap();
+            PermissionService.instance.openBatterySettings();
+          },
         ),
       ),
     );
@@ -639,7 +665,12 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
                         color: Theme.of(ctx).colorScheme.primary,
                       )
                     : null,
-                onTap: () => Navigator.pop(ctx, o),
+                // WB_SPEC_235 跟进 §2：选分钟 = 选择档
+                onTap: () {
+                  AppHaptics.select();
+                  Navigator.pop(ctx, o);
+                },
+                enableFeedback: false,
               ),
             const SizedBox(height: 8),
           ],
@@ -678,7 +709,12 @@ class DataSettingsPage extends ConsumerWidget {
               message: 'ICS / 图片 OCR / PDF 导入，支持冲突检测',
             ),
             trailing: const _Chevron(),
-            onTap: () => Navigator.pushNamed(context, '/import'),
+            // WB_SPEC_235 跟进：设置子页入口行 = 轻点档
+            onTap: () {
+              AppHaptics.tap();
+              Navigator.pushNamed(context, '/import');
+            },
+            enableFeedback: false,
           ),
           Divider(
             height: 1,
@@ -694,7 +730,12 @@ class DataSettingsPage extends ConsumerWidget {
               message: '新建、切换或删除学期',
             ),
             trailing: const _Chevron(),
-            onTap: () => Navigator.pushNamed(context, '/semester-manage'),
+            // WB_SPEC_235 跟进：设置子页入口行 = 轻点档
+            onTap: () {
+              AppHaptics.tap();
+              Navigator.pushNamed(context, '/semester-manage');
+            },
+            enableFeedback: false,
           ),
           Divider(
             height: 1,
@@ -710,7 +751,12 @@ class DataSettingsPage extends ConsumerWidget {
               message: '导出全部数据为 JSON 文件，换机/重装可恢复',
             ),
             trailing: const _Chevron(),
-            onTap: () => _exportBackup(context),
+            // WB_SPEC_235 跟进：设置子页入口行 = 轻点档
+            onTap: () {
+              AppHaptics.tap();
+              _exportBackup(context);
+            },
+            enableFeedback: false,
           ),
           Divider(
             height: 1,
@@ -726,7 +772,12 @@ class DataSettingsPage extends ConsumerWidget {
               message: '选择备份 JSON，恢复前会再次确认（覆盖现有数据）',
             ),
             trailing: const _Chevron(),
-            onTap: () => _restoreBackup(context, ref),
+            // WB_SPEC_235 跟进：设置子页入口行 = 轻点档
+            onTap: () {
+              AppHaptics.tap();
+              _restoreBackup(context, ref);
+            },
+            enableFeedback: false,
           ),
           Divider(
             height: 1,
@@ -742,7 +793,12 @@ class DataSettingsPage extends ConsumerWidget {
               message: '当前学期课表导出为日历文件，可分享或导入其他日历 App',
             ),
             trailing: const _Chevron(),
-            onTap: () => _exportIcs(context, ref),
+            // WB_SPEC_235 跟进：设置子页入口行 = 轻点档
+            onTap: () {
+              AppHaptics.tap();
+              _exportIcs(context, ref);
+            },
+            enableFeedback: false,
           ),
           Divider(
             height: 1,
@@ -758,7 +814,12 @@ class DataSettingsPage extends ConsumerWidget {
               message: '存储占用、备份快捷入口与恢复出厂',
             ),
             trailing: const _Chevron(),
-            onTap: () => Navigator.pushNamed(context, '/data-manage'),
+            // WB_SPEC_235 跟进：设置子页入口行 = 轻点档
+            onTap: () {
+              AppHaptics.tap();
+              Navigator.pushNamed(context, '/data-manage');
+            },
+            enableFeedback: false,
           ),
         ],
       ),
@@ -1034,6 +1095,7 @@ class WidgetSettingsPage extends StatelessWidget {
               message: '把最新课程重新推送到桌面小部件',
             ),
             onTap: () async {
+              AppHaptics.tap();
               await WidgetService.instance.refreshWidgets();
               if (!context.mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
@@ -1134,7 +1196,12 @@ class _PermissionSummaryTileState extends State<_PermissionSummaryTile> {
                     '电池 ${s.battery ? '已授权' : '未授权'}',
           ),
           trailing: const _Chevron(),
-          onTap: _open,
+          // WB_SPEC_235 跟进：权限汇总行 = 轻点档
+          onTap: () {
+            AppHaptics.tap();
+            _open();
+          },
+          enableFeedback: false,
         );
       },
     );
@@ -1327,7 +1394,10 @@ class _AppearanceGroup extends ConsumerWidget {
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton(
+                    // WB_SPEC_235 跟进 §2：颜色相关的二选一 = select 档
+                    style: TextButton.styleFrom(enableFeedback: false),
                     onPressed: () {
+                      AppHaptics.select();
                       apply(ui.copyWith(clearThemeCustomColor: true));
                       Navigator.pop(ctx);
                     },
@@ -1377,10 +1447,13 @@ class _AppearanceGroup extends ConsumerWidget {
                           ? Icon(Icons.check,
                               color: Theme.of(context).colorScheme.primary)
                           : null,
+                      // WB_SPEC_235 跟进 §2：选配色方案 = 选择档
                       onTap: () {
+                        AppHaptics.select();
                         apply(ui.copyWith(colorSchemeId: scheme.id));
                         Navigator.pop(ctx);
                       },
+                      enableFeedback: false,
                     ),
                 ],
               ),
@@ -1388,7 +1461,10 @@ class _AppearanceGroup extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               child: FilledButton.tonal(
+                // WB_SPEC_235 跟进：同步推荐主题色 = 轻点档
+                style: FilledButton.styleFrom(enableFeedback: false),
                 onPressed: () {
+                  AppHaptics.tap();
                   apply(ui.copyWith(
                     themePresetId: ui.colorScheme.recommendedThemeId,
                     clearThemeCustomColor: true,
@@ -1704,7 +1780,12 @@ class _ThemeChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return InkWell(
-      onTap: onTap,
+      // WB_SPEC_235 跟进 §2：主题色 chip = 选择档（本组件是唯一实现）
+      onTap: () {
+        AppHaptics.select();
+        onTap();
+      },
+      enableFeedback: false,
       borderRadius: BorderRadius.circular(AppRadii.chip),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1794,13 +1875,15 @@ class _HsvPickerDialogState extends State<_HsvPickerDialog> {
         ],
       ),
       actions: [
-        TextButton(
+        // WB_SPEC_235 跟进 §1-15 / §4：色盘弹窗按钮走标准 action 构造
+        AppDialogAction(
+          label: '取消',
           onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
         ),
-        FilledButton(
+        AppDialogAction(
+          label: '应用',
+          primary: true,
           onPressed: () => Navigator.pop(context, color),
-          child: const Text('应用'),
         ),
       ],
     );
@@ -2301,14 +2384,26 @@ class FontSettingsSectionState extends State<FontSettingsSection> {
                       )
                     : const Icon(Icons.add_circle_outline, size: 18),
                 label: const Text('导入字体文件'),
-                onPressed: _importing ? null : _importFont,
+                // WB_SPEC_235 跟进 §1-16：导入字体 = 轻点档
+                onPressed: _importing
+                    ? null
+                    : () {
+                        AppHaptics.tap();
+                        _importFont();
+                      },
               ),
               if (selectedImported != null) ...[
                 const SizedBox(width: 8),
                 TextButton.icon(
                   icon: const Icon(Icons.delete_outline, size: 18),
                   label: const Text('删除所选字体'),
-                  onPressed: () => _removeFont(selectedImported),
+                  // WB_SPEC_235 跟进 §1-16 / §2：删除字体 = 中档
+                  // （没有二次确认，只能靠这一下提示份量）
+                  style: TextButton.styleFrom(enableFeedback: false),
+                  onPressed: () {
+                    AppHaptics.medium();
+                    _removeFont(selectedImported);
+                  },
                 ),
               ],
             ],
@@ -2380,7 +2475,10 @@ class FontSettingsSectionState extends State<FontSettingsSection> {
             builder: (sheetContext) => TextButton.icon(
               icon: const Icon(Icons.add_circle_outline, size: 18),
               label: const Text('导入本地 TTF/OTF 字体'),
+              // WB_SPEC_235 跟进 §1-16：字体抽屉底部导入入口 = 轻点档
+              style: TextButton.styleFrom(enableFeedback: false),
               onPressed: () {
+                AppHaptics.tap();
                 Navigator.pop(sheetContext);
                 _importFont();
               },
@@ -2414,14 +2512,25 @@ class FontSettingsSectionState extends State<FontSettingsSection> {
                       )
                     : const Icon(Icons.add_circle_outline, size: 18),
                 label: const Text('导入字体文件'),
-                onPressed: _importing ? null : _importFont,
+                // WB_SPEC_235 跟进 §1-16：导入字体 = 轻点档
+                onPressed: _importing
+                    ? null
+                    : () {
+                        AppHaptics.tap();
+                        _importFont();
+                      },
               ),
               if (selectedImported != null) ...[
                 const SizedBox(width: 8),
                 TextButton.icon(
                   icon: const Icon(Icons.delete_outline, size: 18),
                   label: const Text('删除所选字体'),
-                  onPressed: () => _removeFont(selectedImported),
+                  // WB_SPEC_235 跟进 §1-16 / §2：删除字体 = 中档
+                  style: TextButton.styleFrom(enableFeedback: false),
+                  onPressed: () {
+                    AppHaptics.medium();
+                    _removeFont(selectedImported);
+                  },
                 ),
               ],
             ],

@@ -88,6 +88,98 @@ class AppDialogText extends StatelessWidget {
   }
 }
 
+/// 弹窗按钮震动档位（WB_SPEC_235 跟进 §2）
+enum AppDialogHaptic { tap, select, medium }
+
+/// [AppDialog] 的标准 action 构造：**按钮 + 震动 + 关掉自带反馈**三合一。
+///
+/// 为什么要有这个（WB_SPEC_235 跟进 §4）：2.5.0 的漏点里占比最大的一类不是
+/// 「忘了写震动」，而是「AppDialog 外壳是对的、按钮是调用方手写的」——外壳
+/// 管不到 [AppDialog.actions] 里塞进来的裸 `TextButton` / `FilledButton`。
+/// 把按钮做成标准件后，调用方写 action 时就自带档位与 `enableFeedback: false`，
+/// 结构上不再有「补一个漏一个」的口子。
+///
+/// 档位默认：破坏性（[destructive]）→ [AppDialogHaptic.medium]（删除确认要让
+/// 手指意识到份量），其余 → [AppDialogHaptic.tap]；需要 select 时显式传 [haptic]。
+///
+/// 视觉与旧行为完全一致：[primary] / [destructive] 出 `FilledButton`
+/// （破坏性用 error 色），否则出 `TextButton`——所以既有的
+/// `find.widgetWithText(FilledButton, '删除')` 一类测试仍然命中。
+class AppDialogAction extends StatelessWidget {
+  const AppDialogAction({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.primary = false,
+    this.destructive = false,
+    this.foreground,
+    this.haptic,
+  });
+
+  final String label;
+
+  /// 点击回调（先震动、后回调）；null = 禁用态，不震
+  final VoidCallback? onPressed;
+
+  /// 出 `FilledButton`（主动色）而非 `TextButton`
+  final bool primary;
+
+  /// 破坏性：error 色 + 默认 medium 档
+  final bool destructive;
+
+  /// 文字色覆盖（仅 [TextButton] 分支用：如「放弃」这类次要但需警示的按钮）
+  final Color? foreground;
+
+  /// 显式指定档位；不传则按 [destructive] 取默认
+  final AppDialogHaptic? haptic;
+
+  AppDialogHaptic get _effectiveHaptic =>
+      haptic ?? (destructive ? AppDialogHaptic.medium : AppDialogHaptic.tap);
+
+  void _fire() {
+    switch (_effectiveHaptic) {
+      case AppDialogHaptic.tap:
+        AppHaptics.tap();
+      case AppDialogHaptic.select:
+        AppHaptics.select();
+      case AppDialogHaptic.medium:
+        AppHaptics.medium();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final handler = onPressed == null
+        ? null
+        : () {
+            _fire();
+            onPressed!();
+          };
+    if (primary || destructive) {
+      final scheme = Theme.of(context).colorScheme;
+      return FilledButton(
+        style: destructive
+            ? FilledButton.styleFrom(
+                backgroundColor: scheme.error,
+                foregroundColor: scheme.onError,
+                enableFeedback: false,
+              )
+            : FilledButton.styleFrom(enableFeedback: false),
+        onPressed: handler,
+        child: Text(label),
+      );
+    }
+    return TextButton(
+      style: TextButton.styleFrom(
+        enableFeedback: false,
+        foregroundColor: foreground,
+      ),
+      onPressed: handler,
+      child: Text(label),
+    );
+  }
+}
+
 /// 统一信息弹窗（ⓘ 说明、公告等只告知不决策的场景）
 ///
 /// 返回用户点的那个按钮的值（默认只有「知道了」，点哪都是 null）。
@@ -106,15 +198,11 @@ Future<void> showAppInfoDialog(
       title: title,
       content: AppDialogText(message),
       actions: [
-        TextButton(
-          // WB_SPEC_235 §6：弹窗按钮统一由共用弹窗负责震动（只告知类弹窗的
-          // 「知道了」按轻点档）；style 里关掉自带反馈，避免与自定义震动双震
-          style: TextButton.styleFrom(enableFeedback: false),
-          onPressed: () {
-            AppHaptics.tap();
-            Navigator.pop(ctx);
-          },
-          child: Text(actionLabel),
+        // WB_SPEC_235 §6 / 跟进 §4：按钮走标准 action 构造（带 tap 档 +
+        // 关掉自带反馈），不再手写 TextButton
+        AppDialogAction(
+          label: actionLabel,
+          onPressed: () => Navigator.pop(ctx),
         ),
       ],
     ),
@@ -140,39 +228,22 @@ Future<bool?> showAppConfirmDialog(
     context: context,
     barrierDismissible: barrierDismissible,
     builder: (ctx) {
-      final scheme = Theme.of(ctx).colorScheme;
       return AppDialog(
         title: title,
         content: AppDialogText(message),
         actions: [
-          TextButton(
-            style: TextButton.styleFrom(enableFeedback: false),
-            onPressed: () {
-              // 取消：轻点档（WB_SPEC_235 §6）
-              AppHaptics.tap();
-              Navigator.pop(ctx, false);
-            },
-            child: Text(cancelLabel),
+          // 取消：轻点档（WB_SPEC_235 §6）
+          AppDialogAction(
+            label: cancelLabel,
+            onPressed: () => Navigator.pop(ctx, false),
           ),
-          FilledButton(
-            style: destructive
-                ? FilledButton.styleFrom(
-                    backgroundColor: scheme.error,
-                    foregroundColor: scheme.onError,
-                    enableFeedback: false,
-                  )
-                : FilledButton.styleFrom(enableFeedback: false),
-            onPressed: () {
-              // 确认：普通确认轻点档；破坏性确认（删除/覆盖恢复）用中档，
-              // 让手指在「点下去」这一下就意识到这一步份量更重
-              if (destructive) {
-                AppHaptics.medium();
-              } else {
-                AppHaptics.tap();
-              }
-              Navigator.pop(ctx, true);
-            },
-            child: Text(confirmLabel),
+          // 确认：普通确认轻点档；破坏性确认（删除/覆盖恢复）中档，
+          // 让手指在「点下去」这一下就意识到这一步份量更重
+          AppDialogAction(
+            label: confirmLabel,
+            primary: true,
+            destructive: destructive,
+            onPressed: () => Navigator.pop(ctx, true),
           ),
         ],
       );

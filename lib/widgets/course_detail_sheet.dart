@@ -6,6 +6,7 @@ import '../models/course.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../ui/app_styles.dart';
+import '../utils/app_haptics.dart';
 import '../utils/color_schemes.dart';
 import '../utils/exam_countdown.dart';
 import '../utils/week_parser.dart';
@@ -263,8 +264,15 @@ class _DetailAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TextButton.icon(
-      onPressed: onPressed,
+      // WB_SPEC_235 跟进 §1-14：详情底部三个操作键（删除 / 新增时段 / 编辑）
+      // 共用本组件，一处收口三键全覆盖；删除的「份量」由 showAppConfirmDialog
+      // 的破坏性档表达，入口本身仍是轻点档
+      onPressed: () {
+        AppHaptics.tap();
+        onPressed();
+      },
       style: TextButton.styleFrom(
+        enableFeedback: false,
         backgroundColor: background,
         foregroundColor: foreground,
         // 三个入口统一 44dp 高 + chip 圆角，不再各用默认药丸形与默认内边距

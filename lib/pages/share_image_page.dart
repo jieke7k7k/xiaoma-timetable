@@ -10,6 +10,7 @@ import '../models/time_slot.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../services/fonts_service.dart';
+import '../utils/app_haptics.dart';
 import '../ui/grid_metrics.dart';
 import '../utils/color_schemes.dart';
 import '../utils/override_effect.dart';
@@ -157,8 +158,15 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(12),
+          // WB_SPEC_235 跟进 §1-16：分享图片主按钮 = 轻点档
           child: FilledButton.icon(
-            onPressed: _sharing ? null : _share,
+            style: FilledButton.styleFrom(enableFeedback: false),
+            onPressed: _sharing
+                ? null
+                : () {
+                    AppHaptics.tap();
+                    _share();
+                  },
             icon: _sharing
                 ? const SizedBox(
                     width: 16,

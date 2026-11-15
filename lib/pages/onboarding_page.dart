@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/providers.dart';
 import '../ui/app_styles.dart';
+import '../utils/app_haptics.dart';
 import 'web_import_page.dart';
 
 /// 首次启动引导（1.2.4，WB_SPEC_231 第 3 节升级）：三页——
@@ -160,7 +161,12 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
-                onPressed: () => widget.onDone(),
+                // WB_SPEC_235 跟进 §1-16：引导页三处按键也补（不留争议）
+                style: TextButton.styleFrom(enableFeedback: false),
+                onPressed: () {
+                  AppHaptics.tap();
+                  widget.onDone();
+                },
                 child: const Text('跳过'),
               ),
             ),
@@ -210,7 +216,14 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                         ),
                         const SizedBox(height: 12),
                         TextButton(
-                          onPressed: () => _openSettings(route),
+                          // 页内直达入口 = 轻点档
+                          style: TextButton.styleFrom(
+                            enableFeedback: false,
+                          ),
+                          onPressed: () {
+                            AppHaptics.tap();
+                            _openSettings(route);
+                          },
                           child: Text(actionLabel),
                         ),
                       ],
@@ -240,7 +253,9 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
             Padding(
               padding: const EdgeInsets.all(24),
               child: FilledButton(
+                // 下一页 / 开始使用 = 轻点档
                 onPressed: () {
+                  AppHaptics.tap();
                   if (isLast) {
                     widget.onDone();
                   } else {
@@ -251,6 +266,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                   }
                 },
                 style: FilledButton.styleFrom(
+                  enableFeedback: false,
                   minimumSize: const Size.fromHeight(48),
                 ),
                 child: Text(isLast ? '开始使用' : '下一页'),
@@ -301,7 +317,12 @@ class _PathRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return InkWell(
-      onTap: onTap,
+      // WB_SPEC_235 跟进：引导页「课表从哪来」五行整行可点 = 轻点档
+      onTap: () {
+        AppHaptics.tap();
+        onTap();
+      },
+      enableFeedback: false,
       borderRadius: BorderRadius.circular(AppRadii.card),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
