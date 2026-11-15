@@ -58,13 +58,13 @@ void main() {
     });
 
     test('切到别的方案再切回莫兰迪可完全还原', () {
-      final grape = courseSchemeById('grape');
+      final other = courseSchemeById('macaron');
       final morandi = courseSchemeById('morandi');
       for (final c in MorandiPalette.colors) {
-        final shown = mapCourseColor(c, grape);
+        final shown = mapCourseColor(c, other);
         // 还原路径：渲染层永远从存储色（莫兰迪）出发映射，存储色从未改变
         expect(mapCourseColor(c, morandi), c);
-        expect(shown, grape.colors[MorandiPalette.colors.indexOf(c)]);
+        expect(shown, other.colors[MorandiPalette.colors.indexOf(c)]);
       }
     });
   });
@@ -224,20 +224,20 @@ void main() {
       'retro-film': '复古·胶片馆',
     };
 
-    test('共 10 套；4 个新 id 唯一、与现有 6 套无冲突，且按规格书顺序追加在末尾', () {
-      expect(kCourseColorSchemes.length, 10);
+    test('共 7 套；4 个新 id 唯一、与现有 3 套无冲突，且按规格书顺序追加在末尾', () {
+      expect(kCourseColorSchemes.length, 7);
       final ids = kCourseColorSchemes.map((s) => s.id).toList();
       expect(ids.length, ids.toSet().length, reason: '所有方案 id 不得重复');
       for (final id in expectedColors.keys) {
         expect(ids.where((e) => e == id).length, 1,
             reason: '$id 应恰好出现一次');
       }
-      // 现有 6 套 id 与顺序一字不动
-      expect(ids.sublist(0, 6), const [
-        'morandi', 'macaron', 'seasalt', 'mint', 'grape', 'sunset',
+      // 现有 3 套 id 与顺序一字不动（2026-11-16 删 mint/grape/sunset 后剩 3 套）
+      expect(ids.sublist(0, 3), const [
+        'morandi', 'macaron', 'seasalt',
       ]);
       // 新 4 套按规格书顺序追加在末尾
-      expect(ids.sublist(6), expectedColors.keys.toList());
+      expect(ids.sublist(3), expectedColors.keys.toList());
     });
 
     test('每套恰好 16 色，且逐字等于规格书色值', () {
