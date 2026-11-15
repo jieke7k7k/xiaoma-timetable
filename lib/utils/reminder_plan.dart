@@ -31,12 +31,15 @@ DateTime computeReminderTime(DateTime courseStart, int advanceMinutes) =>
 /// 通知正文文案：
 /// - 有教室：「《xx》还有 15 分钟在 xx教室上课」
 /// - 无教室兜底：「《xx》还有 15 分钟上课」
+/// - 填了备注的课，末尾追加「，备注：xx」；空白备注不追加。
 String buildReminderBody(Course course, int advanceMinutes) {
   final room = course.classroom?.trim();
-  if (room == null || room.isEmpty) {
-    return '《${course.name}》还有 $advanceMinutes 分钟上课';
-  }
-  return '《${course.name}》还有 $advanceMinutes 分钟在 $room 上课';
+  final base = (room == null || room.isEmpty)
+      ? '《${course.name}》还有 $advanceMinutes 分钟上课'
+      : '《${course.name}》还有 $advanceMinutes 分钟在 $room 上课';
+  final note = course.note?.trim();
+  if (note == null || note.isEmpty) return base;
+  return '$base，备注：$note';
 }
 
 /// 构建某天需要提醒的课程计划（纯函数）。

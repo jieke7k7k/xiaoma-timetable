@@ -23,11 +23,13 @@ void main() {
     List<int> weeks = const [1, 2],
     int weekType = 0,
     String? classroom,
+    String? note,
   }) =>
       Course(
         semesterId: 1,
         name: '课程',
         classroom: classroom,
+        note: note,
         colorValue: 0xFF6B8E7B,
         dayOfWeek: dayOfWeek,
         startSection: startSection,
@@ -60,6 +62,21 @@ void main() {
 
     test('无教室兜底', () {
       expect(buildReminderBody(course(), 15), '《课程》还有 15 分钟上课');
+    });
+
+    test('有教室 + 有备注：末尾追加备注', () {
+      final c = course(classroom: 'A101', note: '带电脑');
+      expect(buildReminderBody(c, 15), '《课程》还有 15 分钟在 A101 上课，备注：带电脑');
+    });
+
+    test('无教室 + 有备注：末尾追加备注', () {
+      final c = course(note: '带电脑');
+      expect(buildReminderBody(c, 15), '《课程》还有 15 分钟上课，备注：带电脑');
+    });
+
+    test('备注只有空白时不追加', () {
+      final c = course(classroom: 'A101', note: '   ');
+      expect(buildReminderBody(c, 15), '《课程》还有 15 分钟在 A101 上课');
     });
   });
 
