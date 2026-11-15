@@ -14,6 +14,7 @@ import 'package:xiaoma_timetable/models/ui_settings.dart';
 import 'package:xiaoma_timetable/pages/about_page.dart';
 import 'package:xiaoma_timetable/pages/course_search_page.dart';
 import 'package:xiaoma_timetable/pages/course_tools_page.dart';
+import 'package:xiaoma_timetable/pages/import_conflicts_page.dart';
 import 'package:xiaoma_timetable/pages/import_page.dart';
 import 'package:xiaoma_timetable/pages/menu_manage_page.dart';
 import 'package:xiaoma_timetable/pages/settings_page.dart';
@@ -25,6 +26,8 @@ import 'package:xiaoma_timetable/ui/bottom_bar_metrics.dart';
 import 'package:xiaoma_timetable/ui/liquid_glass.dart';
 import 'package:xiaoma_timetable/ui/settings_entry_row.dart';
 import 'package:xiaoma_timetable/utils/app_haptics.dart';
+import 'package:xiaoma_timetable/utils/conflict_detector.dart';
+import 'package:xiaoma_timetable/utils/import_planner.dart';
 import 'package:xiaoma_timetable/widgets/app_dialog.dart';
 import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 
@@ -749,6 +752,51 @@ void main() {
       final src = File('lib/pages/menu_manage_page.dart').readAsStringSync();
       expect(src.contains('Switch 自带反馈'), isFalse);
       expect(src.contains('AppHaptics.select'), isTrue);
+    });
+
+    testWidgets('冲突页 SegmentedButton 分段键 → select，且自带反馈已关（复审 M1）',
+        (tester) async {
+      final draft = Course(
+          semesterId: 1,
+          name: '药物分析',
+          colorValue: 0xFF000000,
+          dayOfWeek: 1,
+          startSection: 1,
+          endSection: 2,
+          weeks: const [1]);
+      final existing = Course(
+          semesterId: 1,
+          name: '药理学',
+          colorValue: 0xFF000000,
+          dayOfWeek: 1,
+          startSection: 1,
+          endSection: 2,
+          weeks: const [1]);
+      final item = ImportConflictItem(
+        draftIndex: 0,
+        conflict: CourseConflict(
+            courseA: draft,
+            courseB: existing,
+            overlapWeeks: const [1],
+            overlapSections: const [1]),
+        otherIsDraft: false,
+        otherDraftIndex: -1,
+      );
+      await tester.pumpWidget(
+          wrap(ImportConflictsPage(drafts: [draft], items: [item])));
+      await settle(tester);
+
+      advance();
+      calls.clear();
+      await tester.tap(find.text('覆盖对方'));
+      await settle(tester);
+      expect(calls, ['HapticFeedbackType.selectionClick'],
+          reason: 'M1：分段键 = 选择档，只震一次');
+
+      final button = tester.widget<SegmentedButton<ConflictResolution>>(
+          find.byType(SegmentedButton<ConflictResolution>));
+      expect(button.style?.enableFeedback, isFalse,
+          reason: 'M1：style.enableFeedback 会逐分段下传，关掉自带反馈防双写');
     });
   });
 }

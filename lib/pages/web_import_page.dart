@@ -428,6 +428,8 @@ class _WebImportPageState extends State<WebImportPage> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         // WB_SPEC_235 跟进 §1-4：主按钮「抓取本页课表」= 轻点档
+        // 复审 O1：补 enableFeedback: false 防双写
+        enableFeedback: false,
         onPressed: _extracting
             ? null
             : () {

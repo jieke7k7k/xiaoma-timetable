@@ -1094,6 +1094,8 @@ class WidgetSettingsPage extends StatelessWidget {
               title: '立即刷新桌面小部件',
               message: '把最新课程重新推送到桌面小部件',
             ),
+            // WB_SPEC_235 跟进复审 L1：补 enableFeedback: false 防双写
+            enableFeedback: false,
             onTap: () async {
               AppHaptics.tap();
               await WidgetService.instance.refreshWidgets();
@@ -2385,6 +2387,8 @@ class FontSettingsSectionState extends State<FontSettingsSection> {
                     : const Icon(Icons.add_circle_outline, size: 18),
                 label: const Text('导入字体文件'),
                 // WB_SPEC_235 跟进 §1-16：导入字体 = 轻点档
+                // 复审 L2：补 enableFeedback: false 防双写
+                style: OutlinedButton.styleFrom(enableFeedback: false),
                 onPressed: _importing
                     ? null
                     : () {
@@ -2513,6 +2517,8 @@ class FontSettingsSectionState extends State<FontSettingsSection> {
                     : const Icon(Icons.add_circle_outline, size: 18),
                 label: const Text('导入字体文件'),
                 // WB_SPEC_235 跟进 §1-16：导入字体 = 轻点档
+                // 复审 L2：补 enableFeedback: false 防双写
+                style: OutlinedButton.styleFrom(enableFeedback: false),
                 onPressed: _importing
                     ? null
                     : () {

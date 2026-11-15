@@ -33,6 +33,8 @@ class SemesterManagePage extends ConsumerWidget {
       appBar: AppBar(title: const Text('学期管理'), centerTitle: true),
       floatingActionButton: FloatingActionButton.extended(
         // WB_SPEC_235 跟进 §1-11：新建学期 FAB = 轻点档
+        // 复审 O1：补 enableFeedback: false 防双写
+        enableFeedback: false,
         onPressed: () {
           AppHaptics.tap();
           _createSemester(context, ref);

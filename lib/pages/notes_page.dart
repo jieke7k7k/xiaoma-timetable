@@ -109,6 +109,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       // WB_SPEC_230 第 7 节 a：全站三处 FAB 统一为 extended（带文字长条）
       floatingActionButton: FloatingActionButton.extended(
         // WB_SPEC_235 跟进 §1-9：新建备注 FAB = 轻点档
+        // 复审 O1：补 enableFeedback: false 防双写
+        enableFeedback: false,
         onPressed: () {
           AppHaptics.tap();
           _showEditor();
@@ -160,6 +162,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                   subtitle: Text(noteDayKey(pickedDate)),
                   trailing: const Icon(Icons.chevron_right),
                   // WB_SPEC_235 跟进 §1-9 / §2：编辑器内「选日期」= 选择档
+                  // 复审 M2：补 enableFeedback: false 防双写
+                  enableFeedback: false,
                   onTap: () async {
                     AppHaptics.select();
                     final d = await showDatePicker(

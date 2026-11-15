@@ -213,8 +213,14 @@ class _ImportConflictsPageState extends State<ImportConflictsPage> {
               ],
               selected: {_choices[i]},
               showSelectedIcon: false,
-              onSelectionChanged: (s) =>
-                  setState(() => _choices[i] = s.first),
+              // WB_SPEC_235 跟进复审 M1：分段键 = 选择档；style 里的
+              // enableFeedback 会逐分段下传（segmented_button.dart
+              // segmentStyleFor），关掉自带反馈防双写。
+              style: const ButtonStyle(enableFeedback: false),
+              onSelectionChanged: (s) {
+                AppHaptics.select();
+                setState(() => _choices[i] = s.first);
+              },
             ),
           ],
         ),
