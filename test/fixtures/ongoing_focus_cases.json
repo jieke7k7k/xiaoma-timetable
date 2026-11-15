@@ -23,8 +23,8 @@
     { "section": 13, "startTime": "20:30", "endTime": "21:10" }
   ],
   "courses": [
-    { "id": 1, "name": "高等数学", "classroom": "A101", "dayOfWeek": 1, "startSection": 1, "endSection": 2, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 0 },
-    { "id": 2, "name": "大学物理", "classroom": "B202", "dayOfWeek": 1, "startSection": 3, "endSection": 4, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 0 },
+    { "id": 1, "name": "高等数学", "classroom": "A101", "note": "带习题册", "dayOfWeek": 1, "startSection": 1, "endSection": 2, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 0 },
+    { "id": 2, "name": "大学物理", "classroom": "B202", "note": "带电脑", "dayOfWeek": 1, "startSection": 3, "endSection": 4, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 0 },
     { "id": 3, "name": "线性代数", "classroom": "C303", "dayOfWeek": 1, "startSection": 6, "endSection": 7, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 0 },
     { "id": 4, "name": "大学英语", "classroom": null, "dayOfWeek": 1, "startSection": 10, "endSection": 11, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 0 },
     { "id": 5, "name": "数据结构", "classroom": "D404", "dayOfWeek": 2, "startSection": 1, "endSection": 2, "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], "weekType": 0 },
@@ -44,7 +44,7 @@
       "now": "2026-09-07 08:20",
       "expected": {
         "title": "正在上课：高等数学",
-        "lines": ["08:00–09:30 · A101", "下一节：大学物理 · 今天 09:40 · B202"],
+        "lines": ["08:00–09:30 · A101", "带习题册", "下一节：大学物理 · 今天 09:40 · B202"],
         "boundary": "2026-09-07 09:30"
       }
     },
@@ -53,7 +53,7 @@
       "now": "2026-09-07 09:35",
       "expected": {
         "title": "下一节：大学物理",
-        "lines": ["09:40–11:10 · B202", "今天后面还有 2 节课"],
+        "lines": ["09:40–11:10 · B202", "带电脑", "今天后面还有 2 节课"],
         "boundary": "2026-09-07 09:40"
       }
     },

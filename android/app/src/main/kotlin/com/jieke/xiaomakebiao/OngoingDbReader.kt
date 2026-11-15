@@ -131,7 +131,7 @@ object OngoingDbReader {
         readOrEmpty("courses", ::logReadFailure) {
             db.rawQuery(
                 "SELECT id, name, classroom, dayOfWeek, startSection, endSection, " +
-                    "weeksJson, weekType FROM courses WHERE semesterId = ?",
+                    "weeksJson, weekType, note FROM courses WHERE semesterId = ?",
                 arrayOf(semesterId.toString()),
             ).use { c ->
                 buildList {
@@ -147,6 +147,8 @@ object OngoingDbReader {
                                 // weeksJson 损坏按空列表处理（与 Dart 的 _parseWeeks 容错一致）
                                 weeks = OngoingFocusCalculator.parseWeeks(c.getStringOrNull(6)),
                                 weekType = c.getIntOrNull(7) ?: 0,
+                                // 备注列（v7 建表已有）：缺失/NULL 按无备注处理
+                                note = c.getStringOrNull(8),
                             )
                         )
                     }

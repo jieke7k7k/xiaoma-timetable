@@ -39,10 +39,12 @@ OngoingNotice buildOngoingNotice({
   final nxt = focus.next;
 
   if (cur != null) {
+    final note = _noteLine(cur.course);
     return OngoingNotice(
       title: '正在上课：${cur.course.name}',
       lines: [
         '${cur.timeRange}${_roomSuffix(cur.course)}',
+        if (note != null) note,
         if (nxt != null)
           '下一节：${nxt.course.name} · ${dayLabel(nxt.date, now)} '
               '${fmtHhmm(nxt.start)}${_roomSuffix(nxt.course)}'
@@ -53,11 +55,13 @@ OngoingNotice buildOngoingNotice({
   }
   if (nxt != null) {
     final isToday = dayLabel(nxt.date, now) == '今天';
+    final note = _noteLine(nxt.course);
     return OngoingNotice(
       title: '下一节：${nxt.course.name}',
       lines: [
         '${isToday ? "" : "${dayLabel(nxt.date, now)} "}'
             '${nxt.timeRange}${_roomSuffix(nxt.course)}',
+        if (note != null) note,
         if (focus.laterTodayCount > 0)
           '今天后面还有 ${focus.laterTodayCount} 节课',
       ],
@@ -73,4 +77,12 @@ OngoingNotice buildOngoingNotice({
 String _roomSuffix(Course c) {
   final room = c.classroom?.trim();
   return room != null && room.isNotEmpty ? ' · $room' : '';
+}
+
+/// 备注行：只对填了备注的课显示；空白备注不占行。
+/// 只取焦点课（正在上的课 / 下一节课）的备注，预告行里下一节的备注不另起行。
+/// 备注行永远排在时间行之后：收起时正文仍是第一行（时间），备注只在展开后出现。
+String? _noteLine(Course c) {
+  final note = c.note?.trim();
+  return note != null && note.isNotEmpty ? note : null;
 }

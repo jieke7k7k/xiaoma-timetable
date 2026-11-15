@@ -226,6 +226,7 @@ class OngoingFocusCalculatorTest {
                     endSection = (m["endSection"] as Number).toInt(),
                     weeks = (m["weeks"] as List<*>).map { w -> (w as Number).toInt() },
                     weekType = (m["weekType"] as Number).toInt(),
+                    note = m["note"] as String?,
                 )
             }
 

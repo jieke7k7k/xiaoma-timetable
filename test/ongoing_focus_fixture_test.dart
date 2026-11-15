@@ -214,6 +214,7 @@ class _Fixture {
             semesterId: 1,
             name: c['name'] as String,
             classroom: c['classroom'] as String?,
+            note: c['note'] as String?,
             colorValue: 0xFF6B8E7B,
             dayOfWeek: c['dayOfWeek'] as int,
             startSection: c['startSection'] as int,

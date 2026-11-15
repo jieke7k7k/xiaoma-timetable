@@ -132,6 +132,7 @@ object OngoingFocusCalculator {
         if (current != null) {
             title = "正在上课：${current.course.name}"
             lines.add(current.timeRange() + roomSuffix(current.course))
+            noteLine(current.course)?.let { lines.add(it) }
             if (next != null) {
                 lines.add(
                     "下一节：${next.course.name} · ${dayLabel(next.date, today)} " +
@@ -145,6 +146,7 @@ object OngoingFocusCalculator {
             val isToday = dayLabel(next.date, today) == "今天"
             val prefix = if (isToday) "" else "${dayLabel(next.date, today)} "
             lines.add(prefix + next.timeRange() + roomSuffix(next.course))
+            noteLine(next.course)?.let { lines.add(it) }
             if (laterTodayCount > 0) {
                 lines.add("今天后面还有 $laterTodayCount 节课")
             }
@@ -332,6 +334,16 @@ object OngoingFocusCalculator {
         val room = course.classroom?.trim()
         return if (room != null && room.isNotEmpty()) " · $room" else ""
     }
+
+    /**
+     * 备注行：只对填了备注的课显示；空白备注不占行。
+     * 只取焦点课（正在上的课 / 下一节课）的备注，预告行里下一节的备注不另起行。
+     * 备注行永远排在时间行之后：收起时正文仍是第一行（时间），备注只在展开后出现。
+     */
+    private fun noteLine(course: FocusCourse): String? {
+        val note = course.note?.trim()
+        return if (note.isNullOrEmpty()) null else note
+    }
 }
 
 /** 一次具体的课：某天的某门课，带确切起止时刻 */
@@ -363,6 +375,8 @@ data class FocusCourse(
     val endSection: Int,
     val weeks: List<Int>,
     val weekType: Int,
+    /** 课程备注（可空）：常驻通知里焦点课的备注行；缺失按无备注处理 */
+    val note: String? = null,
 )
 
 /** 节次时间（纯数据）：对应 time_slots 表 */

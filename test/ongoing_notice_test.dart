@@ -24,6 +24,7 @@ void main() {
     int endSection = 1,
     String name = '高等数学',
     String? classroom,
+    String? note,
     List<int> weeks = const [1, 2],
     int weekType = 0,
   }) =>
@@ -31,6 +32,7 @@ void main() {
         semesterId: 1,
         name: name,
         classroom: classroom,
+        note: note,
         colorValue: 0xFF6B8E7B,
         dayOfWeek: dayOfWeek,
         startSection: startSection,
@@ -129,6 +131,57 @@ void main() {
         timeSlots: slots,
       );
       expect(notice.lines, ['14:00–15:30']);
+    });
+
+    test('下一节课带备注：备注行排在时间行后', () {
+      final notice = buildOngoingNotice(
+        now: DateTime(2026, 9, 7, 10, 0),
+        semester: semester,
+        courses: [
+          course(
+              startSection: 2, endSection: 2, name: '大学物理',
+              classroom: 'B202', note: '带电脑'),
+          course(startSection: 1, endSection: 1, classroom: 'A101'),
+        ],
+        timeSlots: slots,
+      );
+      expect(notice.title, '下一节：大学物理');
+      expect(notice.lines, ['14:00–15:30 · B202', '带电脑']);
+    });
+
+    test('上课中带备注：备注行在时间行后、下一节预告之前', () {
+      final notice = buildOngoingNotice(
+        now: DateTime(2026, 9, 7, 8, 20),
+        semester: semester,
+        courses: [
+          course(startSection: 1, endSection: 1, classroom: 'A101',
+              note: '带习题册'),
+          course(
+              startSection: 2, endSection: 2, name: '大学物理', classroom: 'B202'),
+        ],
+        timeSlots: slots,
+      );
+      expect(notice.title, '正在上课：高等数学');
+      expect(notice.lines, [
+        '08:00–08:45 · A101',
+        '带习题册',
+        '下一节：大学物理 · 今天 14:00 · B202',
+      ]);
+    });
+
+    test('备注只有空白时不占行', () {
+      final notice = buildOngoingNotice(
+        now: DateTime(2026, 9, 7, 10, 0),
+        semester: semester,
+        courses: [
+          course(
+              startSection: 2, endSection: 2, name: '大学物理',
+              classroom: 'B202', note: '   '),
+          course(startSection: 1, endSection: 1, classroom: 'A101'),
+        ],
+        timeSlots: slots,
+      );
+      expect(notice.lines, ['14:00–15:30 · B202']);
     });
 
     test('近期无课 → 兜底文案', () {
