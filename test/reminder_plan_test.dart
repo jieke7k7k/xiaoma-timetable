@@ -64,14 +64,14 @@ void main() {
       expect(buildReminderBody(course(), 15), '《课程》还有 15 分钟上课');
     });
 
-    test('有教室 + 有备注：末尾追加备注', () {
+    test('有教室 + 有备注：末尾括号追加备注', () {
       final c = course(classroom: 'A101', note: '带电脑');
-      expect(buildReminderBody(c, 15), '《课程》还有 15 分钟在 A101 上课，备注：带电脑');
+      expect(buildReminderBody(c, 15), '《课程》还有 15 分钟在 A101 上课（带电脑）');
     });
 
-    test('无教室 + 有备注：末尾追加备注', () {
+    test('无教室 + 有备注：末尾括号追加备注', () {
       final c = course(note: '带电脑');
-      expect(buildReminderBody(c, 15), '《课程》还有 15 分钟上课，备注：带电脑');
+      expect(buildReminderBody(c, 15), '《课程》还有 15 分钟上课（带电脑）');
     });
 
     test('备注只有空白时不追加', () {
