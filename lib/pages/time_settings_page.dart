@@ -8,6 +8,7 @@ import '../ui/app_styles.dart';
 import '../ui/grid_metrics.dart';
 import '../ui/settings_entry_row.dart';
 import '../ui/settings_line_frame.dart';
+import '../utils/app_haptics.dart';
 import '../widgets/app_dialog.dart';
 
 /// 作息时间设置页（WB_SPEC_228 §5）。
@@ -667,16 +668,25 @@ class _StepperRow extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  onPressed:
-                      value > min ? () => onChanged(value - 1) : null,
+                  // WB_SPEC_235 §7：分钟数 ± 一格 = 选择档
+                  onPressed: value > min
+                      ? () {
+                          AppHaptics.select();
+                          onChanged(value - 1);
+                        }
+                      : null,
                   icon: const Icon(Icons.remove_circle_outline),
                 ),
                 Text('$value',
                     style: const TextStyle(
                         fontSize: 16, fontWeight: FontWeight.w600)),
                 IconButton(
-                  onPressed:
-                      value < max ? () => onChanged(value + 1) : null,
+                  onPressed: value < max
+                      ? () {
+                          AppHaptics.select();
+                          onChanged(value + 1);
+                        }
+                      : null,
                   icon: const Icon(Icons.add_circle_outline),
                 ),
               ],

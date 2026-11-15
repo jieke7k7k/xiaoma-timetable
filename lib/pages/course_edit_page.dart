@@ -8,6 +8,7 @@ import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../ui/app_select_field.dart';
 import '../ui/app_styles.dart';
+import '../utils/app_haptics.dart';
 import '../utils/color_schemes.dart';
 import '../utils/conflict_detector.dart';
 import '../utils/morandi_palette.dart';
@@ -761,7 +762,13 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
         title: Text(_editId == null ? '新建课程' : '编辑课程'),
         actions: [
           TextButton(
-            onPressed: _saving ? null : () => _save(),
+            onPressed: _saving
+                ? null
+                : () {
+                    // WB_SPEC_235 §7：保存 = 中档（明确的确认动作）
+                    AppHaptics.medium();
+                    _save();
+                  },
             child: _saving
                 ? const SizedBox(
                     width: 16,
@@ -824,7 +831,11 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                       style: Theme.of(context).textTheme.labelLarge),
                 ),
                 TextButton.icon(
-                  onPressed: _pickOnGrid,
+                  // WB_SPEC_235 §7：「在课表上选」= 轻点档
+                  onPressed: () {
+                    AppHaptics.tap();
+                    _pickOnGrid();
+                  },
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     minimumSize: const Size(0, 32),
@@ -890,7 +901,14 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
               const SizedBox(height: AppSpacing.xs),
               for (final s in _siblings)
                 InkWell(
-                  onTap: _switching ? null : () => _switchTo(s),
+                  // WB_SPEC_235 §7：切换要编辑的时段 = 选择档
+                  onTap: _switching
+                      ? null
+                      : () {
+                          AppHaptics.select();
+                          _switchTo(s);
+                        },
+                  enableFeedback: false,
                   borderRadius: BorderRadius.circular(AppRadii.chip),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1043,14 +1061,28 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                   : IconButton(
                       icon: const Icon(Icons.close_outlined),
                       tooltip: '清除考试日期',
-                      onPressed: () => setState(() => _examDate = null),
+                      // WB_SPEC_235 §7：清除 = 轻点档
+                      onPressed: () {
+                        AppHaptics.tap();
+                        setState(() => _examDate = null);
+                      },
                     ),
-              onTap: _pickExamDate,
+              // WB_SPEC_235 §7：打开考试日期选择 = 轻点档
+              onTap: () {
+                AppHaptics.tap();
+                _pickExamDate();
+              },
             ),
             const SizedBox(height: 24),
             // 保存按钮（底部大按钮）
             FilledButton(
-              onPressed: _saving ? null : () => _save(),
+              onPressed: _saving
+                  ? null
+                  : () {
+                      // WB_SPEC_235 §7：保存 = 中档
+                      AppHaptics.medium();
+                      _save();
+                    },
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
               ),
@@ -1096,7 +1128,11 @@ class _ColorDot extends StatelessWidget {
         ? const Color(MorandiPalette.darkTextColor)
         : const Color(MorandiPalette.textColor);
     return GestureDetector(
-      onTap: onTap,
+      // WB_SPEC_235 §7：色板色块 = 选择档（编辑页改色）
+      onTap: () {
+        AppHaptics.select();
+        onTap();
+      },
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -1153,7 +1189,12 @@ class _ColorSyncChoice extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return InkWell(
-      onTap: onTap,
+      // WB_SPEC_235 §7：改色同步二选一 = 选择档
+      onTap: () {
+        AppHaptics.select();
+        onTap();
+      },
+      enableFeedback: false,
       borderRadius: BorderRadius.circular(AppRadii.chip),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),

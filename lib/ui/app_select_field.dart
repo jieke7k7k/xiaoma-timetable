@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/time_slot.dart';
 import '../providers/providers.dart' show SegmentSettings;
+import '../utils/app_haptics.dart';
 import 'app_styles.dart';
 
 /// 全站统一的选择器（WB_SPEC_232 第 5 节）。
@@ -124,6 +125,8 @@ class AppSelectField<T> extends StatelessWidget {
   Future<void> _open(BuildContext context) async {
     // 先收软键盘：否则键盘收起动画与抽屉弹出动画撞在一起会跳一下
     FocusScope.of(context).unfocus();
+    // WB_SPEC_235 §6：点开选择框 = 轻点；真正选定某项 = 选择档
+    AppHaptics.tap();
     final picked = await showAppSelectSheet<T>(
       context: context,
       title: sheetTitle ?? labelText,
@@ -131,13 +134,18 @@ class AppSelectField<T> extends StatelessWidget {
       currentValue: value,
       useRootNavigator: useRootNavigator,
     );
-    if (picked != null) onChanged(picked);
+    if (picked != null) {
+      AppHaptics.select();
+      onChanged(picked);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: () => _open(context),
+      // 自带反馈关掉（WB_SPEC_235 §6.9 防双震第一件套）
+      enableFeedback: false,
       borderRadius: BorderRadius.circular(AppRadii.chip),
       child: InputDecorator(
         // 外观全部来自全局 InputDecorationTheme（CleanGap 圆角 10 边框 + 填充色），
@@ -201,6 +209,8 @@ class AppSelectSettingRow<T> extends StatelessWidget {
 
   Future<void> _open(BuildContext context) async {
     FocusScope.of(context).unfocus();
+    // WB_SPEC_235 §7：设置页下拉行 —— 点开轻点档、选定选择档
+    AppHaptics.tap();
     final picked = await showAppSelectSheet<T>(
       context: context,
       title: sheetTitle ?? title,
@@ -208,7 +218,10 @@ class AppSelectSettingRow<T> extends StatelessWidget {
       currentValue: value,
       footer: footer,
     );
-    if (picked != null) onChanged(picked);
+    if (picked != null) {
+      AppHaptics.select();
+      onChanged(picked);
+    }
   }
 
   @override
@@ -216,6 +229,7 @@ class AppSelectSettingRow<T> extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return InkWell(
       onTap: () => _open(context),
+      enableFeedback: false,
       child: SizedBox(
         height: 56,
         child: Padding(

@@ -24,6 +24,7 @@ import '../ui/grid_metrics.dart';
 import '../ui/settings_icon_box.dart';
 import '../ui/settings_entry_row.dart';
 import '../ui/settings_line_frame.dart';
+import '../utils/app_haptics.dart';
 import '../utils/backup_codec.dart';
 import '../utils/color_schemes.dart';
 import '../utils/ics_export.dart';
@@ -354,7 +355,13 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
                       ),
                       subtitle: const Text('每节课提前提醒，App 被杀后也能准时响铃'),
                       value: s.enabled,
-                      onChanged: (v) => _onReminderToggle(v),
+                      // WB_SPEC_235 §7：这三行是裸 SwitchListTile（没走
+                      // SettingsSwitchRow），震动要在这里自己包一下
+                      onChanged: (v) {
+                        AppHaptics.select();
+                        _onReminderToggle(v);
+                      },
+                      enableFeedback: false,
                     ),
                     // 精确闹钟未授权且提醒已开：轻量提示，点按跳系统「闹钟和提醒」页
                     if (s.enabled && _exactAlarmMissing) _exactAlarmHint(scheme),
@@ -393,9 +400,13 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
                 ),
                 subtitle: const Text('主页顶部显示当前/下一节课状态条，默认开'),
                 value: ui.showClassBroadcast,
-                onChanged: (v) => ref
-                    .read(uiSettingsProvider.notifier)
-                    .apply(ui.copyWith(showClassBroadcast: v)),
+                onChanged: (v) {
+                  AppHaptics.select();
+                  ref
+                      .read(uiSettingsProvider.notifier)
+                      .apply(ui.copyWith(showClassBroadcast: v));
+                },
+                enableFeedback: false,
               );
             },
           ),
@@ -418,7 +429,11 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
                   ),
                   subtitle: const Text('通知栏常驻显示今日剩余或明日课程预告'),
                   value: on,
-                  onChanged: (v) => _onOngoingToggle(v),
+                  onChanged: (v) {
+                    AppHaptics.select();
+                    _onOngoingToggle(v);
+                  },
+                  enableFeedback: false,
                 ),
                 loading: () => const ListTile(
                   leading: SettingsIconBox(icon: Icons.pin_outlined, category: SettingsIconCategory.reminder),
@@ -1219,9 +1234,10 @@ class _AppearanceGroup extends ConsumerWidget {
           ],
         ),
 
-        // ── 第 3 组「导航」1 行 ───────────────────────────────────
+        // ── 第 3 组「导航」2 行 ───────────────────────────────────
         // WB_SPEC_234：底部栏开关行整行删除（底栏无条件常显），切换动效行
         // 不再受任何开关约束，无条件进 children、永远显示。
+        // WB_SPEC_235 §5：第 2 行加「触感震动反馈」开关（按键震动的总闸）。
         SettingsLineFrame(
           title: '导航',
           children: [
@@ -1229,6 +1245,14 @@ class _AppearanceGroup extends ConsumerWidget {
               title: '切换动效',
               value: ui.shellTransitionStyle.label,
               onTap: () => _openTransitionSheet(context, ui, apply),
+            ),
+            // 开关那一下的「先 select 再 apply」由 SettingsSwitchRow 内部统一
+            // 承担（WB_SPEC_235 §6），这一行只写业务写入，绝不重复震一次。
+            SettingsSwitchRow(
+              title: '触感震动反馈',
+              subtitle: '点击按钮、切换开关与操作课表时提供轻微震动',
+              value: ui.enableHaptics,
+              onChanged: (v) => apply(ui.copyWith(enableHaptics: v)),
             ),
           ],
         ),
@@ -2432,7 +2456,12 @@ class _FontOptionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap,
+      // WB_SPEC_235 §7：字体行 = 选择档
+      onTap: () {
+        AppHaptics.select();
+        onTap();
+      },
+      enableFeedback: false,
       child: SizedBox(
         height: kSettingsSingleRowHeight,
         child: Padding(

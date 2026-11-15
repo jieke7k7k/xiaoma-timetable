@@ -70,22 +70,24 @@ void main() {
   double y(WidgetTester tester, String text) =>
       tester.getTopLeft(find.text(text)).dy;
 
-  group('WB_SPEC_228 §3：外观父页只剩 1 预览 + 7 行（WB_SPEC_234 删开关行后）', () {
-    testWidgets('3 个线框组、6 个入口行 + 1 深浅模式行（开关行已删）',
+  group('WB_SPEC_228 §3：外观父页只剩 1 预览 + 8 行（WB_SPEC_235 加震动开关后）', () {
+    testWidgets('3 个线框组、6 个入口行 + 1 深浅模式行 + 1 震动开关行',
         (tester) async {
       await pumpAppearance(tester);
       expect(find.byType(SettingsLineFrame), findsNWidgets(3));
       expect(find.byType(SettingsEntryRow), findsNWidgets(6));
-      // 底部栏开关行删除后，外观父页已无任何 SettingsSwitchRow
+      // WB_SPEC_235 §5：导航组第 2 行是「触感震动反馈」开关——
+      // 这是自 234 删掉底部栏开关行后，外观父页唯一的 SettingsSwitchRow
       // （「深浅模式」是 _ThemeModeRow 的 SegmentedButton，不是开关行）
-      expect(find.byType(SettingsSwitchRow), findsNothing);
+      expect(find.byType(SettingsSwitchRow), findsOneWidget);
+      expect(find.text('触感震动反馈'), findsOneWidget);
       expect(find.byType(Preview), findsOneWidget);
       expect(find.text('深浅模式'), findsOneWidget);
       // 底部栏开关行整行删除（底栏恒在）
       expect(find.text('底部栏显示'), findsNothing);
     });
 
-    testWidgets('7 行标题齐全（色彩与字体 4 / 排版 2 / 导航 1）',
+    testWidgets('8 行标题齐全（色彩与字体 4 / 排版 2 / 导航 2）',
         (tester) async {
       await pumpAppearance(tester);
       for (final title in [
@@ -96,6 +98,7 @@ void main() {
         '课表网格与表头',
         '课程卡片样式',
         '切换动效',
+        '触感震动反馈',
       ]) {
         expect(find.text(title), findsOneWidget,
             reason: '入口「$title」应出现在外观父页');

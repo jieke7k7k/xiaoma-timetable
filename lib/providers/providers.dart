@@ -15,6 +15,7 @@ import '../services/notification_service.dart';
 import '../services/ongoing_notice_service.dart';
 import '../services/widget_service.dart';
 import '../ui/grid_metrics.dart';
+import '../utils/app_haptics.dart';
 import '../utils/week_calc.dart';
 
 /// 当前激活学期
@@ -803,14 +804,21 @@ class UiSettingsNotifier extends AsyncNotifier<UiSettings> {
       final migrated = stored.copyWith(showClassBroadcast: true);
       await Dao.instance.setSetting('ui_settings', migrated.encode());
       await Dao.instance.setSetting(kDefaultsMigratedKey, '1');
+      // WB_SPEC_235 §3：震动门控与界面设置同源，全 App 只有这里和 apply()
+      // 两处写 AppHaptics.enabled（别在页面里散着改）
+      AppHaptics.enabled = migrated.enableHaptics;
       return migrated;
     }
+    AppHaptics.enabled = stored.enableHaptics;
     return stored;
   }
 
   /// 整体替换（设置页每次调节都走这里）：先落库再发状态，保证重启后一致
   Future<void> apply(UiSettings next) async {
     await Dao.instance.setSetting('ui_settings', next.encode());
+    // WB_SPEC_235 §3：第二处（也是最后一处）同步点——开关一关，下一次按键
+    // 起就不再震动；这里同步写在落库之后、发状态之前，避免 UI 先于门控生效
+    AppHaptics.enabled = next.enableHaptics;
     state = AsyncData(next);
   }
 

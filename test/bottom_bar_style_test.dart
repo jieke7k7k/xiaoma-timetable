@@ -46,7 +46,7 @@ void main() {
       );
 
   group('图标+文字标签栏 HomeTabBar（唯一形态）', () {
-    testWidgets('整宽 + 贴屏幕底边：无悬浮间距，实测高度 64', (tester) async {
+    testWidgets('整宽 + 贴屏幕底边：无悬浮间距，实测高度 48', (tester) async {
       await pumpBar(tester, tabBarAtBottom());
 
       final size = tester.getSize(find.byType(HomeTabBar));
@@ -55,9 +55,9 @@ void main() {
       expect(size.width, screenW, reason: '标签栏形态栏体必须撑满整宽');
       // 贴底：栏体底边与屏幕底边齐平（没有悬浮间距）
       expect(topLeft.dy + size.height, screenH, reason: '标签栏必须贴住屏幕底边');
-      // 栏高 = 该 widget 的实测高度（图标 24 + 间距 4 + 文字 + 上下内边距 10）
+      // 栏高 = 该 widget 的实测高度（图标 20 + 间距 2 + 文字行 + 上下内边距 8）
       expect(size.height, kBottomBarTabHeight);
-      expect(kBottomBarTabHeight, 64);
+      expect(kBottomBarTabHeight, 48);
       expect(HomeTabBar.height, size.height, reason: '栏体高度常量与实测一致');
     });
 
@@ -293,7 +293,7 @@ void main() {
       expect(scheduleTaps, 1);
     });
 
-    testWidgets('底部安全区：栏体自己吃掉 SafeArea，高度 = 64 + 安全区', (tester) async {
+    testWidgets('底部安全区：栏体自己吃掉 SafeArea，高度 = 48 + 安全区', (tester) async {
       await tester.pumpWidget(
         MediaQuery(
           data: const MediaQueryData(padding: EdgeInsets.only(bottom: 34)),
@@ -360,7 +360,7 @@ void main() {
   });
 
   group('几何常量与网格留白口径', () {
-    test('留白恒为栏高 64（WB_SPEC_234 起无「关栏 16」分档）', () {
+    test('留白恒为栏高 48（WB_SPEC_234 起无「关栏 16」分档）', () {
       expect(bottomBarGridBottomInset(), kBottomBarTabHeight);
       expect(kBottomBarTabHeight, HomeTabBar.height);
     });

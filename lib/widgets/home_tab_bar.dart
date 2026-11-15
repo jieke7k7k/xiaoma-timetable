@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../ui/bottom_bar_metrics.dart';
 import '../ui/liquid_glass.dart';
+import '../utils/app_haptics.dart';
 
 /// 壳内一级视图的两键：课表 / 设置（原在 home_capsule.dart，胶囊删除后迁入此处）。
 enum HomeShellTab { schedule, settings }
@@ -14,9 +15,10 @@ enum HomeShellTab { schedule, settings }
 /// 点「设置」进壳内设置根页。
 ///
 /// 无框选中态（Argon 方案 Q1，用户反馈「选中框」后改）：
-/// - **没有包住图标/文字的色块**：50% 宽金黄渐变滑块已删，选中只剩四重
-///   轻提示——实心图标、1.08x 微放大、主题色加粗文字、底部一根 20×3dp
+/// - **没有包住图标/文字的色块**：50% 宽金黄渐变滑块已删，选中只剩三重
+///   轻提示——实心图标、主题色加粗文字、底部一根 16×2.5dp
 ///   主题色小短条（[AnimatedAlign] + 320ms 减速曲线，只动位置）；
+///   WB_SPEC_235 第 2 节起图标不再 1.08x 放大（放大层整层删除）；
 /// - **颜色 / 位移 / 缩放分开过渡**：图标颜色 280ms 减速曲线（[LiquidIcon]）、
 ///   文字 180ms 微过渡（[LiquidLabel]），位移与缩放 380ms 弹簧曲线，按压
 ///   另有自己的两段时长，绝不用「一条过渡管所有属性」的老办法；
@@ -43,8 +45,8 @@ class HomeTabBar extends StatefulWidget {
   final ValueChanged<HomeShellTab> onSelectTab;
   final VoidCallback onTapSchedule;
 
-  /// 栏体高度（**不含**底部安全区）：该 widget 的实测高度 64
-  /// （图标 23 + 间距 4 + 文字行 + 上下内边距各 8，由最小高托到 64）。
+  /// 栏体高度（**不含**底部安全区）：该 widget 的实测高度 48
+  /// （图标 20 + 间距 2 + 文字行 + 上下内边距各 8，由固定高托到 48）。
   /// 网格底部留白按它算（见 [bottomBarGridBottomInset]）。
   static const double height = kBottomBarTabHeight;
 
@@ -76,7 +78,7 @@ class _HomeTabBarState extends State<HomeTabBar> {
         child: DecoratedBox(
           key: kHomeTabBarDividerKey,
           // 顶部一条细分割线：用 DecoratedBox 画在栏体内部
-          // （装饰不参与布局，不额外占高，栏体实测高度仍是 64），
+          // （装饰不参与布局，不额外占高，栏体实测高度仍是 48），
           // 0.5dp，主题 outlineVariant（浅色 0.45／深色 0.25），
           // 跟主题走，不再按亮度手写颜色（Argon 方案 Q2）。
           decoration: BoxDecoration(
@@ -90,7 +92,7 @@ class _HomeTabBarState extends State<HomeTabBar> {
             ),
           ),
           child: SizedBox(
-            // 栏高固定为实测值 64（图标 24 + 间距 4 + 文字行，上下自动留白）；
+            // 栏高固定为实测值 48（图标 20 + 间距 2 + 文字行，上下自动留白）；
             // 不用 minHeight 兜底是为了让「实测高度 == 留白口径」这条断言成立，
             // 字体放大时由 _tab 内部的 Column 居中，不会纵向溢出。
             height: HomeTabBar.height,
@@ -99,7 +101,7 @@ class _HomeTabBarState extends State<HomeTabBar> {
               // 见本文件头注释）
               fit: StackFit.expand,
               children: [
-                // ① 选中指示小短条：20×3dp，随选中项在左右两格之间滑动
+                // ① 选中指示小短条：16×2.5dp，随选中项在左右两格之间滑动
                 _selectionPill(),
                 // ② 两格按键：仍 Expanded 等宽平铺，宽度与 2.1.5 一致
                 Row(
@@ -144,7 +146,7 @@ class _HomeTabBarState extends State<HomeTabBar> {
 
   /// 选中指示小短条（Argon 方案 Q1：无框选中态的唯一指示器）。
   ///
-  /// 一根 20×3dp 的主题色小短条，贴在栏底上方 5dp，随选中项在左右两格
+  /// 一根 16×2.5dp 的主题色小短条，贴在栏底上方 3dp，随选中项在左右两格
   /// 之间滑动（[AnimatedAlign] 的 alignment 从 -1 到 +1，320ms 减速曲线）。
   /// 短条放在 50% 宽的容器里水平居中，容器本身不贴边——视觉上短条始终
   /// 悬在选中那格的正下方中央。
@@ -167,7 +169,7 @@ class _HomeTabBarState extends State<HomeTabBar> {
           key: kHomeTabBarIndicatorBoxKey,
           widthFactor: kLiquidIndicatorWidthFactor,
           child: Align(
-            // 水平居中、底部对齐：短条悬在选中那格正下方中央、距栏底 5dp
+            // 水平居中、底部对齐：短条悬在选中那格正下方中央、距栏底 3dp
             alignment: Alignment.bottomCenter,
             child: Padding(
               padding: const EdgeInsets.only(bottom: kSelectionPillBottomGap),
@@ -194,7 +196,7 @@ class _HomeTabBarState extends State<HomeTabBar> {
   ///
   /// 三层动画各管各的（Argon 方案第 2 / 3 条）：
   /// - 按压：[AnimatedScale]，按下 90ms→0.92、松手 350ms 弹簧→1.0；
-  /// - 图标上浮放大：[AnimatedSlide] + [AnimatedScale]，380ms 弹簧曲线；
+  /// - 图标上浮：[AnimatedSlide]，380ms 弹簧曲线（WB_SPEC_235 起不再叠放大层）；
   /// - 前景色：[LiquidIcon] 280ms 减速曲线 / [LiquidLabel] 180ms 微过渡；
   /// - 选中态图标实心、未选中线框（双态图标，Argon 方案 Q1）。
   Widget _tab(
@@ -224,7 +226,13 @@ class _HomeTabBarState extends State<HomeTabBar> {
     return Expanded(
       child: InkWell(
         key: key,
-        onTap: onTap,
+        // WB_SPEC_235 §6：切 Tab / 点「课表」回本周 = 轻点档；自带反馈关掉
+        // （§6.9 防双震第一件套），按压回弹仍由外层 AnimatedScale 承担
+        onTap: () {
+          AppHaptics.tap();
+          onTap();
+        },
+        enableFeedback: false,
         // 点击水波纹设透明：方形水波纹本身也会被当成「选中框」（Argon 方案 Q1）；
         // 按压反馈仍由外层 AnimatedScale（0.92）承担。focus/hover 也置透明
         // （复查优化 5）：外接键盘/鼠标焦点导航不出现矩形高亮块。
@@ -250,7 +258,7 @@ class _HomeTabBarState extends State<HomeTabBar> {
               AnimatedSlide(
                 key: liftKey,
                 // AnimatedSlide 的 offset 以 child 尺寸为单位：
-                // -1.5px ÷ 23px 图标 = -0.0652
+                // -1.5px ÷ 20px 图标 = -0.075
                 offset: selected
                     ? const Offset(
                         0,
@@ -259,27 +267,27 @@ class _HomeTabBarState extends State<HomeTabBar> {
                     : Offset.zero,
                 duration: kLiquidSlideDuration,
                 curve: kLiquidSpringCurve,
-                child: AnimatedScale(
+                // WB_SPEC_235 第 2 节：包在图标外的 1.08x AnimatedScale 层删除，
+                // iconKey 直接挂在 LiquidIcon 上（测试据此断言图标尺寸与颜色过渡）
+                child: LiquidIcon(
                   key: iconKey,
-                  scale: selected ? kLiquidActiveIconScale : 1.0,
-                  duration: kLiquidSlideDuration,
-                  curve: kLiquidSpringCurve,
-                  child: LiquidIcon(
-                    // 选中实心、未选中线框（Argon 方案 Q1：双态图标）
-                    icon: selected ? selectedIcon : icon,
-                    size: kLiquidTabIconSize,
-                    color: foreground,
-                  ),
+                  // 选中实心、未选中线框（Argon 方案 Q1：双态图标）
+                  icon: selected ? selectedIcon : icon,
+                  size: kLiquidTabIconSize,
+                  color: foreground,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               LiquidLabel(
                 key: labelKey,
                 text: label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 11.5,
+                  // WB_SPEC_235 第 2 节：11.5 → 10.5，行高 1.1（栏高压到 48 后
+                  // 图标 20 + 间距 2 + 文字行 ~11.6，上下留白各 8 仍收得进）
+                  fontSize: 10.5,
+                  height: kLiquidLabelHeightFactor,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                   color: foreground,
                 ),
@@ -329,10 +337,10 @@ const Key kHomeTabBarScheduleLiftKey = ValueKey('home_tab_bar_schedule_lift');
 /// 「设置」格图标上浮层的 Key（[AnimatedSlide]）
 const Key kHomeTabBarSettingsLiftKey = ValueKey('home_tab_bar_settings_lift');
 
-/// 「课表」格图标放大层的 Key（[AnimatedScale]）
+/// 「课表」格图标的 Key（[LiquidIcon]：WB_SPEC_235 起不再外包放大层）
 const Key kHomeTabBarScheduleIconKey = ValueKey('home_tab_bar_schedule_icon');
 
-/// 「设置」格图标放大层的 Key（[AnimatedScale]）
+/// 「设置」格图标的 Key（[LiquidIcon]）
 const Key kHomeTabBarSettingsIconKey = ValueKey('home_tab_bar_settings_icon');
 
 /// 「课表」格文字的 Key（[LiquidLabel]）

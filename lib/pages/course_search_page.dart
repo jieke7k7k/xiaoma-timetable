@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/course.dart';
 import '../providers/providers.dart';
+import '../utils/app_haptics.dart';
 import '../utils/week_parser.dart';
 import '../widgets/empty_state.dart';
 
@@ -72,7 +73,11 @@ class _CourseSearchPageState extends ConsumerState<CourseSearchPage> {
             IconButton(
               icon: const Icon(Icons.clear),
               tooltip: '清空',
-              onPressed: () => setState(() => _query = ''),
+              // WB_SPEC_235 §7：清空输入 = 轻点档
+              onPressed: () {
+                AppHaptics.tap();
+                setState(() => _query = '');
+              },
             ),
         ],
       ),

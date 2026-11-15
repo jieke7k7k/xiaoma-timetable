@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../utils/app_haptics.dart';
 import '../widgets/app_dialog.dart';
 
 /// WB_SPEC_228 §2 全站统一 Token：
@@ -49,7 +50,15 @@ class SettingsEntryRow extends StatelessWidget {
     final handler = onTap ??
         (route == null ? null : () => Navigator.pushNamed(context, route!));
     return InkWell(
-      onTap: handler,
+      // WB_SPEC_235 §6：入口行统一轻点反馈；`enableFeedback: false` 关掉
+      // InkWell 自带的系统反馈，避免「系统 click + 自定义震动」双震
+      onTap: handler == null
+          ? null
+          : () {
+              AppHaptics.tap();
+              handler();
+            },
+      enableFeedback: false,
       child: SizedBox(
         height: subtitle == null
             ? kSettingsSingleRowHeight
@@ -177,7 +186,12 @@ class SettingsSliderRow extends StatelessWidget {
                 min: min,
                 max: max,
                 divisions: divisions,
-                onChanged: onChanged,
+                // WB_SPEC_235 §6：档位**真的变了**才震一下（拖动过程中的
+                // 像素级连续回调不重复震）；HSV 色盘滑杆不走本组件，保持安静
+                onChanged: (v) {
+                  if (v.round() != value.round()) AppHaptics.select();
+                  onChanged(v);
+                },
               ),
             ),
             SizedBox(
@@ -233,7 +247,14 @@ class SettingsSwitchRow extends StatelessWidget {
             ),
       subtitle: subtitle != null ? Text(subtitle!) : null,
       value: value,
-      onChanged: onChanged,
+      // WB_SPEC_235 §6：开关统一「先 select 再回调」——§5 那行开关因此只写
+      // apply，不重复写 select（写了就是双震）；`enableFeedback: false`
+      // 同理关掉 ListTile 自带反馈
+      onChanged: (v) {
+        AppHaptics.select();
+        onChanged(v);
+      },
+      enableFeedback: false,
     );
   }
 }

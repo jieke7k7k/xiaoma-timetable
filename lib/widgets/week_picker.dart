@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/providers.dart';
 import '../ui/app_styles.dart';
+import '../utils/app_haptics.dart';
 import '../utils/week_parser.dart';
 
 /// 周次选择器（阶段二重点组件）
@@ -71,8 +71,8 @@ class _WeekPickerState extends ConsumerState<WeekPicker> {
   /// 连选两段不连续区间互不干扰：点 1 → 点 6（连好 1–6，锚点清空）→ 再点 9
   /// （定新锚点）→ 点 14（连好 9–14），第 3 下不会冲掉前面选好的。
   void _toggleWeek(int week) {
-    // 点选周次方块的触感反馈
-    HapticFeedback.selectionClick();
+    // 点选周次方块的触感反馈（WB_SPEC_235 §7：改走门控，选择档）
+    AppHaptics.select();
     final anchor = _anchorWeek;
     setState(() {
       if (_selected.contains(week)) {
@@ -115,8 +115,8 @@ class _WeekPickerState extends ConsumerState<WeekPicker> {
   }
 
   void _quickSelect(String action) {
-    // 快捷按钮的触感反馈
-    HapticFeedback.selectionClick();
+    // 快捷按钮的触感反馈（WB_SPEC_235 §7：改走门控，选择档）
+    AppHaptics.select();
     setState(() {
       final total = ref.read(currentSemesterProvider).value?.totalWeeks ?? 20;
       // 任何快捷按钮都是「重新给出一份选择」，待配对起点一律清空
@@ -214,7 +214,11 @@ class _WeekPickerState extends ConsumerState<WeekPicker> {
             suffixIcon: IconButton(
               icon: const Icon(Icons.auto_fix_high),
               tooltip: '解析文本',
-              onPressed: _parseText,
+              // WB_SPEC_235 §7：解析文本按钮 = 轻点档
+              onPressed: () {
+                AppHaptics.tap();
+                _parseText();
+              },
             ),
           ),
           onSubmitted: (_) => _parseText(),

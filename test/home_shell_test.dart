@@ -189,7 +189,8 @@ void main() {
     expect(tester.getSize(find.byType(HomeTabBar)).width, screenWidth);
     final barRect = tester.getRect(find.byType(HomeTabBar));
     expect(barRect.bottom, 844, reason: '标签栏贴住屏幕底边');
-    expect(barRect.height, 64);
+    // WB_SPEC_235：栏体由 64 压到 48（只改高度，贴底方式不变）
+    expect(barRect.height, 48);
 
     // 卸载主页，取消 WeekViewPage 的分钟级刷新定时器；
     // 先把假时钟拨过 10 秒，让读库时的锁警告定时器触发释放（否则报 Timer pending）

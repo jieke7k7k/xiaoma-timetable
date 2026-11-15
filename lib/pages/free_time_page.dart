@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/providers.dart';
+import '../utils/app_haptics.dart';
 import '../utils/free_time.dart';
 import '../utils/override_effect.dart';
 import '../utils/week_calc.dart';
@@ -57,8 +58,12 @@ class _FreeTimePageState extends ConsumerState<FreeTimePage> {
                 IconButton(
                   icon: const Icon(Icons.chevron_left),
                   tooltip: '上一周',
+                  // WB_SPEC_235 §7：翻周 = 轻点档
                   onPressed: week > 1
-                      ? () => setState(() => _week = week - 1)
+                      ? () {
+                          AppHaptics.tap();
+                          setState(() => _week = week - 1);
+                        }
                       : null,
                 ),
                 Column(
@@ -78,8 +83,12 @@ class _FreeTimePageState extends ConsumerState<FreeTimePage> {
                 IconButton(
                   icon: const Icon(Icons.chevron_right),
                   tooltip: '下一周',
+                  // WB_SPEC_235 §7：翻周 = 轻点档
                   onPressed: week < semester.totalWeeks
-                      ? () => setState(() => _week = week + 1)
+                      ? () {
+                          AppHaptics.tap();
+                          setState(() => _week = week + 1);
+                        }
                       : null,
                 ),
               ],

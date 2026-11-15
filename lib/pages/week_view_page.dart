@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart' show DeviceGestureSettings;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -14,6 +13,7 @@ import '../providers/providers.dart';
 import '../services/channel_service.dart';
 import '../services/ongoing_notice_service.dart';
 import '../services/sunday_dialog_service.dart';
+import '../utils/app_haptics.dart';
 import '../utils/color_schemes.dart';
 import '../utils/deliberate_page_physics.dart';
 import '../utils/next_class.dart';
@@ -413,6 +413,10 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
       tooltip: '更多',
       icon: const Icon(Icons.more_vert),
       offset: const Offset(-8, 48),
+      // WB_SPEC_235 §7：展开菜单 = 轻点档（菜单项自己的震动在
+      // buildAppPopupMenuItem 里）；自带反馈关掉防双震
+      onOpened: AppHaptics.tap,
+      enableFeedback: false,
       // 2.1.0 返修：菜单弹出动画显式卡在 150–200ms（取 180ms），即点即出
       popUpAnimationStyle: const AnimationStyle(
         duration: Duration(milliseconds: 180),
@@ -715,9 +719,12 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
               expanded: jumperOpen,
               label: '$titleText，点击${jumperOpen ? '收起' : '选择'}周次',
               child: InkWell(
-                onTap: () => ref
-                    .read(weekJumperOpenProvider.notifier)
-                    .setOpen(!jumperOpen),
+                // WB_SPEC_235 §7：标题（周跳转条）点击 = 轻点档
+                onTap: () {
+                  AppHaptics.tap();
+                  ref.read(weekJumperOpenProvider.notifier).setOpen(!jumperOpen);
+                },
+                enableFeedback: false,
                 borderRadius: radius,
                 splashColor: cs.primary.withValues(alpha: 0.12),
                 highlightColor: cs.primary.withValues(alpha: 0.06),
@@ -780,7 +787,8 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
               icon: const Icon(Icons.edit_outlined),
               onPressed: () {
                 if (_guardJumper()) return;
-                HapticFeedback.lightImpact();
+                // WB_SPEC_235 §7：存量 lightImpact 改走统一门控（轻点档）
+                AppHaptics.tap();
                 setState(() => _editMode = true);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -798,6 +806,8 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
             icon: const Icon(Icons.add_outlined),
             onPressed: () {
               if (_guardJumper()) return;
+              // WB_SPEC_235 §7：新建入口（+）= 轻点档
+              AppHaptics.tap();
               _showCreateSheet();
             },
           ),
@@ -811,7 +821,11 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
             IconButton(
               tooltip: '更多',
               icon: const Icon(Icons.more_vert),
-              onPressed: _closeJumper,
+              // WB_SPEC_235 §7：展开态这一下只是收起跳转条，仍给轻点反馈
+              onPressed: () {
+                AppHaptics.tap();
+                _closeJumper();
+              },
             )
           else
             _buildMoreMenu(
@@ -831,6 +845,8 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
               now: now,
               onTap: () {
                 if (_guardJumper()) return;
+                // WB_SPEC_235 §7：点状态条回本周 = 轻点档
+                AppHaptics.tap();
                 _goToday();
               },
             ),
@@ -1011,7 +1027,11 @@ class _ChannelBanner extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.close, size: 16),
             tooltip: '关闭',
-            onPressed: onClose,
+            // WB_SPEC_235 §7：关闭横幅 = 轻点档
+            onPressed: () {
+              AppHaptics.tap();
+              onClose();
+            },
           ),
         ],
       ),
@@ -1367,7 +1387,7 @@ class _GridArea extends ConsumerWidget {
         // 底部安全留白（WB_SPEC_213 网格处理；2.1.5 按栏高分档）：
         // 只加在滚动视图底部，不改外框高度、不改外层 Column/Expanded 约束、
         // 不因读取底部栏状态导致课表组件 Key 变化或 ScrollController 重建。
-        // 口径统一在 ui/bottom_bar_metrics.dart：栏高 64（栏体实测高度）另加
+        // 口径统一在 ui/bottom_bar_metrics.dart：栏高 48（栏体实测高度）另加
         // 底部安全区——既不会让内容被栏遮住，也不会留白过大
         // （WB_SPEC_216 第 2 节：滚动到底最后一节必须完整露出）。
         final bottomInset = bottomBarGridBottomPadding(
@@ -1460,8 +1480,8 @@ class _GridArea extends ConsumerWidget {
                               ? const NeverScrollableScrollPhysics()
                               : const DeliberatePagePhysics(),
                           onPageChanged: (page) {
-                            // 切周成功的轻触感反馈
-                            HapticFeedback.lightImpact();
+                            // 切周成功的轻触感反馈（WB_SPEC_235 §7：改走门控）
+                            AppHaptics.tap();
                             onWeekChanged(page);
                           },
                           itemCount: semester.totalWeeks,
@@ -1856,6 +1876,8 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
               cell.row >= hl.start &&
               cell.row <= hl.end) {
             setState(() => _highlight = null);
+            // WB_SPEC_235 §7：点高亮区确认 → 新建课程，轻点档
+            AppHaptics.tap();
             Navigator.pushNamed(
               context,
               '/course-edit',
@@ -1872,6 +1894,8 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
         }
         if (!editMode) return;
         if (!_isEmptyCell(daySlots, cell.day, cell.row)) return;
+        // WB_SPEC_235 §7：编辑模式点空白格新建，轻点档
+        AppHaptics.tap();
         Navigator.pushNamed(
           context,
           '/course-edit',
@@ -1883,7 +1907,8 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
         final cell = _cellAt(details.localPosition, daySlots);
         if (cell == null) return;
         if (!_isEmptyCell(daySlots, cell.day, cell.row)) return;
-        HapticFeedback.mediumImpact();
+        // 长按空白格起高亮：中档（WB_SPEC_235 §7：改走门控）
+        AppHaptics.medium();
         setState(() {
           _anchorRow = cell.row;
           _highlight = (day: cell.day, start: cell.row, end: cell.row);
@@ -2250,9 +2275,15 @@ class _PositionedCourseCard extends StatelessWidget {
         showClassroom: ui.showClassroom,
         showTeacher: ui.showTeacher,
         showNote: ui.showNote,
-        onTap: () => isMulti
-            ? _showSlotPicker(context, slot)
-            : CourseDetailSheet.show(context, slot.courses.first),
+        // WB_SPEC_235 §7：点课程卡片 = 轻点档（多时段弹层 / 课程详情）
+        onTap: () {
+          AppHaptics.tap();
+          if (isMulti) {
+            _showSlotPicker(context, slot);
+          } else {
+            CourseDetailSheet.show(context, slot.courses.first);
+          }
+        },
         // 非编辑模式长按无反应，防止误触进修改菜单
         onLongPress: () {
           if (editMode) {
@@ -2322,8 +2353,8 @@ class _PositionedCourseCard extends StatelessWidget {
     int week,
     CourseOverride? courseOverride,
   ) {
-    // 长按弹出菜单的中触感反馈
-    HapticFeedback.mediumImpact();
+    // 长按弹出菜单的中触感反馈（WB_SPEC_235 §7：改走门控，中档）
+    AppHaptics.medium();
     // 草稿课程（id 为空）没有落库，无法建立调课关联
     final canOverride = course.id != null;
     showModalBottomSheet(
@@ -2348,6 +2379,8 @@ class _PositionedCourseCard extends StatelessWidget {
                       : describeOverride(courseOverride),
                 ),
                 onTap: () {
+                  // WB_SPEC_235 §7：菜单项 = 轻点档
+                  AppHaptics.tap();
                   Navigator.pop(ctx);
                   Navigator.pushNamed(
                     context,
@@ -2363,6 +2396,7 @@ class _PositionedCourseCard extends StatelessWidget {
               ),
               title: const Text('编辑课程'),
               onTap: () {
+                AppHaptics.tap();
                 Navigator.pop(ctx);
                 Navigator.pushNamed(
                   context,
@@ -2380,6 +2414,8 @@ class _PositionedCourseCard extends StatelessWidget {
                 ),
                 title: const Text('删除课程'),
                 onTap: () async {
+                  // WB_SPEC_235 §7：菜单项 = 轻点档（后面确认框的删除键另算中档）
+                  AppHaptics.tap();
                   Navigator.pop(ctx);
                   // 2.0.2（WB-202 第 4 项）：切统一确认弹窗（破坏性标红）
                   final ok = await showAppConfirmDialog(

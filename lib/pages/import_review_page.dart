@@ -12,6 +12,7 @@ import '../services/notification_service.dart';
 import '../services/widget_service.dart';
 import '../ui/app_choice_chip.dart';
 import '../ui/app_styles.dart';
+import '../utils/app_haptics.dart';
 import '../utils/conflict_detector.dart';
 import '../utils/ics_parser.dart';
 import '../utils/import_planner.dart';
@@ -760,7 +761,11 @@ class _DraftCard extends StatelessWidget {
         trailing: IconButton(
           icon: const Icon(Icons.close, size: 20),
           tooltip: '删除此条',
-          onPressed: onDelete,
+          // WB_SPEC_235 §7：删除待导入条目 = 轻点档
+          onPressed: () {
+            AppHaptics.tap();
+            onDelete();
+          },
         ),
         onTap: onTap,
       ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../utils/app_haptics.dart';
 import 'app_styles.dart';
 
 /// 全 App 统一的单选 Chip（WB_SPEC_230 第 6.1 节）。
@@ -39,7 +40,12 @@ class AppChoiceChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final chip = InkWell(
-      onTap: onSelected,
+      // WB_SPEC_235 §6：单选芯片 = 选择档；自带反馈关掉防双震
+      onTap: () {
+        AppHaptics.select();
+        onSelected();
+      },
+      enableFeedback: false,
       borderRadius: BorderRadius.circular(AppRadii.chip),
       child: Container(
         height: 36,

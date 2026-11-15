@@ -261,12 +261,13 @@ void main() {
       }
     }
 
-    testWidgets('外观父页 7 行 + 3 个线框组（WB_SPEC_234 删开关行后）', (tester) async {
+    testWidgets('外观父页 8 行 + 3 个线框组（WB_SPEC_235 加震动开关后）', (tester) async {
       await pumpRoutes(tester, '/settings-appearance');
       expect(find.byType(SettingsLineFrame), findsNWidgets(3));
       expect(find.byType(SettingsEntryRow), findsNWidgets(6));
-      // 底部栏开关行删除后，外观父页已无任何 SettingsSwitchRow
-      expect(find.byType(SettingsSwitchRow), findsNothing);
+      // WB_SPEC_235 §5：导航组第 2 行「触感震动反馈」是父页唯一的开关行
+      expect(find.byType(SettingsSwitchRow), findsOneWidget);
+      expect(find.text('触感震动反馈'), findsOneWidget);
       expect(find.byType(Preview), findsOneWidget);
       // 父页不得再直接出现滑杆 / 竖排三按钮
       expect(find.byType(Slider), findsNothing);

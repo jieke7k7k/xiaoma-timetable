@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../utils/app_haptics.dart';
 import 'settings_icon_box.dart';
 
 /// 全 App 统一的弹出菜单项（WB_SPEC_230 第 3.1 节）。
@@ -31,11 +32,17 @@ PopupMenuItem<T> buildAppPopupMenuItem<T>({
 }) {
   return PopupMenuItem<T>(
     value: value,
+    // WB_SPEC_235 §6：菜单项选中 = 轻点档。震动挂在 PopupMenuItem 自带的
+    // onTap 上（菜单已 pop 之后触发），不在 ListTile 上加 onTap——那样会
+    // 截胡 PopupMenuItem 自己的选中逻辑，菜单不关闭
+    onTap: AppHaptics.tap,
     child: ListTile(
       leading: SettingsIconBox(icon: icon, category: category),
       title: Text(title),
       // 菜单项自带最小宽度，行内不再叠加上下左右内边距
       contentPadding: EdgeInsets.zero,
+      // 自带反馈关掉，避免与上面那一下双震
+      enableFeedback: false,
     ),
   );
 }

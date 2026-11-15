@@ -79,6 +79,9 @@ class UiSettings {
     // 默认 true：新构造的值都是「已决策」的（显式传入或新默认），不参与迁移；
     // 只有从旧库读到、无此键的 'fade-parallax' 才按旧默认迁移（见 fromEncoded）
     this.shellTransitionStyleMigrated = true,
+    // WB_SPEC_235 §4：按键震动反馈默认开（新装与老库一致——老库缺这个键时
+    // fromEncoded 也按 true 兜底，所以不需要一次性迁移，见 UiSettingsNotifier）
+    this.enableHaptics = true,
   });
 
   /// 课程格子高度（逻辑像素 px），范围 44~96；默认 46 与旧版按屏均分的手感接近
@@ -173,6 +176,13 @@ class UiSettings {
   /// 再主动选灵动会带着标记写回，不会被再次迁移。
   final bool shellTransitionStyleMigrated;
 
+  /// 按键震动反馈总开关（WB_SPEC_235 §4）：默认开。
+  ///
+  /// 只管界面上的按键/切换类触感（`AppHaptics`），与通知震动无关
+  /// （通知震动由系统通道决定，本字段不参与）。关掉后全 App 不再有任何
+  /// 按键震动，界面其它行为一律不变。
+  final bool enableHaptics;
+
   /// 实际生效的主题种子色（ARGB）
   int get themeSeedValue =>
       themeCustomColor ?? themePresetById(themePresetId).seed;
@@ -211,6 +221,7 @@ class UiSettings {
     bool? highlightTodayColumn,
     ShellTransitionStyle? shellTransitionStyle,
     bool? shellTransitionStyleMigrated,
+    bool? enableHaptics,
   }) {
     return UiSettings(
       cellHeight: cellHeight ?? this.cellHeight,
@@ -240,6 +251,7 @@ class UiSettings {
           (shellTransitionStyle != null
               ? true
               : this.shellTransitionStyleMigrated),
+      enableHaptics: enableHaptics ?? this.enableHaptics,
     );
   }
 
@@ -264,6 +276,7 @@ class UiSettings {
     'highlightTodayColumn': highlightTodayColumn,
     'shellTransitionStyle': shellTransitionStyle.id,
     'shellTransitionStyleMigrated': shellTransitionStyleMigrated,
+    'enableHaptics': enableHaptics,
   };
 
   String encode() => jsonEncode(toJson());
@@ -331,6 +344,8 @@ class UiSettings {
         // 动效容错：缺失/null/未知值一律回默认「柔和」（见上方迁移逻辑）
         shellTransitionStyle: shellStyle,
         shellTransitionStyleMigrated: styleMigrated || needsMigration,
+        // WB_SPEC_235 §4：老库没有这个键 → 按默认「开」；不做一次性迁移
+        enableHaptics: bl('enableHaptics', true),
       );
     } catch (_) {
       return const UiSettings();

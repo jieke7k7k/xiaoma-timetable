@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../ui/app_styles.dart';
+import '../utils/app_haptics.dart';
 import '../utils/web_import_diagnosis.dart';
 import '../utils/web_schedule_parser.dart';
 import '../widgets/app_dialog.dart';
@@ -343,21 +344,31 @@ class _WebImportPageState extends State<WebImportPage> {
           IconButton(
             icon: const Icon(Icons.arrow_back_ios_new, size: 18),
             tooltip: '后退',
+            // WB_SPEC_235 §7：网页导航三个按钮 = 轻点档
             onPressed: () async {
-              if (await _controller.canGoBack()) _controller.goBack();
+              if (await _controller.canGoBack()) {
+                AppHaptics.tap();
+                _controller.goBack();
+              }
             },
           ),
           IconButton(
             icon: const Icon(Icons.arrow_forward_ios, size: 18),
             tooltip: '前进',
             onPressed: () async {
-              if (await _controller.canGoForward()) _controller.goForward();
+              if (await _controller.canGoForward()) {
+                AppHaptics.tap();
+                _controller.goForward();
+              }
             },
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: '刷新',
-            onPressed: () => _controller.reload(),
+            onPressed: () {
+              AppHaptics.tap();
+              _controller.reload();
+            },
           ),
         ],
       ),

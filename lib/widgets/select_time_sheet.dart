@@ -1,13 +1,13 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/course.dart';
 import '../models/time_slot.dart';
 import '../providers/providers.dart';
 import '../ui/app_styles.dart';
+import '../utils/app_haptics.dart';
 import '../utils/next_class.dart';
 import '../utils/week_calc.dart';
 
@@ -94,7 +94,8 @@ class _SelectTimeSheetState extends ConsumerState<_SelectTimeSheet> {
 
   /// 点一格：三态状态机（WB_SPEC_232 第 6.3 节）
   void _tapCell(int day, int section) {
-    HapticFeedback.selectionClick();
+    // WB_SPEC_235 §7：存量 selectionClick 改走统一门控（选择档）
+    AppHaptics.select();
     setState(() {
       if (_awaitingSecond && day == _day) {
         // 同一天的第二下：以第一下为锚点正序合成（先点第 4 再点第 3 也得 3–4）
@@ -208,8 +209,12 @@ class _SelectTimeSheetState extends ConsumerState<_SelectTimeSheet> {
                 // 轻量周次切换器：只翻「看哪一周」，不影响回填
                 IconButton(
                   visualDensity: VisualDensity.compact,
+                  // WB_SPEC_235 §7：翻周 = 轻点档
                   onPressed: _week > 1
-                      ? () => setState(() => _week -= 1)
+                      ? () {
+                          AppHaptics.tap();
+                          setState(() => _week -= 1);
+                        }
                       : null,
                   icon: const Icon(Icons.chevron_left, size: 20),
                   tooltip: '上一周',
@@ -218,7 +223,10 @@ class _SelectTimeSheetState extends ConsumerState<_SelectTimeSheet> {
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   onPressed: _week < totalWeeks
-                      ? () => setState(() => _week += 1)
+                      ? () {
+                          AppHaptics.tap();
+                          setState(() => _week += 1);
+                        }
                       : null,
                   icon: const Icon(Icons.chevron_right, size: 20),
                   tooltip: '下一周',
@@ -402,7 +410,11 @@ class _SelectTimeSheetState extends ConsumerState<_SelectTimeSheet> {
                   ),
                   const SizedBox(width: AppSpacing.s),
                   FilledButton(
-                    onPressed: _confirm,
+                    // WB_SPEC_235 §7：确认选定 = 轻点档
+                    onPressed: () {
+                      AppHaptics.tap();
+                      _confirm();
+                    },
                     child: const Text('确认选定'),
                   ),
                 ],

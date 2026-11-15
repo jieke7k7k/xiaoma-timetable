@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../ui/app_styles.dart';
+import '../utils/app_haptics.dart';
 
 /// 全 App 统一弹窗（WB-202 第 4 项，长期规范）
 ///
@@ -106,7 +107,13 @@ Future<void> showAppInfoDialog(
       content: AppDialogText(message),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(ctx),
+          // WB_SPEC_235 §6：弹窗按钮统一由共用弹窗负责震动（只告知类弹窗的
+          // 「知道了」按轻点档）；style 里关掉自带反馈，避免与自定义震动双震
+          style: TextButton.styleFrom(enableFeedback: false),
+          onPressed: () {
+            AppHaptics.tap();
+            Navigator.pop(ctx);
+          },
           child: Text(actionLabel),
         ),
       ],
@@ -139,7 +146,12 @@ Future<bool?> showAppConfirmDialog(
         content: AppDialogText(message),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(enableFeedback: false),
+            onPressed: () {
+              // 取消：轻点档（WB_SPEC_235 §6）
+              AppHaptics.tap();
+              Navigator.pop(ctx, false);
+            },
             child: Text(cancelLabel),
           ),
           FilledButton(
@@ -147,9 +159,19 @@ Future<bool?> showAppConfirmDialog(
                 ? FilledButton.styleFrom(
                     backgroundColor: scheme.error,
                     foregroundColor: scheme.onError,
+                    enableFeedback: false,
                   )
-                : null,
-            onPressed: () => Navigator.pop(ctx, true),
+                : FilledButton.styleFrom(enableFeedback: false),
+            onPressed: () {
+              // 确认：普通确认轻点档；破坏性确认（删除/覆盖恢复）用中档，
+              // 让手指在「点下去」这一下就意识到这一步份量更重
+              if (destructive) {
+                AppHaptics.medium();
+              } else {
+                AppHaptics.tap();
+              }
+              Navigator.pop(ctx, true);
+            },
             child: Text(confirmLabel),
           ),
         ],
@@ -173,7 +195,13 @@ class AppInfoIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      onPressed: onPressed,
+      // WB_SPEC_235 §7：ⓘ 说明按钮 = 轻点档（全站唯一实现，改这一处即覆盖
+      // 设置行与设置子页的所有 ⓘ）；自带反馈关掉防双震
+      onPressed: () {
+        AppHaptics.tap();
+        onPressed();
+      },
+      enableFeedback: false,
       tooltip: tooltip,
       icon: const Icon(Icons.info_outline),
       iconSize: 18,

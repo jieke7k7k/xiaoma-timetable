@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../models/note.dart';
 import '../providers/providers.dart';
 import '../ui/app_styles.dart';
+import '../utils/app_haptics.dart';
 import '../utils/note_notice.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/empty_state.dart';
@@ -77,7 +78,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline),
                           tooltip: '删除',
-                          onPressed: () => _confirmDelete(note),
+                          // WB_SPEC_235 §7：删除按钮 = 轻点档
+                          onPressed: () {
+                            AppHaptics.tap();
+                            _confirmDelete(note);
+                          },
                         ),
                         onTap: () => _showEditor(note: note),
                       ),

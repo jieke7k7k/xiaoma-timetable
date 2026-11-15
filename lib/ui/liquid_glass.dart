@@ -23,15 +23,15 @@ library;
 
 import 'package:flutter/widgets.dart';
 
-/// 选中指示小短条的宽度：20dp（Argon 方案 Q1：无框选中态的唯一指示器，
-/// 颜色取主题 primary，不再是固定金黄）。
-const double kSelectionPillWidth = 20;
+/// 选中指示小短条的宽度：16dp（WB_SPEC_235 第 2 节随栏体压到 48dp 等比收窄；
+/// Argon 方案 Q1：无框选中态的唯一指示器，颜色取主题 primary，不再是固定金黄）。
+const double kSelectionPillWidth = 16;
 
-/// 选中指示小短条的高度：3dp，两端半圆（半径 1.5dp）。
-const double kSelectionPillHeight = 3;
+/// 选中指示小短条的高度：2.5dp，两端半圆（半径 1.25dp）。
+const double kSelectionPillHeight = 2.5;
 
-/// 选中指示小短条距栏底的距离：5dp。
-const double kSelectionPillBottomGap = 5;
+/// 选中指示小短条距栏底的距离：3dp。
+const double kSelectionPillBottomGap = 3;
 
 /// 选中指示小短条滑动时长：320ms（Argon 方案 Q1）。
 const Duration kSelectionPillDuration = Duration(milliseconds: 320);
@@ -68,14 +68,18 @@ const Duration kLiquidPressUpDuration = Duration(milliseconds: 350);
 /// 按下态缩放：0.92。
 const double kLiquidPressedScale = 0.92;
 
-/// 选中态图标的放大倍率（微微放大，不是明显放大）。
-const double kLiquidActiveIconScale = 1.08;
+/// 选中态图标的放大倍率常量**已删除**（WB_SPEC_235 第 2 节：底栏只剩高度变化，
+/// 选中图标不再 1.08x 放大，`HomeTabBar` 里包在图标外的那层 `AnimatedScale`
+/// 一并删掉；选中态只剩「实心图标 + 上浮 + 主题色」）。
 
 /// 选中态图标的上浮距离（逻辑像素，负值向上）。
 const double kLiquidActiveIconLift = -1.5;
 
-/// 标签栏图标尺寸：23dp（Argon 方案 Q1）。
-const double kLiquidTabIconSize = 23;
+/// 标签栏图标尺寸：20dp（WB_SPEC_235 第 2 节由 23dp 收窄）。
+const double kLiquidTabIconSize = 20;
+
+/// 标签文字行高倍数（WB_SPEC_235 第 2 节：10.5 号字配 1.1 行高，栏高才收得进 48）。
+const double kLiquidLabelHeightFactor = 1.1;
 
 /// 文字过渡时长：180ms 微过渡（Argon 方案 Q1：字重 / 颜色一起过渡）。
 const Duration kLiquidLabelDuration = Duration(milliseconds: 180);

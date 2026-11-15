@@ -12,10 +12,11 @@ import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 ///    + [BackdropFilter]）整体删除，它在真机上整屏漫溢、整片课表蒙雾；
 /// 2. 底色跟主题走（浅色 surface／深色 surfaceContainerLow）、顶部细分割线
 ///    0.5dp（outlineVariant 浅 0.45／深 0.25）、贴底无阴影；
-/// 3. 选中指示小短条：20×3dp、距栏底 5dp、容器宽 = 栏宽 50%、[AnimatedAlign]
+/// 3. 选中指示小短条：16×2.5dp、距栏底 3dp、容器宽 = 栏宽 50%、[AnimatedAlign]
 ///    对齐随选中项变化、320ms 减速曲线、切换时是「滑过去」而不是重建；
 /// 4. 按压回弹：按下 0.92（90ms）、松手 1.0（350ms 弹簧）；
-/// 5. 选中态图标上浮放大（实心）、颜色 / 位移 / 缩放三条过渡各自分开。
+/// 5. 选中态图标上浮 1.5px（实心）、颜色 / 位移两条过渡各自分开；
+///    WB_SPEC_235 起不再叠 1.08x 放大层。
 ///
 /// 与 `bottom_bar_style_test.dart` 的分工：那边管「布局与功能不变」（整宽、
 /// 贴底、两格等宽、文案、回调、留白口径），这边管「选中态与动效」。
@@ -154,14 +155,14 @@ void main() {
   });
 
   group('选中指示小短条（Argon 方案 Q1：无框选中态）', () {
-    testWidgets('容器宽度 = 栏宽 50%，短条本体 20×3dp、距栏底 5dp', (tester) async {
+    testWidgets('容器宽度 = 栏宽 50%，短条本体 16×2.5dp、距栏底 3dp', (tester) async {
       await pumpBar(tester);
 
       final barWidth = tester.getSize(find.byType(HomeTabBar)).width;
       final box = tester.getSize(find.byKey(kHomeTabBarIndicatorBoxKey));
       expect(kLiquidIndicatorWidthFactor, 0.5);
       expect(box.width, closeTo(barWidth * 0.5, 0.5));
-      // 容器占满栏高 64（Align 取最大高），短条本体 20×3 贴在容器底部
+      // 容器占满栏高 48（Align 取最大高），短条本体 16×2.5 贴在容器底部
       final rect = tester.getRect(find.byKey(kHomeTabBarIndicatorBoxKey));
       expect(rect.height, kBottomBarTabHeight);
       final pillFinder = find.descendant(
@@ -169,14 +170,14 @@ void main() {
         matching: find.byType(DecoratedBox),
       );
       final pill = tester.getRect(pillFinder.first);
-      expect(kSelectionPillWidth, 20);
-      expect(kSelectionPillHeight, 3);
-      expect(pill.width, closeTo(20, 0.5));
-      expect(pill.height, closeTo(3, 0.5));
-      // 短条水平居中在容器里、距栏底 5dp
+      expect(kSelectionPillWidth, 16);
+      expect(kSelectionPillHeight, 2.5);
+      expect(pill.width, closeTo(16, 0.5));
+      expect(pill.height, closeTo(2.5, 0.5));
+      // 短条水平居中在容器里、距栏底 3dp
       expect(pill.center.dx, closeTo(rect.center.dx, 0.5));
       expect(rect.bottom - pill.bottom, closeTo(kSelectionPillBottomGap, 0.5));
-      expect(kSelectionPillBottomGap, 5);
+      expect(kSelectionPillBottomGap, 3);
       // 短条颜色 = 主题 primary（不再是金黄渐变）
       final pillBox = tester.widget<DecoratedBox>(pillFinder.first);
       final decoration = pillBox.decoration as BoxDecoration;
@@ -249,10 +250,9 @@ void main() {
         ),
         findsNothing,
       );
-      // 复查 Bug 8：指示器包 IgnorePointer，20×3dp 区域永不吞点击
-      // （短条在栏底 5dp 处、位于 43dp 高的按键区下方空白带里，点它
-      // 本来就不触发切换；IgnorePointer 是防御性兜底，Stack 顺序或
-      // 按键区一变时也不会吞点击）
+      // 复查 Bug 8：指示器包 IgnorePointer，16×2.5dp 区域永不吞点击
+      // （短条在栏底 3dp 处、位于按键区下方空白带里，点它本来就不触发切换；
+      // IgnorePointer 是防御性兜底，Stack 顺序或按键区一变时也不会吞点击）
       expect(
         find.descendant(
           of: find.byKey(kHomeTabBarIndicatorKey),
@@ -314,7 +314,7 @@ void main() {
           reason: '「$cell」格里不应有色块容器',
         );
       }
-      // 全栏唯一的实色 DecoratedBox 就是 20×3dp 短条本体
+      // 全栏唯一的实色 DecoratedBox 就是 16×2.5dp 短条本体
       final colored = tester
           .widgetList<DecoratedBox>(
             find.descendant(
@@ -331,8 +331,8 @@ void main() {
           matching: find.byType(DecoratedBox),
         ),
       );
-      expect(pill.width, closeTo(20, 0.5));
-      expect(pill.height, closeTo(3, 0.5));
+      expect(pill.width, closeTo(16, 0.5));
+      expect(pill.height, closeTo(2.5, 0.5));
     });
   });
 
@@ -399,18 +399,27 @@ void main() {
     });
   });
 
-  group('选中态图标上浮放大与颜色过渡（三条过渡分开）', () {
-    testWidgets('选中格图标放大 1.08 并上浮 1.5 像素，未选中格不动', (tester) async {
+  group('选中态图标上浮与颜色过渡（三条过渡分开）', () {
+    testWidgets('选中格图标上浮 1.5 像素、不再放大，未选中格不动', (tester) async {
       await pumpBar(tester, active: HomeShellTab.settings);
 
-      final selected = tester.widget<AnimatedScale>(
+      // WB_SPEC_235：图标外那层 1.08x AnimatedScale 已删除，iconKey 直接命中
+      // LiquidIcon——这里断言「拿到的是图标本体、尺寸 20、祖先里没有放大层」
+      final selected = tester.widget<LiquidIcon>(
         find.byKey(kHomeTabBarSettingsIconKey),
       );
       final selectedLift = tester.widget<AnimatedSlide>(
         find.byKey(kHomeTabBarSettingsLiftKey),
       );
-      expect(selected.scale, closeTo(kLiquidActiveIconScale, 1e-9));
-      expect(kLiquidActiveIconScale, 1.08);
+      expect(selected.size, kLiquidTabIconSize);
+      expect(kLiquidTabIconSize, 20);
+      // iconKey 命中的就是图标本体（旧版挂在放大层 AnimatedScale 上）；
+      // 图标尺寸固定 20，选中/未选中同尺寸——「1.08x 放大」已不存在
+      expect(
+        tester.widget(find.byKey(kHomeTabBarSettingsIconKey)).runtimeType,
+        LiquidIcon,
+        reason: 'WB_SPEC_235：图标外不再包放大层，key 直接挂在 LiquidIcon 上',
+      );
       expect(selectedLift.offset.dy, lessThan(0), reason: '选中图标上浮（dy 为负）');
       expect(
         selectedLift.offset.dy * kLiquidTabIconSize,
@@ -418,14 +427,14 @@ void main() {
       );
       expect(kLiquidActiveIconLift, -1.5);
 
-      // 未选中格：不放大、不上浮
-      final unselected = tester.widget<AnimatedScale>(
+      // 未选中格：不上浮、尺寸同档
+      final unselected = tester.widget<LiquidIcon>(
         find.byKey(kHomeTabBarScheduleIconKey),
       );
       final unselectedLift = tester.widget<AnimatedSlide>(
         find.byKey(kHomeTabBarScheduleLiftKey),
       );
-      expect(unselected.scale, 1.0);
+      expect(unselected.size, kLiquidTabIconSize);
       expect(unselectedLift.offset, Offset.zero);
     });
 
