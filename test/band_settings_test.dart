@@ -9,7 +9,7 @@ import 'package:xiaoma_timetable/ui/grid_metrics.dart';
 /// 休息时段设置测试（WB_SPEC_209 第 6 节）
 ///
 /// 覆盖：
-/// 1. [BandSettings] 默认值（午休/晚间默认显示，起止 12:00–14:00 / 17:10–18:00）；
+/// 1. [BandSettings] 默认值（午休/晚餐默认显示，起止 12:00–14:00 / 17:10–18:00）；
 /// 2. 纯函数 [computeActiveBands]：默认两条、显隐过滤、越界过滤、interval 用自定义时间；
 /// 3. 纯函数 [bandTimeToMinutes] / [bandRangeValid]：开始早于结束合法；
 /// 4. [BandSettingsNotifier] 持久化（跑 sqflite_common_ffi 内存库）：默认值、
@@ -38,7 +38,7 @@ void main() {
       expect(bands[0].label, '午休');
       expect(bands[0].after, 5);
       expect(bands[0].interval, '12:00–14:00');
-      expect(bands[1].label, '晚间');
+      expect(bands[1].label, '晚餐');
       expect(bands[1].after, 9);
       expect(bands[1].interval, '17:10–18:00');
     });
@@ -52,7 +52,7 @@ void main() {
         settings: settings,
       );
       expect(bands.length, 1);
-      expect(bands.single.label, '晚间');
+      expect(bands.single.label, '晚餐');
     });
 
     test('computeActiveBands：两条都关时为空列表', () {
@@ -74,7 +74,7 @@ void main() {
         sectionCount: 13,
         settings: settings,
       );
-      // 晚间分段点 13 >= 总节数 13，不生效；午休仍生效
+      // 晚餐分段点 13 >= 总节数 13，不生效；午休仍生效
       expect(bands.length, 1);
       expect(bands.single.label, '午休');
     });
@@ -134,7 +134,7 @@ void main() {
       await notifier.setLunchVisible(false);
       expect(await Dao.instance.getSetting('band_lunch_visible'), '0');
       expect(container.read(bandSettingsProvider).value!.lunchVisible, isFalse);
-      // 只动午休，晚间仍默认显示
+      // 只动午休，晚餐仍默认显示
       expect(container.read(bandSettingsProvider).value!.dinnerVisible, isTrue);
     });
 

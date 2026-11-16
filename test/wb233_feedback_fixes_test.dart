@@ -326,12 +326,12 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('三段各成独立框（1 全局规则 + 3 段），组标题在框外', (tester) async {
+    testWidgets('三段各成独立框（1 节数与快捷设置 + 3 段），组标题在框外', (tester) async {
       await pumpTimePage(tester);
       expect(find.byType(SettingsLineFrame), findsNWidgets(4));
-      expect(find.byType(ExpansionTile), findsNWidgets(3));
       // 组标题在框外：它是 SettingsGroupHeader，不是某个框的标题
-      expect(find.text('各节上下课时间（点击时间直接修改）'), findsOneWidget);
+      // （§6 新文案：各节上下课时间（点击时间直接修改）→ 上下课时间（点时间可修改））
+      expect(find.text('上下课时间（点时间可修改）'), findsOneWidget);
       for (final band in TimeBand.values) {
         final frame = tester.widget<SettingsLineFrame>(
           find.ancestor(
@@ -344,10 +344,10 @@ void main() {
         expect(
           find.descendant(
             of: find.byKey(Key('time_band_${band.name}')),
-            matching: find.byType(ExpansionTile),
+            matching: find.byType(AnimatedRotation),
           ),
           findsOneWidget,
-          reason: '一段一框，框内只有一个段头',
+          reason: '一段一框，框内只有一个段头（箭头每段唯一）',
         );
       }
     });
@@ -421,7 +421,7 @@ void main() {
           reason: '点时间块仍弹 showTimePicker，helpText 未改');
     });
 
-    testWidgets('段头左右分栏：左名称带节次范围，右时间 + 自带箭头', (tester) async {
+    testWidgets('段头左右分栏：左名称带节次范围，右时间 + 自带旋转箭头', (tester) async {
       await pumpTimePage(tester);
       expect(find.text('（第 1–5 节）'), findsOneWidget);
       expect(find.text('（第 6–9 节）'), findsOneWidget);
@@ -432,19 +432,16 @@ void main() {
       final range = tester.getRect(find.text('（第 1–5 节）'));
       final time = tester.getRect(find.text('08:00 – 12:00'));
       expect(range.left, greaterThan(name.right - 0.01), reason: '节次范围紧跟名称');
-      // 时间在右半栏（测试字体下文字偏宽，按「靠右」而非「紧接范围」断言）
       expect(time.left, greaterThan(name.right), reason: '时间在名称右侧');
-      expect(time.right, greaterThan(390 / 2 + 100), reason: '时间靠右排，不挤在名称后');
-      expect(time.top, closeTo(name.top, 10), reason: '同一行左右分栏，不上下堆叠');
+      expect(time.right, greaterThan(390 / 2 + 100), reason: '时间靠右排');
+      expect(time.top, closeTo(name.top, 10), reason: '同一行左右分栏');
 
-      // 段头 52dp
-      final tile = tester.widget<ExpansionTile>(
-        find.descendant(
-          of: find.byKey(const Key('time_band_morning')),
-          matching: find.byType(ExpansionTile),
-        ),
-      );
-      expect(tile.minTileHeight, 52);
+      // 段头 SizedBox 52dp 高度断言
+      final headerSizedBox = find.ancestor(
+        of: find.text('上午'),
+        matching: find.byType(SizedBox),
+      ).first;
+      expect(tester.getSize(headerSizedBox).height, 52);
     });
 
     testWidgets('14 节时晚上段是 10–14 节（不得写死 10–13）', (tester) async {

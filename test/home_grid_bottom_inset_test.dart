@@ -288,11 +288,11 @@ void main() {
   testWidgets('分隔带：页内带子只留底色、不画文字（复查 Bug 5）', (tester) async {
     await pumpHome(tester);
 
-    // 午休/晚间各只出现一次：固定时间轴占位画的名称。页内带子以前每页
+    // 午休/晚餐各只出现一次：固定时间轴占位画的名称。页内带子以前每页
     // 都画一份居中「午休 12:00–14:00」，切周滑到中途会双份重影；
     // 改完后页内带子是纯色底，名称只剩时间轴上那一份
     expect(find.text('午休'), findsOneWidget);
-    expect(find.text('晚间'), findsOneWidget);
+    expect(find.text('晚餐'), findsOneWidget);
     // 时间段文字只在页内带子里出现过，改完后网格里不再有
     expect(find.text('12:00–14:00'), findsNothing);
     expect(find.text('17:10–18:00'), findsNothing);

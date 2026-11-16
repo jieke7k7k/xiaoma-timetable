@@ -43,9 +43,9 @@ void main() {
       expect(segs[2].start - segs[1].end, kBandHeight);
     });
 
-    test('两条休息带（午休第 2 节后、晚间第 3 节后）：两处都跳过', () {
+    test('两条休息带（午休第 2 节后、晚餐第 3 节后）：两处都跳过', () {
       const lunch = (after: 2, label: '午休', interval: '12:00–14:00');
-      const dinner = (after: 3, label: '晚间', interval: '17:10–18:00');
+      const dinner = (after: 3, label: '晚餐', interval: '17:10–18:00');
       final segs = verticalLineSegments(
         rowHeight: 50,
         sectionCount: 5,
@@ -56,14 +56,14 @@ void main() {
       expect(segs[1].end, 100.0);
       expect(segs[2].start, 100.0 + kBandHeight);
       expect(segs[2].end, 150.0 + kBandHeight);
-      // 晚间：第 3 节末 = 150 + kBandHeight，第 4 节从 150 + 2*kBandHeight 起
+      // 晚餐：第 3 节末 = 150 + kBandHeight，第 4 节从 150 + 2*kBandHeight 起
       expect(segs[3].start, 150.0 + 2 * kBandHeight);
     });
 
     test('带子 after 越界（不落在任何节之后）时不参与分段', () {
       // computeActiveBands 已把 after >= sectionCount 的带子过滤掉，此处兜底：
       // 即便越界带子传入，也不影响分段（等价于无带子）
-      const band = (after: 99, label: '晚间', interval: '17:10–18:00');
+      const band = (after: 99, label: '晚餐', interval: '17:10–18:00');
       final segs = verticalLineSegments(
         rowHeight: 60,
         sectionCount: 3,
@@ -76,7 +76,7 @@ void main() {
 
     test('分段纵向跨度守恒：节次总高 + 带子总高 = 最后一段结束处', () {
       const lunch = (after: 5, label: '午休', interval: '12:00–14:00');
-      const dinner = (after: 9, label: '晚间', interval: '17:10–18:00');
+      const dinner = (after: 9, label: '晚餐', interval: '17:10–18:00');
       final segs = verticalLineSegments(
         rowHeight: 40,
         sectionCount: 13,

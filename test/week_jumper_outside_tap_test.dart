@@ -16,6 +16,7 @@ import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
 import 'package:xiaoma_timetable/pages/week_view_page.dart';
 import 'package:xiaoma_timetable/providers/providers.dart';
+import 'package:xiaoma_timetable/utils/deliberate_page_physics.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
 import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 
@@ -138,6 +139,15 @@ void main() {
               child: MaterialApp(
                 home: const HomeShell(),
                 navigatorObservers: [spy],
+                // §8 确认新建页用：只当路由桩，不主动推任何路由
+                // （带 AppBar，pageBack 才能找到返回按钮）
+                onGenerateRoute: (settings) => MaterialPageRoute(
+                  builder: (_) => Scaffold(
+                    appBar: AppBar(title: const Text('stub')),
+                    body: const Text('stub'),
+                  ),
+                  settings: settings,
+                ),
               ),
             ),
           );
@@ -197,6 +207,36 @@ void main() {
         .widget<Text>(find.textContaining(RegExp(r'^第 \d+ 周')))
         .data!;
     return int.parse(RegExp(r'\d+').firstMatch(text)!.group(0)!);
+  }
+
+  /// PageView 当前横向滑动物理（§8：长按高亮时应为 NeverScrollable）。
+  ScrollPhysics? pageViewPhysics(WidgetTester tester) =>
+      tester.widget<PageView>(find.byType(PageView)).physics;
+
+  /// 长按高亮的中央加号（22dp 圆点里的 16dp Icons.add；AppBar 的「＋」
+  /// 是 24dp，用尺寸区分）。
+  Finder highlightPlus(WidgetTester tester) => find.byWidgetPredicate(
+        (w) => w is Icon && w.icon == Icons.add && w.size == 16,
+      );
+
+  /// 网格空白格中心（§7/§8 用）：dayIndex 0=周一…6=周日，section 为节次。
+  /// 行高用量出来的时间轴标签间距（第 1/2 节标签中心差），列宽用
+  /// PageView 宽 / 7；第 1–5 节上方没有分隔带，不用补带子高度。
+  /// 注意：只在跳转条收起时调用（展开时时间轴 '1' 会与跳转条周数重名）。
+  Offset blankCellCenter(
+    WidgetTester tester, {
+    required int dayIndex,
+    required int section,
+  }) {
+    final pageRect = tester.getRect(find.byType(PageView));
+    final cellWidth = pageRect.width / 7;
+    final firstCenter = tester.getCenter(find.text('1'));
+    final secondCenter = tester.getCenter(find.text('2'));
+    final rowHeight = secondCenter.dy - firstCenter.dy;
+    return Offset(
+      pageRect.left + (dayIndex + 0.5) * cellWidth,
+      firstCenter.dy + (section - 1) * rowHeight,
+    );
   }
 
   /// 横幅测试用的通道内容（223 复审 Bug 1/2 补测）：
@@ -323,6 +363,10 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 300));
     expect(currentWeek(tester), 12);
+    // §7：选周后跳转条保持展开，手动点标题收起再重新展开
+    expectExpanded(tester);
+    await tester.tap(titleInkWell());
+    await tester.pumpAndSettle();
     expectCollapsed(tester);
 
     await openJumper(tester);
@@ -437,7 +481,7 @@ void main() {
     await tester.pump(const Duration(seconds: 60));
   });
 
-  testWidgets('点周数格子跳周＋收起', (tester) async {
+  testWidgets('点周数格子跳周：跳转条保持展开', (tester) async {
     final spy = _RouteSpy();
     await pumpHome(tester, spy);
     await openJumper(tester);
@@ -450,9 +494,15 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 500));
 
-    expectCollapsed(tester);
+    // §7 新规格：点周后保持展开
+    expectExpanded(tester);
     expect(currentWeek(tester), 12);
     expect(spy.pushed, isEmpty);
+
+    // 再点空白处（网格区），跳转条收起
+    await tester.tap(find.text('药化'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expectCollapsed(tester);
     await tester.pump(const Duration(seconds: 60));
   });
 
@@ -608,6 +658,10 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 300));
     expect(currentWeek(tester), 12);
+    // §7：选周后跳转条保持展开，手动点标题收起再重新展开
+    expectExpanded(tester);
+    await tester.tap(titleInkWell());
+    await tester.pumpAndSettle();
     expectCollapsed(tester);
 
     await openJumper(tester);
@@ -658,6 +712,111 @@ void main() {
     // 差值正好是跳转条高度，没有多扣也没有少扣。
     expectGridFillsStack();
     expect(spy.pushed, isEmpty);
+    await tester.pump(const Duration(seconds: 60));
+  });
+
+  testWidgets('§7 新增：点第 12 周后仍展开，点空白处收起', (tester) async {
+    final spy = _RouteSpy();
+    await pumpHome(tester, spy);
+    await openJumper(tester);
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AnimatedSize),
+        matching: find.text('12'),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+
+    // §7：选周后跳转条保持展开
+    expectExpanded(tester);
+    expect(currentWeek(tester), 12);
+    expect(spy.pushed, isEmpty);
+
+    // 再点空白处（网格区中央，点按层拦截、只收起），跳转条收起
+    await tester.tapAt(tester.getCenter(find.byType(PageView)));
+    await tester.pump(const Duration(milliseconds: 300));
+    expectCollapsed(tester);
+    expect(spy.pushed, isEmpty);
+    await tester.pump(const Duration(seconds: 60));
+  });
+
+  testWidgets('§7 新增：连续点两周 12→15 均只跳周不收起', (tester) async {
+    final spy = _RouteSpy();
+    await pumpHome(tester, spy);
+    await openJumper(tester);
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AnimatedSize),
+        matching: find.text('12'),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expectExpanded(tester);
+    expect(currentWeek(tester), 12);
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AnimatedSize),
+        matching: find.text('15'),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expectExpanded(tester);
+    expect(currentWeek(tester), 15);
+    expect(spy.pushed, isEmpty);
+    await tester.pump(const Duration(seconds: 60));
+  });
+
+  testWidgets('§8 长按空白格出加号后锁住横向滑周，点别处取消恢复', (tester) async {
+    final spy = _RouteSpy();
+    await pumpHome(tester, spy);
+
+    // 初始可滑、无高亮
+    expect(pageViewPhysics(tester), isA<DeliberatePagePhysics>());
+    expect(highlightPlus(tester), findsNothing);
+
+    // 长按周二第 3 节空白格起高亮
+    await tester.longPressAt(blankCellCenter(tester, dayIndex: 1, section: 3));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // 高亮出现、PageView 锁死
+    expect(highlightPlus(tester), findsOneWidget);
+    expect(pageViewPhysics(tester), isA<NeverScrollableScrollPhysics>());
+
+    // 点别处（周四第 5 节空白格）取消高亮，恢复可滑
+    await tester.tapAt(blankCellCenter(tester, dayIndex: 3, section: 5));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(highlightPlus(tester), findsNothing);
+    expect(pageViewPhysics(tester), isA<DeliberatePagePhysics>());
+    expect(spy.pushed, isEmpty);
+    await tester.pump(const Duration(seconds: 60));
+  });
+
+  testWidgets('§8 长按出加号后点高亮区确认进新建页，回来后恢复可滑', (tester) async {
+    final spy = _RouteSpy();
+    await pumpHome(tester, spy);
+
+    final cell = blankCellCenter(tester, dayIndex: 1, section: 3);
+    await tester.longPressAt(cell);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(highlightPlus(tester), findsOneWidget);
+    expect(pageViewPhysics(tester), isA<NeverScrollableScrollPhysics>());
+
+    // 点高亮区确认：进新建课页面（桩页带 stub 文案）
+    // pumpAndSettle：把 300ms 入场动画跑完，否则新路由还在 offstage，
+    // finder（默认跳过 offstage）找不到桩页、pageBack 也找不到返回按钮
+    await tester.tapAt(cell);
+    await tester.pumpAndSettle();
+    expect(spy.pushed, isNotEmpty);
+    expect(spy.pushed.last, '/course-edit');
+    expect(find.text('stub'), findsWidgets);
+
+    // 回来后恢复可滑（桩页无系统返回按钮，直接 pop）
+    Navigator.of(tester.element(find.text('stub').first)).pop();
+    await tester.pumpAndSettle();
+    expect(pageViewPhysics(tester), isA<DeliberatePagePhysics>());
     await tester.pump(const Duration(seconds: 60));
   });
 }

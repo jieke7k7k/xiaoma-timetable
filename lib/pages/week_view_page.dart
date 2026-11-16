@@ -39,7 +39,7 @@ import '../widgets/semester_form_dialog.dart';
 ///   右侧编辑/新建/更多三按钮位置固定
 /// - 表头：月份列 + 周一~周日（几月几日，今天高亮）
 /// - 网格：左侧节次号与上下课时间，右侧日期列，跨节次课程合并为圆角卡片
-/// - 午休 / 晚间分隔带：位置由「作息分段设置」驱动（默认第 5 / 9 节后），
+/// - 午休 / 晚餐分隔带：位置由「作息分段设置」驱动（默认第 5 / 9 节后），
 ///   显隐与起止时间由「休息时段设置」驱动（见 grid_metrics.computeActiveBands）
 /// - 非本周视图时右侧边缘中间显示「回到本周」竖条悬浮按钮，本周视图自动隐藏
 /// - 格子三态布局（见 slot_layout.dart）：本周课优先，非本周课置灰且不遮挡本周课；
@@ -114,6 +114,16 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
 
   /// 网格纵向滚动锁：长按空白格拖动扩展节次期间锁定纵向滚动，避免手势打架
   bool _gridScrollLocked = false;
+
+  /// §8：长按新建高亮活跃状态（长按出加号后 PageView 横向滑动被锁死）
+  bool _highlightActive = false;
+
+  /// §8：_WeekGrid 高亮状态上提回调；页面已 dispose 时不再 setState；
+  /// 高亮残留时的复位由 _WeekGridState.dispose 触发（调 false）。
+  void _onHighlightChanged(bool active) {
+    if (!mounted || _highlightActive == active) return;
+    setState(() => _highlightActive = active);
+  }
 
   /// 本页面实例是否已做过「今天该不该弹周日弹窗」的判定（WB_SPEC_215 第 1 节）。
   ///
@@ -280,10 +290,17 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
     WidgetsBinding.instance.removeObserver(this);
     _focusTimer?.cancel();
     _pageController?.dispose();
+    // §8：页面 dispose 时复位长按高亮活跃态，避免残留状态。
+    _highlightActive = false;
     super.dispose();
   }
 
   void _jumpToWeek(int week) {
+    // §8：程序化切周时若有残留的长按高亮框，顺手复位，防止 PageView
+    // 处于 NeverScrollable 死锁状态。
+    if (_highlightActive) {
+      setState(() => _highlightActive = false);
+    }
     final total = ref.read(currentSemesterProvider).value?.totalWeeks ?? 20;
     if (week < 1 || week > total) return;
     ref.read(displayWeekProvider.notifier).setWeek(week);
@@ -921,8 +938,8 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
                     currentWeek: displayWeek,
                     todayWeek: todayWeek,
                     onTap: (w) {
+                      // §7：选周后跳转条保持展开，选中周色块自动跟随当前周
                       _jumpToWeek(w);
-                      _closeJumper();
                     },
                   )
                 : const SizedBox(width: double.infinity, height: 0),
@@ -965,6 +982,8 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
                           displayDays: displayDays,
                           timeAxisWidth: _timeAxisWidth,
                           editMode: _editMode,
+                          highlightActive: _highlightActive,
+                          onHighlightChanged: _onHighlightChanged,
                           scrollLocked: _gridScrollLocked,
                           contentLocked: jumperOpen,
                           onScrollLockChanged: (locked) =>
@@ -1349,6 +1368,8 @@ class _GridArea extends ConsumerWidget {
     required this.timeAxisWidth,
     required this.onWeekChanged,
     required this.editMode,
+    required this.highlightActive,
+    required this.onHighlightChanged,
     required this.scrollLocked,
     required this.onScrollLockChanged,
     required this.contentLocked,
@@ -1360,6 +1381,8 @@ class _GridArea extends ConsumerWidget {
   final double timeAxisWidth;
   final ValueChanged<int> onWeekChanged;
   final bool editMode;
+  final bool highlightActive;
+  final ValueChanged<bool> onHighlightChanged;
   final bool scrollLocked;
   final ValueChanged<bool> onScrollLockChanged;
 
@@ -1378,7 +1401,7 @@ class _GridArea extends ConsumerWidget {
     if (semester == null || slots.isEmpty) return const SizedBox.shrink();
     final sectionCount = slots.length;
     final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
-    // 分隔带位置由「作息分段设置」驱动；provider 未加载完成时回退默认值（午休 5 / 晚间 9）
+    // 分隔带位置由「作息分段设置」驱动；provider 未加载完成时回退默认值（午休 5 / 晚餐 9）
     // 今天列高亮：正在看的就是本周且今天在显示列里时才算（开关 1.2.6）
     final nowDate = DateTime.now();
     final thisWeekNo = WeekCalc.currentWeek(
@@ -1499,7 +1522,8 @@ class _GridArea extends ConsumerWidget {
                           // 翻页判定（1.2.1）：默认物理在松手速度 >约7px/s 时就翻页，
                           // 改用明确滑动才翻周的自定义物理（见 deliberate_page_physics）
                           // WB_SPEC_209 第 5 节：编辑模式锁左右滑切周，退出后恢复
-                          physics: editMode
+                          // §8：长按加号高亮活跃时同样锁死横向滑切周
+                          physics: (editMode || highlightActive)
                               ? const NeverScrollableScrollPhysics()
                               : const DeliberatePagePhysics(),
                           onPageChanged: (page) {
@@ -1521,6 +1545,7 @@ class _GridArea extends ConsumerWidget {
                                 rowHeight: rowHeight,
                                 activeBands: activeBands,
                                 editMode: editMode,
+                                onHighlightChanged: onHighlightChanged,
                                 onScrollLockChanged: onScrollLockChanged,
                                 highlightDay: week == thisWeekNo
                                     ? highlightDay
@@ -1729,7 +1754,8 @@ class _TimeAxis extends StatelessWidget {
 /// 1.1.1 新增「长按空白格高亮建课」：未点铅笔时（编辑模式亦可）长按空白格，
 /// 该格高亮并出现加号；保持长按上下拖动可按整节扩展/收缩节次（吸附节次、
 /// 遇已有课程止步）；松手后高亮保留，再单击高亮区进新建页（预填起止节次），
-/// 单击别处取消高亮。高亮状态保存在本页 State 里，PageView 滑走即自动消失。
+/// 单击别处取消高亮。高亮状态保存在本页 State 里；高亮活跃时 PageView
+/// 横向滑动被锁死（§8，见 onHighlightChanged），滑走已不可能，确认/取消后恢复。
 class _WeekGrid extends ConsumerStatefulWidget {
   const _WeekGrid({
     super.key,
@@ -1740,6 +1766,7 @@ class _WeekGrid extends ConsumerStatefulWidget {
     required this.rowHeight,
     required this.activeBands,
     required this.editMode,
+    required this.onHighlightChanged,
     required this.onScrollLockChanged,
     required this.highlightDay,
   });
@@ -1751,6 +1778,7 @@ class _WeekGrid extends ConsumerStatefulWidget {
   final double rowHeight;
   final List<GridBand> activeBands;
   final bool editMode;
+  final ValueChanged<bool> onHighlightChanged;
   final ValueChanged<bool> onScrollLockChanged;
 
   /// 今天所在的星期列（B2 整列淡色高亮）；非本周或今天不在显示列时为 null
@@ -1766,6 +1794,27 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
 
   /// 长按起始节次（拖动扩展以它为锚点上下伸缩）
   int? _anchorRow;
+
+  @override
+  void dispose() {
+    // §8：防死锁复位——若当前页在 dispose 时仍带有未确认的长按高亮，
+    // 必须通知页面将 _highlightActive 复位为 false，避免 PageView 永久死锁。
+    if (_highlight != null) {
+      widget.onHighlightChanged(false);
+    }
+    super.dispose();
+  }
+
+  /// 统一的高亮状态更新入口：只在 null↔非 null 之间变化时回调页面，
+  /// 拖动扩展只改范围不重复回调（§8 规格：变化时各调一次）。
+  void _updateHighlight(({int day, int start, int end})? newHighlight) {
+    if (_highlight == newHighlight) return;
+    final wasActive = _highlight != null;
+    setState(() => _highlight = newHighlight);
+    if (wasActive != (newHighlight != null)) {
+      widget.onHighlightChanged(newHighlight != null);
+    }
+  }
 
   double _topOf(int section) => yOffsetTop(
     section,
@@ -1898,7 +1947,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
           if (cell.day == hl.day &&
               cell.row >= hl.start &&
               cell.row <= hl.end) {
-            setState(() => _highlight = null);
+            _updateHighlight(null);
             // WB_SPEC_235 §7：点高亮区确认 → 新建课程，轻点档
             AppHaptics.tap();
             Navigator.pushNamed(
@@ -1911,7 +1960,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
               },
             );
           } else {
-            setState(() => _highlight = null);
+            _updateHighlight(null);
           }
           return;
         }
@@ -1932,10 +1981,8 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
         if (!_isEmptyCell(daySlots, cell.day, cell.row)) return;
         // 长按空白格起高亮：中档（WB_SPEC_235 §7：改走门控）
         AppHaptics.medium();
-        setState(() {
-          _anchorRow = cell.row;
-          _highlight = (day: cell.day, start: cell.row, end: cell.row);
-        });
+        _anchorRow = cell.row;
+        _updateHighlight((day: cell.day, start: cell.row, end: cell.row));
         widget.onScrollLockChanged(true);
       },
       // 保持长按上下拖：以锚点为中心、按整节吸附扩展/收缩，遇已有课程止步
@@ -1950,7 +1997,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
         final ns = target < anchor ? target : anchor;
         final ne = target > anchor ? target : anchor;
         if (ns != hl.start || ne != hl.end) {
-          setState(() => _highlight = (day: hl.day, start: ns, end: ne));
+          _updateHighlight((day: hl.day, start: ns, end: ne));
         }
       },
       onLongPressEnd: (_) => widget.onScrollLockChanged(false),

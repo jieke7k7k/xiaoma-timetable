@@ -196,17 +196,18 @@ void main() {
       final expected = currentTimeBand(DateTime.now());
       // 全局规则框 1 个 + 三段各一个框 = 4 个（233 前是「三段共用一个大框」= 2 个）
       expect(find.byType(SettingsLineFrame), findsNWidgets(4));
-      expect(find.byType(ExpansionTile), findsNWidgets(3));
+      // _BandTile 是私有类，按 key 找段；默认展开只看子项在不在树里
+      // （收起时 _BandTile 子项区是 0 高 SizedBox，子项不出树）。
+      const firstSections = {
+        TimeBand.morning: 1,
+        TimeBand.afternoon: 6,
+        TimeBand.evening: 10,
+      };
       for (final band in TimeBand.values) {
-        final tile = tester.widget<ExpansionTile>(
-          find.descendant(
-            of: find.byKey(Key('time_band_${band.name}')),
-            matching: find.byType(ExpansionTile),
-          ),
-        );
+        expect(find.byKey(Key('time_band_${band.name}')), findsOneWidget);
         expect(
-          tile.initiallyExpanded,
-          band == expected,
+          find.text('第 ${firstSections[band]} 节'),
+          band == expected ? findsOneWidget : findsNothing,
           reason: '只有当前时段 $expected 默认展开，$band 应收起',
         );
       }
@@ -215,7 +216,7 @@ void main() {
     testWidgets('段头左右分栏：左「上午（第 1–5 节）」右「08:00 – 12:00」', (tester) async {
       await pumpPage(tester, home: const TimeSettingsPage());
       // 组标题留在框外（不再当框标题）
-      expect(find.text('各节上下课时间（点击时间直接修改）'), findsOneWidget);
+      expect(find.text('上下课时间（点时间可修改）'), findsOneWidget);
       // 节次范围按实际分段点算：上午 1–5、下午 6–9、晚上 10–13（默认 13 节）
       expect(find.text('（第 1–5 节）'), findsOneWidget);
       expect(find.text('（第 6–9 节）'), findsOneWidget);
@@ -304,7 +305,7 @@ void main() {
         find.byType(SettingsEntryRow),
       ).toList();
       expect(rows.length, 2, reason: '作息父页只剩 2 行入口');
-      expect(rows.first.title, '节次数量与分段');
+      expect(rows.first.title, '每日节数与分段');
       expect(rows.first.route, '/settings-section-rules');
       expect(appRoutes.containsKey('/settings-section-rules'), isTrue);
       expect(

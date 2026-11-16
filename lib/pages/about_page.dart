@@ -8,7 +8,7 @@ import '../utils/app_haptics.dart';
 import '../widgets/app_dialog.dart';
 
 /// 关于页（1.2.4）：版本号、检查更新、公告入口、更新日志、开源许可、
-/// 使用帮助、问题反馈与开发者信息——完整应用该有的收尾都在这一页。
+/// 使用帮助、问题反馈与联系作者——完整应用该有的收尾都在这一页。
 ///
 /// 2.1.3（WB_SPEC_214 第 1 节）：版本行恢复为纯展示。此前的「连点解锁」入口
 /// 与其计数器一并删除——版本行不再有点击手势、不再写任何设置、不再弹提示。
@@ -45,12 +45,15 @@ class _AboutPageState extends State<AboutPage> {
 
   int get _currentCode => int.tryParse(_pkg?.buildNumber ?? '') ?? 0;
 
-  Future<void> _launch(String url) async {
+  Future<void> _launch(
+    String url, {
+    String failureMessage = '打不开这个链接，请检查浏览器',
+  }) async {
     final uri = Uri.parse(url);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('打不开这个链接，请检查浏览器')));
+            .showSnackBar(SnackBar(content: Text(failureMessage)));
       }
     }
   }
@@ -164,17 +167,12 @@ class _AboutPageState extends State<AboutPage> {
         children: [
           const SizedBox(height: 24),
           Center(
-            child: Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: scheme.primaryContainer,
-                borderRadius: BorderRadius.circular(AppRadii.logo),
-              ),
-              child: Icon(
-                Icons.calendar_month,
-                size: 40,
-                color: scheme.onPrimaryContainer,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadii.logo),
+              child: Image.asset(
+                'assets/icon/icon.png',
+                width: 72,
+                height: 72,
               ),
             ),
           ),
@@ -198,10 +196,6 @@ class _AboutPageState extends State<AboutPage> {
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          const Center(
-            child: Text('开发者：jieke × 小马', style: TextStyle(fontSize: 13)),
-          ),
           const SizedBox(height: 16),
           const Divider(height: 1),
           ListTile(
@@ -218,7 +212,7 @@ class _AboutPageState extends State<AboutPage> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.chevron_right),
-            // WB_SPEC_235 跟进 §1-5：关于页 8 行入口全部轻点档
+            // WB_SPEC_235 跟进 §1-5：关于页 9 行入口全部轻点档
             // （`enableFeedback: false` 关掉 ListTile 自带反馈防双震）
             onTap: () {
               AppHaptics.tap();
@@ -320,6 +314,20 @@ class _AboutPageState extends State<AboutPage> {
             onTap: () {
               AppHaptics.tap();
               _launch(ChannelService.homeUrl);
+            },
+            enableFeedback: false,
+          ),
+          ListTile(
+            leading: const Icon(Icons.mail_outlined),
+            title: const Text('联系作者'),
+            subtitle: const Text('jieke7k7k@gmail.com'),
+            trailing: const Icon(Icons.open_in_new, size: 18),
+            onTap: () {
+              AppHaptics.tap();
+              _launch(
+                'mailto:jieke7k7k@gmail.com',
+                failureMessage: '没有可用的邮件应用',
+              );
             },
             enableFeedback: false,
           ),

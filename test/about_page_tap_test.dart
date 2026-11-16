@@ -127,4 +127,25 @@ void main() {
     );
     expect(settings, isEmpty);
   });
+
+  testWidgets('关于页三处：无开发者文案、顶部为启动图标、有联系作者行', (tester) async {
+    await pumpAbout(tester);
+
+    // §9：开发者行已删，全页无「开发者」字样
+    expect(find.textContaining('开发者'), findsNothing);
+    // 顶部是启动图标 assets/icon/icon.png，不再是手画日历占位
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Image &&
+            w.image is AssetImage &&
+            (w.image as AssetImage).assetName == 'assets/icon/icon.png',
+      ),
+      findsOneWidget,
+    );
+    // 联系作者行在最底下：先滚出来再断言（ListView 懒加载，初始不在树里）
+    await tester.scrollUntilVisible(find.text('联系作者'), 100);
+    expect(find.text('联系作者'), findsOneWidget);
+    expect(find.text('jieke7k7k@gmail.com'), findsOneWidget);
+  });
 }

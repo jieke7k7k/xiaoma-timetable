@@ -11,10 +11,10 @@ import '../ui/settings_line_frame.dart';
 import '../utils/app_haptics.dart';
 import '../widgets/app_dialog.dart';
 
-/// 作息时间设置页（WB_SPEC_228 §5）。
+/// 作息时间设置页（WB_SPEC_228 §5 / WB_SPEC_236 §2 & §6）。
 ///
 /// 父页从「4 张卡 + 13 节全平铺」收成「2 行入口 + 上/下/晚三段折叠」：
-/// - 「节次数量与分段」进专项子页（[SectionRulesBody] 承接原 4 张卡的控件，
+/// - 「每日节数与分段」进专项子页（[SectionRulesBody] 承接原 4 张卡的控件，
 ///   绑定、校验、持久化一字未动）；
 /// - 三段各成独立线框（2.5.0 WB_SPEC_233 §5.1 去套娃），默认只展开当前时段；
 /// - 单节卡片 72dp → 56dp，2.5.0 起去 ▷/▢ 大按钮，改「第 X 节」+ 两个时间块。
@@ -40,19 +40,19 @@ class TimeSettingsPage extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),
         children: [
-          // §5：2 行入口，各 56dp，标题左、右端当前值 + ›
+          // §5 / WB_SPEC_236 §6：2 行入口，各 56dp，标题左、右端当前值 + ›
           SettingsLineFrame(
-            title: '全局规则',
+            title: '节数与快捷设置',
             children: [
               SettingsEntryRow(
-                title: '节次数量与分段',
+                title: '每日节数与分段',
                 value:
-                    '共 ${slots.length} 节 ($lunch-${dinner - lunch}-${slots.length - dinner}) · 含午休晚餐',
+                    '共 ${slots.length} 节 · 上$lunch 下${dinner - lunch} 晚${slots.length - dinner}',
                 route: '/settings-section-rules',
               ),
               SettingsEntryRow(
-                title: '一键套用与批量推算',
-                value: '按首节与课间推算',
+                title: '套用作息模板',
+                value: '常用大节时间',
                 onTap: () => _openPresetSheet(context, ref),
               ),
             ],
@@ -61,7 +61,7 @@ class TimeSettingsPage extends ConsumerWidget {
           // §5（233 重构）：组标题留在框外，上午 / 下午 / 晚上各成独立线框，
           // 框内只放一个段头；午休 / 晚餐间隔行移到框与框之间的留白区。
           // 「默认展开当前时段」保持现状（跟随时钟走，不固定上午）。
-          const SettingsGroupHeader('各节上下课时间（点击时间直接修改）'),
+          const SettingsGroupHeader('上下课时间（点时间可修改）'),
           if (morning.isNotEmpty)
             SettingsLineFrame(
               title: '上午',
@@ -141,7 +141,7 @@ class TimeSettingsPage extends ConsumerWidget {
   String _timeRange(List<TimeSlot> band) =>
       '${band.first.startTime} – ${band.last.endTime}';
 
-  /// 一键套用弹层：只列现代码已有的「常用大节时间」，行为与原按钮一致。
+  /// 套用作息模板弹层：只列现代码已有的「常用大节时间（前 4 节）」，行为与原按钮一致。
   void _openPresetSheet(BuildContext context, WidgetRef ref) {
     showModalBottomSheet<void>(
       context: context,
@@ -151,12 +151,12 @@ class TimeSettingsPage extends ConsumerWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: Text('一键套用与批量推算',
+              child: Text('选择作息模板',
                   style: Theme.of(context).textTheme.titleMedium),
             ),
             ListTile(
-              title: const Text('常用大节时间'),
-              subtitle: const Text('第 1-2 节 09:40–12:00，第 3-4 节 14:00–16:20'),
+              title: const Text('常用大节时间（前 4 节）'),
+              subtitle: const Text('两节连上：上午 09:40–12:00，下午 14:00–16:20'),
               // WB_SPEC_235 跟进：套用预设 = 轻点档
               onTap: () {
                 AppHaptics.tap();
@@ -188,17 +188,17 @@ class TimeSettingsPage extends ConsumerWidget {
   Future<void> _applyPreset(BuildContext context, WidgetRef ref) async {
     final ok = await showAppConfirmDialog(
       context,
-      title: '套用常用大节时间',
-      message: '将前 4 节课设置为：\n\n第 1 节 09:40-10:40\n第 2 节 10:40-12:00\n'
+      title: '套用「常用大节时间」？',
+      message: '将把前 4 节课改为以下时间（其余节次不变）：\n\n第 1 节 09:40-10:40\n第 2 节 10:40-12:00\n'
           '第 3 节 14:00-15:10\n第 4 节 15:10-16:20\n\n确定套用吗？',
-      confirmLabel: '套用',
+      confirmLabel: '确认套用',
     );
     if (ok != true) return;
     try {
       await ref.read(timeSlotsProvider.notifier).applyPresetBigSections();
       if (context.mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已套用常用大节时间')));
+            .showSnackBar(const SnackBar(content: Text('已更新前 4 节上下课时间')));
       }
     } catch (e) {
       if (context.mounted) {
@@ -355,11 +355,13 @@ TimeBand currentTimeBand(DateTime now) {
   return TimeBand.evening;
 }
 
-/// 三段折叠之一：默认展开当前时段；`tailHint` 只在晚上段末尾显示提示。
+/// 三段折叠之一（WB_SPEC_236 §2）：弃用 ExpansionTile，改为自画段头 + AnimatedSize。
 ///
-/// §5.3（233 重构）：段头左右分栏——左「上午（第 1–5 节）」，右「08:00 – 12:00」
-/// 与 ExpansionTile 自带箭头；箭头位置随 title 结构走，不另画。
-class _BandTile extends StatelessWidget {
+/// - 段头 52dp：GestureDetector(opaque) + Semantics(button + expanded)，无 ListTile / InkWell；
+/// - 箭头：AnimatedRotation(0.0 ↔ 0.5, 160ms, easeOutCubic)，收起 onSurfaceVariant、展开 primary；
+/// - 子项区：ClipRect + AnimatedSize(alignment: Alignment.topCenter, 160ms, easeOutCubic)，
+///   展开时顶部带一条 0.5dp 缩进分隔线，从上往下卷帘展开。
+class _BandTile extends StatefulWidget {
   const _BandTile({
     super.key,
     required this.title,
@@ -383,62 +385,130 @@ class _BandTile extends StatelessWidget {
   final String? timeRange;
 
   @override
+  State<_BandTile> createState() => _BandTileState();
+}
+
+class _BandTileState extends State<_BandTile> {
+  late bool _expanded = widget.expanded;
+
+  static const Duration _kAnimDuration = Duration(milliseconds: 160);
+
+  void _toggle() {
+    AppHaptics.select();
+    setState(() {
+      _expanded = !_expanded;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return ExpansionTile(
-      initiallyExpanded: expanded,
-      // §5.3：段头 52dp
-      minTileHeight: 52,
-      tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-      childrenPadding: EdgeInsets.zero,
-      title: Row(
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: scheme.onSurface,
-                  ),
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final dividerColor = dark
+        ? Colors.white.withValues(alpha: SettingsLineFrame.kDarkDividerAlpha)
+        : SettingsLineFrame.kLightDivider;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          button: true,
+          expanded: _expanded,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _toggle,
+            child: SizedBox(
+              height: 52,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Text(
+                            widget.title,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: scheme.onSurface,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              widget.sectionRange,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 13, color: scheme.outline),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (widget.timeRange != null)
+                      Text(
+                        widget.timeRange!,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          color: scheme.outline,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    const SizedBox(width: 4),
+                    AnimatedRotation(
+                      turns: _expanded ? 0.5 : 0.0,
+                      duration: _kAnimDuration,
+                      curve: Curves.easeOutCubic,
+                      child: Icon(
+                        Icons.expand_more,
+                        size: 24,
+                        color: _expanded
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    sectionRange,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 13, color: scheme.outline),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (timeRange != null)
-            Text(
-              timeRange!,
-              style: TextStyle(
-                fontSize: 13.5,
-                color: scheme.outline,
-                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
-          // 与 ExpansionTile 自带箭头之间留 4dp
-          const SizedBox(width: 4),
-        ],
-      ),
-      children: [
-        ...children,
-        if (tailHint)
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: Text(
-              '提示：修改即时生效，周视图左侧时间轴会自动同步。',
-              style: TextStyle(fontSize: 12),
-            ),
           ),
+        ),
+        ClipRect(
+          child: AnimatedSize(
+            alignment: Alignment.topCenter,
+            duration: _kAnimDuration,
+            reverseDuration: _kAnimDuration,
+            curve: Curves.easeOutCubic,
+            clipBehavior: Clip.antiAlias,
+            child: _expanded
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Divider(
+                        height: 1,
+                        thickness: 0.5,
+                        indent: 16,
+                        endIndent: 16,
+                        color: dividerColor,
+                      ),
+                      ...widget.children,
+                      if (widget.tailHint)
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
+                          child: Text(
+                            '提示：修改即时生效，周视图左侧时间轴会自动同步。',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                    ],
+                  )
+                : const SizedBox(width: double.infinity, height: 0),
+          ),
+        ),
       ],
     );
   }
@@ -500,8 +570,9 @@ class SectionRulesBody extends ConsumerWidget {
           title: '分段设置',
           children: [
             _StepperRow(
-              title: '午休在第几节课之后',
+              title: '第几节课后开始午休',
               value: lunch,
+              valueLabel: '第 $lunch 节后',
               min: 1,
               max: dinner - 1,
               onChanged: (v) => ref
@@ -509,8 +580,9 @@ class SectionRulesBody extends ConsumerWidget {
                   .setLunchAfterSection(v),
             ),
             _StepperRow(
-              title: '晚餐在第几节课之后',
+              title: '第几节课后开始晚餐',
               value: dinner,
+              valueLabel: '第 $dinner 节后',
               min: lunch + 1,
               max: maxSection,
               onChanged: (v) => ref
@@ -520,10 +592,11 @@ class SectionRulesBody extends ConsumerWidget {
           ],
         ),
         SettingsLineFrame(
-          title: '休息时段',
+          title: '课表午休与晚餐分隔',
           children: [
             SettingsSwitchRow(
-              title: '午休',
+              title: '显示午休分隔条',
+              subtitle: '显示在上午与下午之间',
               value: band.lunchVisible,
               onChanged: (v) => ref
                   .read(bandSettingsProvider.notifier)
@@ -542,20 +615,21 @@ class SectionRulesBody extends ConsumerWidget {
                   lunch: true, isStart: false),
             ),
             SettingsSwitchRow(
-              title: '晚间',
+              title: '显示晚餐分隔条',
+              subtitle: '显示在下午与晚上之间',
               value: band.dinnerVisible,
               onChanged: (v) => ref
                   .read(bandSettingsProvider.notifier)
                   .setDinnerVisible(v),
             ),
             _TimeRow(
-              title: '晚间开始',
+              title: '晚餐开始',
               value: band.dinnerStart,
               onTap: () => _pickBandTime(context, ref,
                   lunch: false, isStart: true),
             ),
             _TimeRow(
-              title: '晚间结束',
+              title: '晚餐结束',
               value: band.dinnerEnd,
               onTap: () => _pickBandTime(context, ref,
                   lunch: false, isStart: false),
@@ -604,7 +678,7 @@ class SectionRulesBody extends ConsumerWidget {
     final picked = await showTimePicker(
       context: context,
       initialTime: _parseTimeOfDay(current),
-      helpText: lunch ? '午休时间' : '晚间时间',
+      helpText: lunch ? '午休时间' : '晚餐时间',
     );
     if (picked == null) return;
     final text =
@@ -640,11 +714,13 @@ class _StepperRow extends StatelessWidget {
     required this.max,
     required this.onChanged,
     this.subtitle,
+    this.valueLabel,
   });
 
   final String title;
   final String? subtitle;
   final int value;
+  final String? valueLabel;
   final int min;
   final int max;
   final ValueChanged<int> onChanged;
@@ -690,7 +766,7 @@ class _StepperRow extends StatelessWidget {
                       : null,
                   icon: const Icon(Icons.remove_circle_outline),
                 ),
-                Text('$value',
+                Text(valueLabel ?? '$value',
                     style: const TextStyle(
                         fontSize: 16, fontWeight: FontWeight.w600)),
                 IconButton(

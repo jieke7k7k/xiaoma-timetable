@@ -11,7 +11,7 @@ const double kTimeAxisWidth = 50;
 /// 课表表头行高度（px）：月份列 + 星期/日期列
 const double kGridHeaderHeight = 46;
 
-/// 午休 / 晚间分隔带高度（px，1.2.1 起 20→24 容纳时间段文字）；
+/// 午休 / 晚餐分隔带高度（px，1.2.1 起 20→24 容纳时间段文字）；
 /// 主页、预览、导出图共用，保证高度守恒计算一致
 const double kBandHeight = 24;
 
@@ -20,15 +20,15 @@ const double kBandHeight = 24;
 /// （test/grid_metrics_test.dart 断言其值 == 56），后续清理时可随注释一并删除。
 const double kBottomBarHeight = 56;
 
-/// 一条分隔带：[after] 第几节之后、[label] 名称（午休/晚间）、
+/// 一条分隔带：[after] 第几节之后、[label] 名称（午休/晚餐）、
 /// [interval] 时间段文本（如 12:00–14:00，可为空）
 typedef GridBand = ({int after, String label, String interval});
 
-/// 休息时段设置（WB_SPEC_209 第 6 节）：午休 / 晚间各自的显隐开关与自定义起止时间。
+/// 休息时段设置（WB_SPEC_209 第 6 节）：午休 / 晚餐各自的显隐开关与自定义起止时间。
 ///
 /// 纯数据模型，与「分段点」（第几节之后）分离：分段点决定分隔带位置，
 /// 这里决定带子显隐与标注时间。默认值与旧版从前后节次时间推导出的观感一致
-/// （午休 12:00–14:00、晚间 17:10–18:00，两条都默认显示），老用户升级不突变。
+/// （午休 12:00–14:00、晚餐 17:10–18:00，两条都默认显示），老用户升级不突变。
 class BandSettings {
   final bool lunchVisible;
   final bool dinnerVisible;
@@ -88,7 +88,7 @@ bool bandRangeValid(String start, String end) {
 /// - 关闭的带子不进入结果——不占位、不画线、不占高度，节次连续排列；
 /// - 开启的带子 [GridBand.interval] 直接用自定义起止时间（不再从前后节次推导）；
 /// - 只保留 after < [sectionCount] 的带子（与旧版过滤口径一致）；
-/// - 结果按「午休在前、晚间在后」排列（分段点本身保证 lunch < dinner，此处兜底顺序稳定）。
+/// - 结果按「午休在前、晚餐在后」排列（分段点本身保证 lunch < dinner，此处兜底顺序稳定）。
 List<GridBand> computeActiveBands({
   required int lunchAfter,
   required int dinnerAfter,
@@ -106,7 +106,7 @@ List<GridBand> computeActiveBands({
   if (settings.dinnerVisible && dinnerAfter < sectionCount) {
     bands.add((
       after: dinnerAfter,
-      label: '晚间',
+      label: '晚餐',
       interval: '${settings.dinnerStart}–${settings.dinnerEnd}',
     ));
   }
@@ -114,7 +114,7 @@ List<GridBand> computeActiveBands({
 }
 
 /// 竖线纵向分段（纯函数，WB_SPEC_210 第 2 节）：把网格的竖线按节次切成若干
-/// 纵向区间，遇到休息带（午休/晚间）时跳过带子高度——带子内部不画竖线。
+/// 纵向区间，遇到休息带（午休/晚餐）时跳过带子高度——带子内部不画竖线。
 ///
 /// 返回每个节次占用的纵向区间 `[start, end)`（相对网格顶部的偏移），供主页
 /// 周视图 `_GridPainter` 与导出图页共用，保证两处「竖线跳过休息带」口径一致：

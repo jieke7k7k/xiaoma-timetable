@@ -726,7 +726,7 @@ final segmentSettingsProvider =
       SegmentSettingsNotifier.new,
     );
 
-/// 休息时段设置状态（WB_SPEC_209 第 6 节）：午休/晚间各自显隐 + 自定义起止时间，
+/// 休息时段设置状态（WB_SPEC_209 第 6 节）：午休/晚餐各自显隐 + 自定义起止时间，
 /// 持久化到 app_settings 表。键名 band_lunch_visible / band_dinner_visible /
 /// band_lunch_start / band_lunch_end / band_dinner_start / band_dinner_end。
 /// 起止时间必须是合法 "HH:mm" 且开始早于结束，否则不保存（返回 false）。
@@ -767,7 +767,7 @@ class BandSettingsNotifier extends AsyncNotifier<BandSettings> {
     return true;
   }
 
-  /// 设置晚间起止时间；开始早于结束才保存，返回是否保存成功。
+  /// 设置晚餐起止时间；开始早于结束才保存，返回是否保存成功。
   Future<bool> setDinnerTime(String start, String end) async {
     if (!bandRangeValid(start, end)) return false;
     await Dao.instance.setSetting('band_dinner_start', start);
