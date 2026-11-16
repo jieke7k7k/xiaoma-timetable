@@ -208,7 +208,7 @@ class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
     unawaited(WidgetService.instance.refreshWidgets());
   }
 
-  /// 减少一节（删除最后一节），并把午休/晚餐分段点钳回新范围。总节数下限 4。
+  /// 减少一节（删除最后一节），并把午间/晚间分段点钳回新范围。总节数下限 4。
   Future<void> removeLastSection() async {
     final list = <TimeSlot>[...(state.value ?? const <TimeSlot>[])]
       ..sort((a, b) => a.section.compareTo(b.section));
@@ -666,12 +666,12 @@ final themeSettingsProvider =
       ThemeSettingsNotifier.new,
     );
 
-/// 作息分段设置（阶段六·作息三段化）：午休/晚餐分段点，持久化到 app_settings 表。
+/// 作息分段设置（阶段六·作息三段化）：午间/晚间分段点，持久化到 app_settings 表。
 /// 键名 lunch_after_section（默认 5）、dinner_after_section（默认 9）。
-/// 分段规则：节次 ≤ 午休分段点为上午，≤ 晚餐分段点为下午，其余为晚上。
+/// 分段规则：节次 ≤ 午间分段点为上午，≤ 晚间分段点为下午，其余为晚上。
 class SegmentSettings {
-  final int lunchAfterSection; // 午休在第几节课之后
-  final int dinnerAfterSection; // 晚餐在第几节课之后
+  final int lunchAfterSection; // 午间在第几节课之后
+  final int dinnerAfterSection; // 晚间在第几节课之后
 
   const SegmentSettings({
     required this.lunchAfterSection,
@@ -697,7 +697,7 @@ class SegmentSettingsNotifier extends AsyncNotifier<SegmentSettings> {
     );
   }
 
-  /// 修改午休分段点。钳制到 [1, 晚餐分段点-1]，保证午休点 < 晚餐点且上午段至少 1 节。
+  /// 修改午间分段点。钳制到 [1, 晚间分段点-1]，保证午间点 < 晚间点且上午段至少 1 节。
   Future<void> setLunchAfterSection(int value) async {
     final dinner = state.value?.dinnerAfterSection ?? 9;
     final max = dinner - 1;
@@ -708,7 +708,7 @@ class SegmentSettingsNotifier extends AsyncNotifier<SegmentSettings> {
     );
   }
 
-  /// 修改晚餐分段点。钳制到 [午休分段点+1, +∞)，保证午休点 < 晚餐点；
+  /// 修改晚间分段点。钳制到 [午间分段点+1, +∞)，保证午间点 < 晚间点；
   /// 上限由作息设置页按当前最大节次进一步钳制。
   Future<void> setDinnerAfterSection(int value) async {
     final lunch = state.value?.lunchAfterSection ?? 5;
@@ -726,7 +726,7 @@ final segmentSettingsProvider =
       SegmentSettingsNotifier.new,
     );
 
-/// 休息时段设置状态（WB_SPEC_209 第 6 节）：午休/晚餐各自显隐 + 自定义起止时间，
+/// 休息时段设置状态（WB_SPEC_209 第 6 节）：午间/晚间各自显隐 + 自定义起止时间，
 /// 持久化到 app_settings 表。键名 band_lunch_visible / band_dinner_visible /
 /// band_lunch_start / band_lunch_end / band_dinner_start / band_dinner_end。
 /// 起止时间必须是合法 "HH:mm" 且开始早于结束，否则不保存（返回 false）。
@@ -758,7 +758,7 @@ class BandSettingsNotifier extends AsyncNotifier<BandSettings> {
     state = AsyncData(_cur.copyWith(dinnerVisible: value));
   }
 
-  /// 设置午休起止时间；开始早于结束才保存，返回是否保存成功。
+  /// 设置午间起止时间；开始早于结束才保存，返回是否保存成功。
   Future<bool> setLunchTime(String start, String end) async {
     if (!bandRangeValid(start, end)) return false;
     await Dao.instance.setSetting('band_lunch_start', start);
@@ -767,7 +767,7 @@ class BandSettingsNotifier extends AsyncNotifier<BandSettings> {
     return true;
   }
 
-  /// 设置晚餐起止时间；开始早于结束才保存，返回是否保存成功。
+  /// 设置晚间起止时间；开始早于结束才保存，返回是否保存成功。
   Future<bool> setDinnerTime(String start, String end) async {
     if (!bandRangeValid(start, end)) return false;
     await Dao.instance.setSetting('band_dinner_start', start);

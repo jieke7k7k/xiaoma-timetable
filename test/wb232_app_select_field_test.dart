@@ -233,7 +233,7 @@ void main() {
     expect(find.text('第 3 节'), findsOneWidget);
   });
 
-  testWidgets('节次抽屉带时间与午休/晚餐分隔行（三处表单共用的构造器）',
+  testWidgets('节次抽屉带时间与午间/晚间分隔行（三处表单共用的构造器）',
       (tester) async {
     final id = await tester.runAsync(() => Dao.instance.insertCourse(
         course(name: '药理学', day: 2, start: 1, end: 2)));
@@ -242,9 +242,9 @@ void main() {
     await tapSelect(tester, '开始节次');
     // 第 5 节行右侧带上下课时间
     expect(find.text('11:20 – 12:00'), findsOneWidget);
-    // 第 5 节后有午休分隔行、第 9 节后有晚餐分隔行
-    expect(find.text('— 午休 (12:00–14:00) —'), findsOneWidget);
-    expect(find.text('— 晚餐 (17:10–18:00) —'), findsOneWidget);
+    // 第 5 节后有午间分隔行、第 9 节后有晚间分隔行
+    expect(find.text('— 午间 (12:00–14:00) —'), findsOneWidget);
+    expect(find.text('— 晚间 (17:10–18:00) —'), findsOneWidget);
   });
 
   testWidgets('草稿弹窗：节次上限跟学期实际节次数（13），抽屉盖在 Dialog 之上',
@@ -299,7 +299,7 @@ void main() {
             ),
         ];
 
-    test('默认分段点：第 5 节后午休、第 9 节后晚餐，时间取相邻两节边界', () {
+    test('默认分段点：第 5 节后午间、第 9 节后晚间，时间取相邻两节边界', () {
       final opts = buildSectionOptions(slots: const [
         TimeSlot(section: 5, startTime: '11:20', endTime: '12:00'),
         TimeSlot(section: 6, startTime: '14:00', endTime: '14:40'),
@@ -308,10 +308,10 @@ void main() {
         TimeSlot(section: 11, startTime: '18:50', endTime: '19:30'),
       ]);
       final labels = opts.map((o) => o.label).toList();
-      expect(labels.contains('— 午休 (12:00–14:00) —'), isTrue);
-      expect(labels.contains('— 晚餐 (17:10–18:00) —'), isTrue);
+      expect(labels.contains('— 午间 (12:00–14:00) —'), isTrue);
+      expect(labels.contains('— 晚间 (17:10–18:00) —'), isTrue);
       // 分隔行紧跟在对应节次之后
-      final lunchIdx = labels.indexOf('— 午休 (12:00–14:00) —');
+      final lunchIdx = labels.indexOf('— 午间 (12:00–14:00) —');
       expect(opts[lunchIdx].isDivider, isTrue);
       expect(labels[lunchIdx - 1], '第 5 节');
       // 行里带时间、框内短语不带时间
@@ -320,7 +320,7 @@ void main() {
       expect(row5.shortLabel, '第 5 节');
     });
 
-    test('作息页把午休改到第 4 节后，分隔行跟着挪到第 4 节', () {
+    test('作息页把午间改到第 4 节后，分隔行跟着挪到第 4 节', () {
       final opts = buildSectionOptions(
         slots: const [
           TimeSlot(section: 4, startTime: '10:30', endTime: '11:10'),
@@ -330,8 +330,8 @@ void main() {
         seg: const SegmentSettings(lunchAfterSection: 4, dinnerAfterSection: 9),
       );
       final labels = opts.map((o) => o.label).toList();
-      expect(labels.contains('— 午休 (11:10–11:20) —'), isTrue);
-      expect(labels.indexOf('— 午休 (11:10–11:20) —'), 1); // 紧跟第 4 节
+      expect(labels.contains('— 午间 (11:10–11:20) —'), isTrue);
+      expect(labels.indexOf('— 午间 (11:10–11:20) —'), 1); // 紧跟第 4 节
     });
 
     test('结束节次抽屉：小于开始节次的置灰但仍在列表里', () {

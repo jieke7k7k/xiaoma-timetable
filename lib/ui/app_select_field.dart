@@ -11,7 +11,7 @@ import 'app_styles.dart';
 ///
 /// 230 定版后，App 里还剩 11 处原生 `DropdownButtonFormField`：弹出层是 Material
 /// 默认浮层，套不上 [AppRadii.menu]；列表项与回显项被强制要求是同一个 Widget，
-/// 塞时间文字和午休分隔行极别扭；内部固定箭头宽度还会在 360dp 窄屏上把三个框
+/// 塞时间文字和午间分隔行极别扭；内部固定箭头宽度还会在 360dp 窄屏上把三个框
 /// 并排挤溢出。这里用「只读触发框 + 底部抽屉」替换掉它：
 ///
 /// - 表单里的下拉 → [AppSelectField]（外观直接吃全局 `InputDecorationTheme`，
@@ -44,7 +44,7 @@ class AppSelectOption<T> {
     this.isDivider = false,
   }) : label = label ?? shortLabel;
 
-  /// 不可选分隔行（午休 / 晚餐）：纯文字、无值、不响应点击
+  /// 不可选分隔行（午间 / 晚间）：纯文字、无值、不响应点击
   const AppSelectOption.divider({required String label})
       : value = null,
         shortLabel = '',
@@ -84,7 +84,7 @@ class AppSelectOption<T> {
   /// false = 置灰不可点（结束节次抽屉里小于开始节次的那几节）
   final bool enabled;
 
-  /// true = 分隔行（午休 / 晚餐），不参与选中
+  /// true = 分隔行（午间 / 晚间），不参与选中
   final bool isDivider;
 }
 
@@ -469,10 +469,10 @@ List<AppSelectOption<int>> buildWeekdayOptions() {
   ];
 }
 
-/// 节次选项（三处表单共用）：行里带上下课时间，并在午休 / 晚餐分段点后插入分隔行
+/// 节次选项（三处表单共用）：行里带上下课时间，并在午间 / 晚间分段点后插入分隔行
 ///
 /// - [slots] 来自 `timeSlotsProvider`（用户改过作息后时间跟着变，不写死）；
-/// - [seg] 的分段点决定分隔行位置（午休默认第 5 节后、晚餐默认第 9 节后）；
+/// - [seg] 的分段点决定分隔行位置（午间默认第 5 节后、晚间默认第 9 节后）；
 /// - [minSection] 非空时小于它的节次置灰（结束节次抽屉不允许选到开始节次之前）。
 List<AppSelectOption<int>> buildSectionOptions({
   required List<TimeSlot> slots,
@@ -498,12 +498,12 @@ List<AppSelectOption<int>> buildSectionOptions({
     // 分隔行时间取相邻两节的边界：上一节下课 ~ 下一节上课
     if (s.section == lunchAfter) {
       out.add(AppSelectOption.divider(
-        label: '— 午休 (${s.endTime}–${next.startTime}) —',
+        label: '— 午间 (${s.endTime}–${next.startTime}) —',
       ));
     }
     if (s.section == dinnerAfter) {
       out.add(AppSelectOption.divider(
-        label: '— 晚餐 (${s.endTime}–${next.startTime}) —',
+        label: '— 晚间 (${s.endTime}–${next.startTime}) —',
       ));
     }
   }

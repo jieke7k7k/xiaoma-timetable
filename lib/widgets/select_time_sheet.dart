@@ -135,14 +135,14 @@ class _SelectTimeSheetState extends ConsumerState<_SelectTimeSheet> {
     final sectionCount = sorted.isNotEmpty ? sorted.last.section : 13;
     final slotMap = {for (final s in sorted) s.section: s};
 
-    // 分隔带：午休/晚餐按分段点落在第 X 节之后（弹层只做时间参考，
+    // 分隔带：午间/晚间按分段点落在第 X 节之后（弹层只做时间参考，
     // 主页「休息时段设置」里的显隐/自定义时间不参与，见规格第 6.2 节）
     final bands = <({int after, String label})>[];
     final lunchAfter = seg?.lunchAfterSection ?? 5;
     final dinnerAfter = seg?.dinnerAfterSection ?? 9;
-    if (lunchAfter < sectionCount) bands.add((after: lunchAfter, label: '午休'));
+    if (lunchAfter < sectionCount) bands.add((after: lunchAfter, label: '午间'));
     if (dinnerAfter < sectionCount) {
-      bands.add((after: dinnerAfter, label: '晚餐'));
+      bands.add((after: dinnerAfter, label: '晚间'));
     }
 
     // 占用判定与主页同源：某周的某天有哪些课（含单次调课、周次过滤）
@@ -321,7 +321,7 @@ class _SelectTimeSheetState extends ConsumerState<_SelectTimeSheet> {
                               ),
                             ),
                           ),
-                        // 午休 / 晚餐分隔带：半透明浮在选区之上，本身不可点
+                        // 午间 / 晚间分隔带：半透明浮在选区之上，本身不可点
                         for (final b in bands)
                           Positioned(
                             left: 0,

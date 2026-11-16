@@ -59,7 +59,7 @@ class TimeSettingsPage extends ConsumerWidget {
           ),
 
           // §5（233 重构）：组标题留在框外，上午 / 下午 / 晚上各成独立线框，
-          // 框内只放一个段头；午休 / 晚餐间隔行移到框与框之间的留白区。
+          // 框内只放一个段头；午间 / 晚间间隔行移到框与框之间的留白区。
           // 「默认展开当前时段」保持现状（跟随时钟走，不固定上午）。
           const SettingsGroupHeader('上下课时间（点时间可修改）'),
           if (morning.isNotEmpty)
@@ -81,7 +81,7 @@ class TimeSettingsPage extends ConsumerWidget {
               ],
             ),
           if (morning.isNotEmpty && afternoon.isNotEmpty)
-            _buildIntervalRow(context, '午休', morning.last.endTime,
+            _buildIntervalRow(context, '午间', morning.last.endTime,
                 afternoon.first.startTime),
           if (afternoon.isNotEmpty)
             SettingsLineFrame(
@@ -102,7 +102,7 @@ class TimeSettingsPage extends ConsumerWidget {
               ],
             ),
           if (afternoon.isNotEmpty && evening.isNotEmpty)
-            _buildIntervalRow(context, '晚餐', afternoon.last.endTime,
+            _buildIntervalRow(context, '晚间', afternoon.last.endTime,
                 evening.first.startTime),
           if (evening.isNotEmpty)
             SettingsLineFrame(
@@ -570,7 +570,7 @@ class SectionRulesBody extends ConsumerWidget {
           title: '分段设置',
           children: [
             _StepperRow(
-              title: '第几节课后开始午休',
+              title: '第几节课后开始午间',
               value: lunch,
               valueLabel: '第 $lunch 节后',
               min: 1,
@@ -580,7 +580,7 @@ class SectionRulesBody extends ConsumerWidget {
                   .setLunchAfterSection(v),
             ),
             _StepperRow(
-              title: '第几节课后开始晚餐',
+              title: '第几节课后开始晚间',
               value: dinner,
               valueLabel: '第 $dinner 节后',
               min: lunch + 1,
@@ -592,10 +592,10 @@ class SectionRulesBody extends ConsumerWidget {
           ],
         ),
         SettingsLineFrame(
-          title: '课表午休与晚餐分隔',
+          title: '课表午间与晚间分隔',
           children: [
             SettingsSwitchRow(
-              title: '显示午休分隔条',
+              title: '显示午间分隔条',
               subtitle: '显示在上午与下午之间',
               value: band.lunchVisible,
               onChanged: (v) => ref
@@ -603,19 +603,19 @@ class SectionRulesBody extends ConsumerWidget {
                   .setLunchVisible(v),
             ),
             _TimeRow(
-              title: '午休开始',
+              title: '午间开始',
               value: band.lunchStart,
               onTap: () => _pickBandTime(context, ref,
                   lunch: true, isStart: true),
             ),
             _TimeRow(
-              title: '午休结束',
+              title: '午间结束',
               value: band.lunchEnd,
               onTap: () => _pickBandTime(context, ref,
                   lunch: true, isStart: false),
             ),
             SettingsSwitchRow(
-              title: '显示晚餐分隔条',
+              title: '显示晚间分隔条',
               subtitle: '显示在下午与晚上之间',
               value: band.dinnerVisible,
               onChanged: (v) => ref
@@ -623,13 +623,13 @@ class SectionRulesBody extends ConsumerWidget {
                   .setDinnerVisible(v),
             ),
             _TimeRow(
-              title: '晚餐开始',
+              title: '晚间开始',
               value: band.dinnerStart,
               onTap: () => _pickBandTime(context, ref,
                   lunch: false, isStart: true),
             ),
             _TimeRow(
-              title: '晚餐结束',
+              title: '晚间结束',
               value: band.dinnerEnd,
               onTap: () => _pickBandTime(context, ref,
                   lunch: false, isStart: false),
@@ -678,7 +678,7 @@ class SectionRulesBody extends ConsumerWidget {
     final picked = await showTimePicker(
       context: context,
       initialTime: _parseTimeOfDay(current),
-      helpText: lunch ? '午休时间' : '晚餐时间',
+      helpText: lunch ? '午间时间' : '晚间时间',
     );
     if (picked == null) return;
     final text =
@@ -802,7 +802,7 @@ class _TimeRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      // WB_SPEC_235 跟进：午休/晚餐时间行 = 轻点档
+      // WB_SPEC_235 跟进：午间/晚间时间行 = 轻点档
       onTap: () {
         AppHaptics.tap();
         onTap();

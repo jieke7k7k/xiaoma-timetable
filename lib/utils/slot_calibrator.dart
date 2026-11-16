@@ -13,7 +13,7 @@ import 'ics_parser.dart';
 /// 2. 由「起止都已知」的节次推导统一课时（取众数，如 40 分钟）。
 /// 3. 用课时互推同一节的起止（有开始补结束、有结束补开始）。
 /// 4. 用多节块的跨度方程分配段内课间，再链式补齐其余未知边界；
-///    跨段的块（午休/晚餐包含在跨度内）不参与课间分配，避免污染分段间隔。
+///    跨段的块（午间/晚间包含在跨度内）不参与课间分配，避免污染分段间隔。
 /// 5. 合法性兜底：逐节保证开始早于结束、相邻节次不重叠；块给出的已知值
 ///    冲突时保开始顺延结束。绝不输出倒置或重叠的时间段。
 ///
@@ -91,7 +91,7 @@ class SlotCalibrator {
         final rest = totalBreak - knownSum;
         if (rest < 0) continue;
         final each = rest ~/ unknown;
-        if (each > 40) continue; // 跨段块（午/晚餐在跨度内），不参与分配
+        if (each > 40) continue; // 跨段块（午/晚间在跨度内），不参与分配
         var rem = rest % unknown;
         for (var k = blk.startSection; k < blk.endSection; k++) {
           if (!gaps.containsKey(k)) {

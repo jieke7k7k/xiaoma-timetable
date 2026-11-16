@@ -352,11 +352,11 @@ void main() {
       }
     });
 
-    testWidgets('午休/晚餐间隔行移到框外，纯文字居中、无图标无 emoji', (tester) async {
+    testWidgets('午间/晚间间隔行移到框外，纯文字居中、无图标无 emoji', (tester) async {
       await pumpTimePage(tester);
       for (final text in [
-        '午休 12:00 – 14:00 · 约 2 小时',
-        '晚餐 17:10 – 18:00 · 约 50 分钟',
+        '午间 12:00 – 14:00 · 约 2 小时',
+        '晚间 17:10 – 18:00 · 约 50 分钟',
       ]) {
         expect(find.text(text), findsOneWidget);
         final finder = find.text(text);

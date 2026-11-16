@@ -17,7 +17,7 @@ class _FixedWeek extends DisplayWeekNotifier {
 /// WB_SPEC_232 第 6 节：「在课表上选」弹层
 ///
 /// 覆盖规格第 9 节第 3 组验收：点两格定一段、反序自动正序、跨天重置、
-/// 同格两下保持单节、连成一段后第三下重置、跨午休可连、
+/// 同格两下保持单节、连成一段后第三下重置、跨午间可连、
 /// 点有课格子出软提示且可确认、取消不写回、确认写回三个变量、翻周只改占用显示。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -175,7 +175,7 @@ void main() {
     await endTest(tester);
   });
 
-  testWidgets('可以跨过午休带连成 5–6 节', (tester) async {
+  testWidgets('可以跨过午间带连成 5–6 节', (tester) async {
     await openSheet(tester);
     await tapCell(tester, 1, 5);
     await tapCell(tester, 1, 6);

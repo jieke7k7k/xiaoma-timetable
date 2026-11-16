@@ -39,7 +39,7 @@ import '../widgets/semester_form_dialog.dart';
 ///   右侧编辑/新建/更多三按钮位置固定
 /// - 表头：月份列 + 周一~周日（几月几日，今天高亮）
 /// - 网格：左侧节次号与上下课时间，右侧日期列，跨节次课程合并为圆角卡片
-/// - 午休 / 晚餐分隔带：位置由「作息分段设置」驱动（默认第 5 / 9 节后），
+/// - 午间 / 晚间分隔带：位置由「作息分段设置」驱动（默认第 5 / 9 节后），
 ///   显隐与起止时间由「休息时段设置」驱动（见 grid_metrics.computeActiveBands）
 /// - 非本周视图时右侧边缘中间显示「回到本周」竖条悬浮按钮，本周视图自动隐藏
 /// - 格子三态布局（见 slot_layout.dart）：本周课优先，非本周课置灰且不遮挡本周课；
@@ -1401,7 +1401,7 @@ class _GridArea extends ConsumerWidget {
     if (semester == null || slots.isEmpty) return const SizedBox.shrink();
     final sectionCount = slots.length;
     final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
-    // 分隔带位置由「作息分段设置」驱动；provider 未加载完成时回退默认值（午休 5 / 晚餐 9）
+    // 分隔带位置由「作息分段设置」驱动；provider 未加载完成时回退默认值（午间 5 / 晚间 9）
     // 今天列高亮：正在看的就是本周且今天在显示列里时才算（开关 1.2.6）
     final nowDate = DateTime.now();
     final thisWeekNo = WeekCalc.currentWeek(
@@ -1582,7 +1582,7 @@ class _FullBand extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final bg = scheme.surfaceContainerHighest.withValues(alpha: 0.6);
     // 页内带子（axisWidth == 0）只留同色底，不画任何文字（复查 Bug 5）：
-    // 名称已由固定时间轴占位画，再在每页里画一份居中「午休 12:00–14:00」，
+    // 名称已由固定时间轴占位画，再在每页里画一份居中「午间 12:00–14:00」，
     // 切周滑到中途会出现双份重影。时间轴外（axisWidth > 0，如导出图）
     // 仍画时间轴段名称 + 居中名称与时间段。
     if (axisWidth == 0) {
@@ -2014,7 +2014,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
               activeBands: activeBands,
               totalHeight: totalHeight,
             ),
-          // 分隔带（午休/晚休）：画在每一页内部，随页一起滑动（Argon 方案 Q5）。
+          // 分隔带（午间/晚间）：画在每一页内部，随页一起滑动（Argon 方案 Q5）。
           // 旧实现在 PageView 外层画单条通栏，滑屏切周时带子静止不动、与网格
           // 脱节。坐标与旧公式一致：b.after 节后 + 之前带子的高度。跨带长卡
           // 仍完整压住带子（卡片在 Stack 里画在带子之后，见 A2）。

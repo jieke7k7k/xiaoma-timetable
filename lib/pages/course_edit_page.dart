@@ -748,7 +748,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
             for (var s = 1; s <= 13; s++)
               TimeSlot(section: s, startTime: '', endTime: ''),
           ];
-    // 分段点（午休/晚餐）决定节次抽屉里的分隔行插在哪一节之后
+    // 分段点（午间/晚间）决定节次抽屉里的分隔行插在哪一节之后
     final seg = ref.watch(segmentSettingsProvider).value;
     final scheme = Theme.of(context).colorScheme;
     // 界面设置（配色方案 / 色板）只在这里取一次：色块、其他时段小圆点共用同一口径

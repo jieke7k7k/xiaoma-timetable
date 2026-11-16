@@ -15,7 +15,7 @@ import org.junit.Test
  * Dart 侧 test/ongoing_focus_fixture_test.dart 断言的 expected 与本文件逐字相同，
  * 两边跑绿才算「App 被杀后原生算出来的通知与 App 内说法完全一致」。
  *
- * 覆盖：上课中 / 课间 / 午休 / 晚上 / 周末 / 假期 / 停课当天 / 调课当天 /
+ * 覆盖：上课中 / 课间 / 午间 / 晚上 / 周末 / 假期 / 停课当天 / 调课当天 /
  * 单周 / 双周 / 学期外（开学前 + 学期结束）/ 课表为空 / 当天最后一节；
  * 另加三条防御分支（weeksJson 损坏、读表抛异常、开关关 / 无学期）。
  */
@@ -29,7 +29,7 @@ class OngoingFocusCalculatorTest {
     fun `夹具覆盖了规格要求的全部场景`() {
         val names = fixture.cases.map { it.name }
         // 场景名里的关键词就是验收清单，少一个都别打包
-        val mustContain = listOf("上课中", "课间", "午休", "晚上", "周末", "假期",
+        val mustContain = listOf("上课中", "课间", "午间", "晚上", "周末", "假期",
             "停课当天", "调课当天", "单周", "双周", "学期外", "课表为空")
         for (key in mustContain) {
             assertTrue("夹具缺少场景：$key", names.any { it.contains(key) })

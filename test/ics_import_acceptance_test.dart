@@ -120,7 +120,7 @@ void main() {
         expect(s.startTime.compareTo(s.endTime), lessThan(0),
             reason: '第 ${s.section} 节不得倒置');
       }
-      // 分段间隔：午休 12:00-14:00、晚餐 17:10-18:00
+      // 分段间隔：午间 12:00-14:00、晚间 17:10-18:00
       TimeSlot slot(int sec) => calibrated.firstWhere((e) => e.section == sec);
       expect(slot(5).endTime, '12:00');
       expect(slot(6).startTime, '14:00');

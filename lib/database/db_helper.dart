@@ -309,7 +309,7 @@ class DbHelper {
 }
 
 /// 内置默认节次时间（13 节，上午 5 节 + 下午 4 节 + 晚上 4 节，每节 40 分钟）
-/// 与分段默认点（午休在第 5 节后、晚餐在第 9 节后）对齐；
+/// 与分段默认点（午间在第 5 节后、晚间在第 9 节后）对齐；
 /// 导入课表文件后会按文件自动校准，用户也可在设置页逐节修改
 final List<TimeSlot> defaultTimeSlots = [
   const TimeSlot(section: 1, startTime: '08:00', endTime: '08:40'),
