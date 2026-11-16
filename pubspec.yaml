@@ -63,6 +63,8 @@ dependencies:
   home_widget: ^0.10.0
   # 阶段六（1.2.0）：课表导出图片走系统分享面板
   share_plus: ^13.3.1
+  # WB_SPEC_237：整学期多页 PDF 导出（矢量，A4 纵向）
+  pdf: ^3.11.1
   # 阶段六（1.2.1）：导入字体存 App 私有目录
   path_provider: ^2.1.5
   package_info_plus: ^10.2.2

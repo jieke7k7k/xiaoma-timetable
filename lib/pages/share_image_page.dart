@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -14,9 +15,20 @@ import '../utils/app_haptics.dart';
 import '../ui/grid_metrics.dart';
 import '../utils/color_schemes.dart';
 import '../utils/override_effect.dart';
+import '../utils/semester_export_helper.dart';
 import '../utils/slot_layout.dart';
 import '../utils/week_calc.dart';
+import '../widgets/conflict_block.dart';
 import '../widgets/course_card.dart';
+
+/// 导出图像素比封顶（WB_SPEC_237 §8）：宽 ≤1080、高 ≤1920，基准 3.0 倍。
+/// 纯函数，可单元测试。
+double cappedExportPixelRatio(double width, double height) {
+  var ratio = 3.0;
+  if (width * ratio > 1080) ratio = 1080 / width;
+  if (height * ratio > 1920) ratio = 1920 / height;
+  return ratio;
+}
 
 /// 课表导出图片页
 ///
@@ -41,15 +53,25 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
     try {
       final boundary = _boundaryKey.currentContext!.findRenderObject()
           as RenderRepaintBoundary;
-      final image = await boundary.toImage(pixelRatio: 3.0);
-      final byteData =
-          await image.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData == null) throw StateError('图片生成失败');
+      final rawSize = boundary.size;
+      // WB_SPEC_237 §8：像素比封顶（宽 ≤1080、高 ≤1920），基准 3.0 倍。
+      var pixelRatio =
+          cappedExportPixelRatio(rawSize.width, rawSize.height);
+      final firstRender = await _renderPng(boundary, pixelRatio);
+      if (firstRender == null) throw StateError('图片生成失败');
+      var pngBytes = firstRender;
+      // 体积上限 2MB：逐档降像素比重渲，每次复核体积，直到 ≤2MB 或降到 1.0。
+      while (pngBytes.lengthInBytes > 2 * 1024 * 1024 && pixelRatio > 1.0) {
+        pixelRatio = (pixelRatio * 0.75).clamp(1.0, 3.0);
+        final retry = await _renderPng(boundary, pixelRatio);
+        if (retry == null) break;
+        pngBytes = retry;
+      }
       final week = ref.read(displayWeekProvider);
       await SharePlus.instance.share(ShareParams(
         files: [
           XFile.fromData(
-            byteData.buffer.asUint8List(),
+            pngBytes,
             name: '小马课表-第$week周.png',
             mimeType: 'image/png',
           ),
@@ -65,6 +87,15 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
+  }
+
+  Future<Uint8List?> _renderPng(
+    RenderRepaintBoundary boundary,
+    double pixelRatio,
+  ) async {
+    final image = await boundary.toImage(pixelRatio: pixelRatio);
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData?.buffer.asUint8List();
   }
 
   @override
@@ -449,27 +480,12 @@ class _ExportSheet extends StatelessWidget {
                     maxSection: maxSection,
                   ))
                     if (!slot.isEmpty)
-                      Positioned(
+                      _slotWidget(
+                        slot: slot,
                         left: axisW + di * colW + 1.5,
                         top: topOf(slot.startSection) + 1.5,
                         width: colW - 3,
                         height: slot.span * rowH - 3,
-                        child: CourseCard(
-                          course: slot.courses.first,
-                          onTap: () {},
-                          onLongPress: () {},
-                          badgeText: slot.extraCount > 0
-                              ? '+${slot.extraCount}'
-                              : null,
-                          displayColorValue: mapCourseColor(
-                              slot.courses.first.colorValue, ui.colorScheme),
-                          cornerRadius: ui.cornerRadius,
-                          borderWidth: ui.borderWidth,
-                          textScale: ui.cardTextScale,
-                          showClassroom: ui.showClassroom,
-                          showTeacher: ui.showTeacher,
-                          showNote: ui.showNote,
-                        ),
                       ),
               ],
             ),
@@ -485,4 +501,62 @@ class _ExportSheet extends StatelessWidget {
 
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
+
+  /// 一格课程卡：双课冲突且按 §4.1 分组时画 ConflictBlock（checkConflict
+  /// 只调一次，结果复用），否则画原样 CourseCard。
+  Widget _slotWidget({
+    required DisplaySlot slot,
+    required double left,
+    required double top,
+    required double width,
+    required double height,
+  }) {
+    if (slot.kind == SlotKind.multi && slot.courses.length == 2) {
+      final pair = SemesterExportHelper.checkConflict(
+        slot.courses[0],
+        slot.courses[1],
+        week,
+      );
+      if (pair != null) {
+        return Positioned(
+          left: left,
+          top: top,
+          width: width,
+          height: height,
+          child: ConflictBlock(
+            topCourse: pair.topCourse,
+            bottomCourse: pair.bottomCourse,
+            height: height,
+            width: width,
+            colorId: ui.conflictBlockColorId,
+            intensity: ui.conflictGradientIntensity,
+            blurEnabled: ui.conflictBlurEnabled,
+          ),
+        );
+      }
+    }
+    return Positioned(
+      left: left,
+      top: top,
+      width: width,
+      height: height,
+      child: CourseCard(
+        course: slot.courses.first,
+        onTap: () {},
+        onLongPress: () {},
+        badgeText:
+            slot.extraCount > 0 ? '+${slot.extraCount}' : null,
+        displayColorValue: mapCourseColor(
+          slot.courses.first.colorValue,
+          ui.colorScheme,
+        ),
+        cornerRadius: ui.cornerRadius,
+        borderWidth: ui.borderWidth,
+        textScale: ui.cardTextScale,
+        showClassroom: ui.showClassroom,
+        showTeacher: ui.showTeacher,
+        showNote: ui.showNote,
+      ),
+    );
+  }
 }

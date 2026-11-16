@@ -12,12 +12,14 @@ import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../services/channel_service.dart';
 import '../services/ongoing_notice_service.dart';
+import '../services/semester_pdf_export.dart';
 import '../services/sunday_dialog_service.dart';
 import '../utils/app_haptics.dart';
 import '../utils/color_schemes.dart';
 import '../utils/deliberate_page_physics.dart';
 import '../utils/next_class.dart';
 import '../utils/override_effect.dart';
+import '../utils/semester_export_helper.dart';
 import '../utils/slot_layout.dart';
 import '../utils/sunday_dialog.dart';
 import '../utils/week_calc.dart';
@@ -27,6 +29,7 @@ import '../ui/bottom_bar_metrics.dart';
 import '../ui/grid_metrics.dart';
 import '../ui/settings_icon_box.dart';
 import '../widgets/app_dialog.dart';
+import '../widgets/conflict_block.dart';
 import '../widgets/course_card.dart';
 import '../widgets/course_detail_sheet.dart';
 import '../widgets/empty_state.dart';
@@ -449,7 +452,15 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
       popUpAnimationStyle: const AnimationStyle(
         duration: Duration(milliseconds: 180),
       ),
-      onSelected: (route) => Navigator.pushNamed(context, route),
+      onSelected: (route) {
+        if (route == '/share-image') {
+          // WB_SPEC_237 §2：导出课表图片不再直跳分享页，
+          // 先弹导出方式 BottomSheet（PDF 整学期 / PNG 当前周）。
+          showExportBottomSheet(context, ref);
+        } else {
+          Navigator.pushNamed(context, route);
+        }
+      },
       itemBuilder: (ctx) => [
         for (final item in items)
           buildAppPopupMenuItem<String>(
@@ -2338,6 +2349,52 @@ class _PositionedCourseCard extends StatelessWidget {
     final isMulti = slot.kind == SlotKind.multi;
     // 「调」角标：仅单课时段显示；multi 时让位给「+N」（调整信息在详情里仍可见）
     final isMoved = courseOverride != null && !courseOverride!.isCancellation;
+    // WB_SPEC_237 §8：双课冲突且按 §4.1 分组时，画冲突块（不复用 ConflictDetector）。
+    // 半区点按：点上半进上半那门详情、点下半进下半那门；长按（仅编辑模式）
+    // 按半区进对应课程的菜单。
+    if (isMulti && slot.courses.length == 2) {
+      final conflictPair = SemesterExportHelper.checkConflict(
+        slot.courses[0],
+        slot.courses[1],
+        week,
+      );
+      if (conflictPair != null) {
+        final blockHeight = height - pad * 2;
+        return Positioned(
+          left: left + pad,
+          top: top + pad,
+          width: width - pad * 2,
+          height: blockHeight,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapUp: (details) {
+              AppHaptics.tap();
+              final targetCourse = details.localPosition.dy < blockHeight / 2
+                  ? conflictPair.topCourse
+                  : conflictPair.bottomCourse;
+              CourseDetailSheet.show(context, targetCourse);
+            },
+            onLongPressStart: (details) {
+              if (editMode) {
+                final targetCourse = details.localPosition.dy < blockHeight / 2
+                    ? conflictPair.topCourse
+                    : conflictPair.bottomCourse;
+                _showMenu(context, targetCourse, week, courseOverride);
+              }
+            },
+            child: ConflictBlock(
+              topCourse: conflictPair.topCourse,
+              bottomCourse: conflictPair.bottomCourse,
+              height: blockHeight,
+              width: width - pad * 2,
+              colorId: ui.conflictBlockColorId,
+              intensity: ui.conflictGradientIntensity,
+              blurEnabled: ui.conflictBlurEnabled,
+            ),
+          ),
+        );
+      }
+    }
     return Positioned(
       left: left + pad,
       top: top + pad,
@@ -2613,6 +2670,195 @@ class _ClassFocusBar extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 导出方式 BottomSheet 入口（WB_SPEC_237 §2）：从 ⋮ 菜单「导出课表图片」进。
+///
+/// 只弹选择器，不直接生成；PDF 行点后才生成（生成中 sheet 保持打开、
+/// 按钮置灰 + 文案切「生成中…」），生成完收起 sheet 再分享。
+void showExportBottomSheet(BuildContext context, WidgetRef ref) {
+  final displayWeek = ref.read(displayWeekProvider);
+  showModalBottomSheet<void>(
+    context: context,
+    builder: (ctx) => SafeArea(
+      child: ExportBottomSheetContent(
+        displayWeek: displayWeek,
+        parentContext: context,
+      ),
+    ),
+  );
+}
+
+/// 导出 BottomSheet 内容（WB_SPEC_237 §2）：
+/// PDF 行「导出整学期完整课表（PDF）」/ PNG 行「导出当前第 X 周课表（高清图片）」/
+/// 取消行「取消 / 关闭」。
+///
+/// 用 ConsumerStatefulWidget 承载 exportingPdf 状态（StatefulBuilder 的
+/// builder 回调内声明会被重建重置，加载态不生效）。
+/// [parentContext] 是周视图页的 context：sheet 收起后弹 SnackBar / 失败
+/// 弹窗要用它（sheet 自身的 context 收起后就失效了）。
+class ExportBottomSheetContent extends ConsumerStatefulWidget {
+  const ExportBottomSheetContent({
+    super.key,
+    required this.displayWeek,
+    required this.parentContext,
+  });
+
+  final int displayWeek;
+  final BuildContext parentContext;
+
+  @override
+  ConsumerState<ExportBottomSheetContent> createState() =>
+      _ExportBottomSheetContentState();
+}
+
+class _ExportBottomSheetContentState
+    extends ConsumerState<ExportBottomSheetContent> {
+  bool _exportingPdf = false;
+
+  void _showEmptySemesterSnackBar() {
+    Navigator.pop(context);
+    ScaffoldMessenger.of(widget.parentContext).showSnackBar(
+      const SnackBar(content: Text('本学期还没有课')),
+    );
+  }
+
+  Future<void> _exportPdf() async {
+    final courses = ref.read(coursesProvider).value ?? [];
+    if (courses.isEmpty) {
+      _showEmptySemesterSnackBar();
+      return;
+    }
+    setState(() => _exportingPdf = true);
+    // 让「生成中…」先画一帧再开始重活（字体加载 + 整学期 PDF 构建是 CPU
+    // 重活，直接做会把这一帧也拖住、加载态闪不出来）。
+    await Future<void>.delayed(Duration.zero);
+    // sheet 是否已收起（分享阶段失败时 State 已 dispose，不 setState）
+    var popped = false;
+    try {
+      final uiSettings =
+          ref.read(uiSettingsProvider).value ?? const UiSettings();
+      final slots = ref.read(timeSlotsProvider).value ?? [];
+      final seg = ref.read(segmentSettingsProvider).value;
+      final bandSettings =
+          ref.read(bandSettingsProvider).value ?? const BandSettings();
+      final bands = computeActiveBands(
+        lunchAfter: seg?.lunchAfterSection ?? 5,
+        dinnerAfter: seg?.dinnerAfterSection ?? 9,
+        sectionCount: slots.length,
+        settings: bandSettings,
+      );
+      final semester = ref.read(currentSemesterProvider).value;
+      final maxWeek = SemesterExportHelper.calculateMaxWeek(courses);
+      if (semester == null || maxWeek <= 0) {
+        throw StateError('当前学期无有效课程数据');
+      }
+      // 生成放 sheet 里（保持打开，显示「生成中…」）；生成完再收起、分享。
+      final bytes = await SemesterPdfExport.generatePdfBytes(
+        semester: semester,
+        allCourses: courses,
+        slots: slots,
+        bands: bands,
+        ui: uiSettings,
+        maxWeek: maxWeek,
+      );
+      if (!mounted) return;
+      Navigator.pop(context);
+      popped = true;
+      await SemesterPdfExport.sharePdfBytes(semester: semester, bytes: bytes);
+      ScaffoldMessenger.of(widget.parentContext).showSnackBar(
+        SnackBar(content: Text('已生成 $maxWeek 页 PDF，正在打开分享面板…')),
+      );
+    } catch (e) {
+      if (popped) {
+        // 分享阶段失败：sheet 已收起，用外层 context 弹失败弹窗。
+        showAppInfoDialog(
+          widget.parentContext,
+          title: '导出失败',
+          message: '$e',
+        );
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _exportingPdf = false);
+      // 生成阶段失败：sheet 还开着，就地弹失败弹窗（可重试）。
+      showAppInfoDialog(context, title: '导出失败', message: '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Text(
+            '导出课表',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.picture_as_pdf_outlined),
+          title: Text(_exportingPdf
+              ? '生成中…'
+              : '导出整学期完整课表（PDF）'),
+          subtitle:
+              const Text('包含全部周次（页数按课表自动算） · 适合打印存档'),
+          trailing: _exportingPdf
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : null,
+          enabled: !_exportingPdf,
+          onTap: _exportingPdf
+              ? null
+              : () {
+                  AppHaptics.tap();
+                  _exportPdf();
+                },
+          enableFeedback: false,
+        ),
+        ListTile(
+          leading: const Icon(Icons.image_outlined),
+          title: Text('导出当前第 ${widget.displayWeek} 周课表（高清图片）'),
+          subtitle: const Text('适合发给同学或设为锁屏壁纸'),
+          onTap: () {
+            AppHaptics.tap();
+            final courses = ref.read(coursesProvider).value ?? [];
+            if (courses.isEmpty) {
+              _showEmptySemesterSnackBar();
+              return;
+            }
+            Navigator.pop(context); // 先收起 BottomSheet，避免遮挡分享页
+            Navigator.pushNamed(widget.parentContext, '/share-image');
+          },
+          enableFeedback: false,
+        ),
+        const Divider(height: 1),
+        ListTile(
+          title: Center(
+            child: Text(
+              '取消 / 关闭',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          onTap: () {
+            AppHaptics.tap();
+            Navigator.pop(context);
+          },
+          enableFeedback: false,
+        ),
+      ],
     );
   }
 }

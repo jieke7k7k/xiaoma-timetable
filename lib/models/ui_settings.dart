@@ -82,6 +82,11 @@ class UiSettings {
     // WB_SPEC_235 §4：按键震动反馈默认开（新装与老库一致——老库缺这个键时
     // fromEncoded 也按 true 兜底，所以不需要一次性迁移，见 UiSettingsNotifier）
     this.enableHaptics = true,
+    // WB_SPEC_237 §5：冲突课程块外观（颜色三选 / 渐变强度 / 模糊开关），
+    // 默认焦糖 + 满强度 + 模糊关；老库缺键时 fromEncoded 按同样默认兜底。
+    this.conflictBlockColorId = 'caramel',
+    this.conflictGradientIntensity = 1.0,
+    this.conflictBlurEnabled = false,
   });
 
   /// 课程格子高度（逻辑像素 px），范围 44~96；默认 46 与旧版按屏均分的手感接近
@@ -183,6 +188,17 @@ class UiSettings {
   /// 按键震动，界面其它行为一律不变。
   final bool enableHaptics;
 
+  /// 冲突课程块颜色 id（WB_SPEC_237 §5）：caramel 焦糖 / mistBlue 雾蓝 /
+  /// sage 豆沙绿，默认 caramel
+  final String conflictBlockColorId;
+
+  /// 冲突课程块渐变强度（WB_SPEC_237 §5）：0~1，实际深端 =
+  /// Color.lerp(浅端, 深端, t)，默认 1.0（满强度）
+  final double conflictGradientIntensity;
+
+  /// 冲突课程块毛玻璃开关（WB_SPEC_237 §5）：默认关
+  final bool conflictBlurEnabled;
+
   /// 实际生效的主题种子色（ARGB）
   int get themeSeedValue =>
       themeCustomColor ?? themePresetById(themePresetId).seed;
@@ -222,6 +238,9 @@ class UiSettings {
     ShellTransitionStyle? shellTransitionStyle,
     bool? shellTransitionStyleMigrated,
     bool? enableHaptics,
+    String? conflictBlockColorId,
+    double? conflictGradientIntensity,
+    bool? conflictBlurEnabled,
   }) {
     return UiSettings(
       cellHeight: cellHeight ?? this.cellHeight,
@@ -252,6 +271,10 @@ class UiSettings {
               ? true
               : this.shellTransitionStyleMigrated),
       enableHaptics: enableHaptics ?? this.enableHaptics,
+      conflictBlockColorId: conflictBlockColorId ?? this.conflictBlockColorId,
+      conflictGradientIntensity:
+          conflictGradientIntensity ?? this.conflictGradientIntensity,
+      conflictBlurEnabled: conflictBlurEnabled ?? this.conflictBlurEnabled,
     );
   }
 
@@ -277,6 +300,9 @@ class UiSettings {
     'shellTransitionStyle': shellTransitionStyle.id,
     'shellTransitionStyleMigrated': shellTransitionStyleMigrated,
     'enableHaptics': enableHaptics,
+    'conflictBlockColorId': conflictBlockColorId,
+    'conflictGradientIntensity': conflictGradientIntensity,
+    'conflictBlurEnabled': conflictBlurEnabled,
   };
 
   String encode() => jsonEncode(toJson());
@@ -346,6 +372,11 @@ class UiSettings {
         shellTransitionStyleMigrated: styleMigrated || needsMigration,
         // WB_SPEC_235 §4：老库没有这个键 → 按默认「开」；不做一次性迁移
         enableHaptics: bl('enableHaptics', true),
+        // WB_SPEC_237 §5：冲突块外观三键；老库缺键按默认兜底，不做迁移
+        conflictBlockColorId: st('conflictBlockColorId', 'caramel'),
+        conflictGradientIntensity:
+            dbl('conflictGradientIntensity', 1.0, 0, 1),
+        conflictBlurEnabled: bl('conflictBlurEnabled', false),
       );
     } catch (_) {
       return const UiSettings();
