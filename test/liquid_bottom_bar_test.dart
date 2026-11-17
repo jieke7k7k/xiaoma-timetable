@@ -12,14 +12,14 @@ import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 ///    + [BackdropFilter]）整体删除，它在真机上整屏漫溢、整片课表蒙雾；
 /// 2. 底色跟主题走（浅色 surface／深色 surfaceContainerLow）、顶部细分割线
 ///    0.5dp（outlineVariant 浅 0.45／深 0.25）、贴底无阴影；
-/// 3. 选中指示小短条：16×2.5dp、距栏底 3dp、容器宽 = 栏宽 50%、[AnimatedAlign]
+/// 3. 选中指示小短条：16×2.5dp、距栏底 3dp、容器宽 = 栏宽 1/3、[AnimatedAlign]
 ///    对齐随选中项变化、320ms 减速曲线、切换时是「滑过去」而不是重建；
 /// 4. 按压回弹：按下 0.92（90ms）、松手 1.0（350ms 弹簧）；
 /// 5. 选中态图标上浮 1.5px（实心）、颜色 / 位移两条过渡各自分开；
 ///    WB_SPEC_235 起不再叠 1.08x 放大层。
 ///
 /// 与 `bottom_bar_style_test.dart` 的分工：那边管「布局与功能不变」（整宽、
-/// 贴底、两格等宽、文案、回调、留白口径），这边管「选中态与动效」。
+/// 贴底、三格等宽、文案、回调、留白口径），这边管「选中态与动效」。
 void main() {
   /// 屏幕尺寸（测试默认 800×600）
   const double screenW = 800;
@@ -155,13 +155,13 @@ void main() {
   });
 
   group('选中指示小短条（Argon 方案 Q1：无框选中态）', () {
-    testWidgets('容器宽度 = 栏宽 50%，短条本体 16×2.5dp、距栏底 3dp', (tester) async {
+    testWidgets('容器宽度 = 栏宽 1/3，短条本体 16×2.5dp、距栏底 3dp', (tester) async {
       await pumpBar(tester);
 
       final barWidth = tester.getSize(find.byType(HomeTabBar)).width;
       final box = tester.getSize(find.byKey(kHomeTabBarIndicatorBoxKey));
-      expect(kLiquidIndicatorWidthFactor, 0.5);
-      expect(box.width, closeTo(barWidth * 0.5, 0.5));
+      expect(kLiquidIndicatorWidthFactor, closeTo(1 / 3, 1e-9));
+      expect(box.width, closeTo(barWidth / 3, 0.5));
       // 容器占满栏高 48（Align 取最大高），短条本体 16×2.5 贴在容器底部
       final rect = tester.getRect(find.byKey(kHomeTabBarIndicatorBoxKey));
       expect(rect.height, kBottomBarTabHeight);
@@ -185,20 +185,27 @@ void main() {
       expect(decoration.color, scheme.primary);
     });
 
-    testWidgets('320ms 减速曲线，对齐随选中项变化（-1 / +1，贴底）', (tester) async {
-      await pumpBar(tester, active: HomeShellTab.schedule);
+    testWidgets('320ms 减速曲线，对齐随选中项变化（-1 / 0 / +1，贴底）', (tester) async {
+      await pumpBar(tester, active: HomeShellTab.today);
 
       var align = tester.widget<AnimatedAlign>(find.byKey(kHomeTabBarIndicatorKey));
-      expect(align.alignment, const Alignment(-1, 1), reason: '课表格：贴左半、贴底');
+      expect(align.alignment, const Alignment(-1, 1), reason: '今日格：贴左半、贴底');
       expect(align.duration, kSelectionPillDuration);
       expect(align.duration, const Duration(milliseconds: 320));
       expect(align.curve, kSelectionPillCurve);
       expect(align.curve, Curves.easeOutCubic);
 
-      // 切到设置格：对齐翻到贴右半
+      // 切到课表格：对齐到正中
+      await pumpBar(tester, active: HomeShellTab.schedule);
+      align = tester.widget<AnimatedAlign>(find.byKey(kHomeTabBarIndicatorKey));
+      expect(align.alignment, const Alignment(0, 1), reason: '课表格：居中、贴底');
+      expect(align.duration, const Duration(milliseconds: 320));
+      expect(align.curve, kSelectionPillCurve);
+
+      // 切到我的格：对齐翻到贴右半
       await pumpBar(tester, active: HomeShellTab.settings);
       align = tester.widget<AnimatedAlign>(find.byKey(kHomeTabBarIndicatorKey));
-      expect(align.alignment, const Alignment(1, 1), reason: '设置格：贴右半、贴底');
+      expect(align.alignment, const Alignment(1, 1), reason: '我的格：贴右半、贴底');
       expect(align.duration, const Duration(milliseconds: 320));
       expect(align.curve, kSelectionPillCurve);
     });
@@ -214,14 +221,16 @@ void main() {
         reason: '选中课表时短条对齐课表格',
       );
 
-      // 切到设置：先只推进 1ms——短条应该还停在左边（说明是动画）
+      // 切到设置：先只推进 1ms——短条应该还停在中间附近（说明是动画）。
+      // 课表在正中（dx=400），1ms 只挪了一点点，断言 <500 而不是 <宽/2
+      // （<400 在起点就撞线，断言不到「滑过去」）。
       await pumpBar(tester, active: HomeShellTab.settings);
       await tester.pump(const Duration(milliseconds: 1));
       indicator = tester.getRect(find.byKey(kHomeTabBarIndicatorBoxKey));
       expect(
         indicator.center.dx,
-        lessThan(tester.getSize(find.byType(HomeTabBar)).width / 2),
-        reason: '切换瞬间短条还没跳到右边，是滑过去的',
+        lessThan(500),
+        reason: '切换瞬间短条还没滑到右边，是滑过去的',
       );
 
       // 320ms 后到位：与设置格对齐
@@ -238,10 +247,15 @@ void main() {
     testWidgets('短条不拦点击：它不吃指针事件（pointer-events: none 的 Flutter 对应）', (tester) async {
       await pumpBar(tester);
 
+      final todaySize = tester.getSize(find.byKey(kHomeTabBarTodayKey));
       final scheduleSize = tester.getSize(find.byKey(kHomeTabBarScheduleKey));
       final settingsSize = tester.getSize(find.byKey(kHomeTabBarSettingsKey));
+      expect(todaySize.width, closeTo(scheduleSize.width, 0.5));
       expect(scheduleSize.width, closeTo(settingsSize.width, 0.5));
-      expect(scheduleSize.width + settingsSize.width, closeTo(screenW, 0.5));
+      expect(
+        todaySize.width + scheduleSize.width + settingsSize.width,
+        closeTo(screenW, 0.5),
+      );
       // 短条不拦点击：它不吃指针事件（pointer-events: none 的 Flutter 对应）
       expect(
         find.descendant(
@@ -299,12 +313,16 @@ void main() {
           reason: '短条本体中心应对准设置格中心');
     });
 
-    testWidgets('两格里没有任何包住图标/文字的色块（复查优化 4：无框的负向断言）', (tester) async {
+    testWidgets('三格里没有任何包住图标/文字的色块（复查优化 4：无框的负向断言）', (tester) async {
       await pumpBar(tester);
 
-      // 图标/文字所在的两格子树里，一个 DecoratedBox 都不许有——任何
+      // 图标/文字所在的三格子树里，一个 DecoratedBox 都不许有——任何
       // tint、胶囊、色块重现都会先撞上这条断言
-      for (final cell in [kHomeTabBarScheduleKey, kHomeTabBarSettingsKey]) {
+      for (final cell in [
+        kHomeTabBarTodayKey,
+        kHomeTabBarScheduleKey,
+        kHomeTabBarSettingsKey,
+      ]) {
         expect(
           find.descendant(
             of: find.byKey(cell),
@@ -494,7 +512,7 @@ void main() {
   });
 
   group('无框选中态不改功能', () {
-    testWidgets('两格回调不变：课表格 onTapSchedule、设置格 onSelectTab', (
+    testWidgets('三格回调不变：课表格 onTapSchedule、今日/我的格 onSelectTab', (
       tester,
     ) async {
       HomeShellTab? selected;
@@ -521,7 +539,10 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('设置'));
+      await tester.tap(find.text('今日'));
+      await tester.pump(const Duration(milliseconds: 380));
+      expect(selected, HomeShellTab.today);
+      await tester.tap(find.text('我的'));
       await tester.pump(const Duration(milliseconds: 380));
       expect(selected, HomeShellTab.settings);
       await tester.tap(find.text('课表'));
@@ -529,7 +550,7 @@ void main() {
       expect(scheduleTaps, 1);
     });
 
-    testWidgets('底栏不引入第三个键，也没有 AI 入口', (tester) async {
+    testWidgets('底栏恰好三键，没有 AI 入口', (tester) async {
       await pumpBar(tester);
       expect(
         tester
@@ -540,11 +561,12 @@ void main() {
               ),
             )
             .length,
-        2,
+        3,
       );
+      expect(find.text('今日'), findsOneWidget);
       expect(find.text('课表'), findsOneWidget);
-      expect(find.text('设置'), findsOneWidget);
-      expect(find.text('我的'), findsNothing);
+      expect(find.text('我的'), findsOneWidget);
+      expect(find.text('设置'), findsNothing);
     });
   });
 }

@@ -8,7 +8,7 @@ import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 ///
 /// 标签栏 [HomeTabBar]（默认、唯一形态）：整宽、贴屏幕底边、无悬浮阴影、
 /// 顶部一条细分割线（0.5dp，outlineVariant 浅 0.45／深 0.25），
-/// 两格等宽（图标在上、文字在下），
+/// 三格等宽（图标在上、文字在下），
 /// 选中态图标与文字同为主题 primary，未选中态同为灰。
 ///
 /// 2.1.7 同版本修复：胶囊形态整体删除（用户定：只要新标签栏），本文件不再有
@@ -109,25 +109,33 @@ void main() {
       expect(border.top.style, BorderStyle.solid);
     });
 
-    testWidgets('两格等宽：各占一半，图标在上、文字在下', (tester) async {
+    testWidgets('三格等宽：各占三分之一，图标在上、文字在下', (tester) async {
       await pumpBar(tester, tabBarAtBottom());
 
+      final todayKey = find.byKey(kHomeTabBarTodayKey);
       final scheduleKey = find.byKey(kHomeTabBarScheduleKey);
       final settingsKey = find.byKey(kHomeTabBarSettingsKey);
+      expect(todayKey, findsOneWidget);
       expect(scheduleKey, findsOneWidget);
       expect(settingsKey, findsOneWidget);
 
+      final todaySize = tester.getSize(todayKey);
       final scheduleSize = tester.getSize(scheduleKey);
       final settingsSize = tester.getSize(settingsKey);
-      expect(scheduleSize.width, settingsSize.width, reason: '两格必须等宽');
+      expect(todaySize.width, scheduleSize.width, reason: '三格必须等宽');
+      expect(scheduleSize.width, settingsSize.width, reason: '三格必须等宽');
       expect(
-        scheduleSize.width + settingsSize.width,
+        todaySize.width + scheduleSize.width + settingsSize.width,
         closeTo(screenW, 0.5),
-        reason: '两格等分整宽',
+        reason: '三格等分整宽',
       );
 
       // 图标在上、文字在下：同一格里 Icon 的底部在 Text 顶部之上，且水平居中
-      for (final key in <Key>[kHomeTabBarScheduleKey, kHomeTabBarSettingsKey]) {
+      for (final key in <Key>[
+        kHomeTabBarTodayKey,
+        kHomeTabBarScheduleKey,
+        kHomeTabBarSettingsKey,
+      ]) {
         final iconRect = tester.getRect(
           find.descendant(of: find.byKey(key), matching: find.byType(Icon)),
         );
@@ -148,7 +156,7 @@ void main() {
     });
 
     testWidgets('选中态前景色 = 主题 primary，未选中态 onSurfaceVariant 0.60', (tester) async {
-      // 选「设置」：设置格主题色、课表格灰
+      // 选「我的」：我的格主题色、课表格灰
       await pumpBar(tester, tabBarAtBottom(active: HomeShellTab.settings));
       final scheme = Theme.of(
         tester.element(find.byType(HomeTabBar)),
@@ -257,11 +265,12 @@ void main() {
       expect(scheduleIcon.icon, Icons.calendar_today_outlined);
     });
 
-    testWidgets('两格文案仍是「课表」「设置」，键数恒为 2', (tester) async {
+    testWidgets('三格文案是「今日」「课表」「我的」，键数恒为 3', (tester) async {
       await pumpBar(tester, tabBarAtBottom());
+      expect(find.text('今日'), findsOneWidget);
       expect(find.text('课表'), findsOneWidget);
-      expect(find.text('设置'), findsOneWidget);
-      expect(find.text('我的'), findsNothing, reason: '右边那格仍叫「设置」，不改名');
+      expect(find.text('我的'), findsOneWidget);
+      expect(find.text('设置'), findsNothing, reason: '右边那格改叫「我的」，不叫「设置」');
       expect(
         tester
             .widgetList<InkWell>(
@@ -271,11 +280,11 @@ void main() {
               ),
             )
             .length,
-        2,
+        3,
       );
     });
 
-    testWidgets('两格回调：课表格走 onTapSchedule，设置格走 onSelectTab', (tester) async {
+    testWidgets('三格回调：课表格走 onTapSchedule，今日/我的格走 onSelectTab', (tester) async {
       HomeShellTab? selected;
       var scheduleTaps = 0;
       await pumpBar(
@@ -287,7 +296,9 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('设置'));
+      await tester.tap(find.text('今日'));
+      expect(selected, HomeShellTab.today);
+      await tester.tap(find.text('我的'));
       expect(selected, HomeShellTab.settings);
       await tester.tap(find.text('课表'));
       expect(scheduleTaps, 1);
@@ -355,7 +366,7 @@ void main() {
       await tester.pump();
       expect(tester.takeException(), isNull);
       expect(find.text('课表'), findsOneWidget);
-      expect(find.text('设置'), findsOneWidget);
+      expect(find.text('我的'), findsOneWidget);
     });
   });
 

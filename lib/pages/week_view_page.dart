@@ -4,15 +4,16 @@ import 'package:flutter/gestures.dart' show DeviceGestureSettings;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/course.dart';
 import '../models/course_override.dart';
 import '../models/menu_config.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
+import 'share_image_page.dart';
 import '../services/channel_service.dart';
 import '../services/ongoing_notice_service.dart';
-import '../services/semester_pdf_export.dart';
 import '../services/sunday_dialog_service.dart';
 import '../utils/app_haptics.dart';
 import '../utils/color_schemes.dart';
@@ -407,9 +408,8 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
     } catch (e) {
       debugPrint('新建学期入库失败：$e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('新建学期失败，请重试')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('新建学期失败，请重试')));
       return;
     }
     try {
@@ -418,16 +418,13 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
       debugPrint('新建学期后切换失败：$e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已新建「${created.name}」，但切换失败，请去学期管理里手动切换'),
-        ),
+        SnackBar(content: Text('已新建「${created.name}」，但切换失败，请去学期管理里手动切换')),
       );
       return;
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已新建并切换到「${created.name}」')),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('已新建并切换到「${created.name}」')));
   }
 
   /// 右上角「更多」菜单（2.1.0 起抽为方法，2.1.2 菜单去重复用）。
@@ -552,10 +549,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
         content: const AppDialogText('今天是周日，本周已结束'),
         actions: [
           // WB_SPEC_235 跟进 §1-15 / §4：弹窗按钮改走标准构造
-          AppDialogAction(
-            label: '知道了',
-            onPressed: () => Navigator.pop(ctx),
-          ),
+          AppDialogAction(label: '知道了', onPressed: () => Navigator.pop(ctx)),
           if (week < totalWeeks)
             AppDialogAction(
               label: '看下周',
@@ -652,10 +646,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
       showOther,
       autoCollapse,
     );
-    final dates = WeekCalc.weekDatesOf(
-      semester.startDateParsed,
-      displayWeek,
-    );
+    final dates = WeekCalc.weekDatesOf(semester.startDateParsed, displayWeek);
     // 本周考试标记（1.2.0）：按日期聚合设置了考试日期的课程，表头打红点
     final examsByDay = <String, List<Course>>{};
     for (final c in courses) {
@@ -739,12 +730,17 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
         // 生成的返回箭头（首次使用经导入流程进入时曾出现无用返回按钮）
         automaticallyImplyLeading: false,
         centerTitle: false,
-        title: Builder(
+        // WB_SPEC_240 §3：进编辑模式后 AppBar 标题区换成「✏️ 编辑模式」胶囊，
+        // 不再显示「第 X 周」；退出编辑模式后标题恢复「第 X 周」。
+        title: _editMode
+            ? const EditModeTitlePill()
+            : Builder(
           builder: (context) {
             // WB_SPEC_221：展开态聚焦框——主题色 1.5dp 描边＋极淡同色底。
             // 收起态边框同样占 1.5 宽、颜色透明，切换时宽高不变、不抖动。
             final cs = Theme.of(context).colorScheme;
-            final isDark = Theme.of(context).brightness == Brightness.dark;
+                  final isDark =
+                      Theme.of(context).brightness == Brightness.dark;
             final radius = BorderRadius.circular(AppRadii.chip);
             final borderColor = jumperOpen
                 ? cs.primary.withValues(alpha: isDark ? 0.85 : 0.75)
@@ -765,7 +761,9 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
                 // WB_SPEC_235 §7：标题（周跳转条）点击 = 轻点档
                 onTap: () {
                   AppHaptics.tap();
-                  ref.read(weekJumperOpenProvider.notifier).setOpen(!jumperOpen);
+                        ref
+                            .read(weekJumperOpenProvider.notifier)
+                            .setOpen(!jumperOpen);
                 },
                 enableFeedback: false,
                 borderRadius: radius,
@@ -774,8 +772,10 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
                   curve: Curves.easeOutCubic,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                   decoration: BoxDecoration(
                     color: bgColor,
                     borderRadius: radius,
@@ -801,7 +801,9 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
                         ],
                       ),
                       Icon(
-                        jumperOpen ? Icons.expand_less : Icons.expand_more,
+                              jumperOpen
+                                  ? Icons.expand_less
+                                  : Icons.expand_more,
                         // 展开态箭头跟框同色；收起态不显式设色，保持原默认。
                         color: jumperOpen ? cs.primary : null,
                       ),
@@ -817,6 +819,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
           // WB_SPEC_223：跳转条展开时这一下只收起，不切换编辑模式。
           if (_editMode)
             TextButton.icon(
+              key: const ValueKey<String>('edit_mode_done_btn'),
               // WB_SPEC_235 跟进：编辑模式「完成」= 轻点档
               style: TextButton.styleFrom(enableFeedback: false),
               onPressed: () {
@@ -829,6 +832,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
             )
           else
             IconButton(
+              key: const ValueKey<String>('edit_mode_entry_btn'),
               tooltip: '编辑模式（开启后可添加/修改课程）',
               icon: const Icon(Icons.edit_outlined),
               onPressed: () {
@@ -836,12 +840,8 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
                 // WB_SPEC_235 §7：存量 lightImpact 改走统一门控（轻点档）
                 AppHaptics.tap();
                 setState(() => _editMode = true);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('编辑模式已开启：点击空白处新建课程，长按课程可编辑'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
+                // WB_SPEC_240 §2：不再弹 2 秒 SnackBar，改由常驻 26dp
+                // 提示条与标题胶囊提示（该 SnackBar 挡第 12–13 节）。
               },
             ),
           // 「新建」入口（2.0.0）：底栏三键改版后，原来的「新建」页签挪到这里。
@@ -883,6 +883,9 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
       ),
       body: Column(
         children: [
+          // WB_SPEC_240 §4：AppBar 下方、星期表头上方的常驻 26dp 提示条，
+          // 只在编辑模式下显示，退出时收起（不占位）。
+          if (_editMode) const EditModeBanner(),
           // 当前/下一节课状态条（1.2.0）：点一下回到本周；由「上课播报」开关控制显隐
           // WB_SPEC_223：横幅在跳转条上方，点按层盖不到，回调里守卫。
           if (ui.showClassBroadcast)
@@ -1415,10 +1418,7 @@ class _GridArea extends ConsumerWidget {
     // 分隔带位置由「作息分段设置」驱动；provider 未加载完成时回退默认值（午间 5 / 晚间 9）
     // 今天列高亮：正在看的就是本周且今天在显示列里时才算（开关 1.2.6）
     final nowDate = DateTime.now();
-    final thisWeekNo = WeekCalc.currentWeek(
-      semester.startDateParsed,
-      nowDate,
-    );
+    final thisWeekNo = WeekCalc.currentWeek(semester.startDateParsed, nowDate);
     final highlightDay =
         (ui.highlightTodayColumn &&
             displayWeek == thisWeekNo &&
@@ -1471,8 +1471,7 @@ class _GridArea extends ConsumerWidget {
         // 超出视口恰好一个留白（开栏 64px）——即使整表本已一屏，仍多出 64px
         // 幽灵滚动，最后一行总要滚一下才看得到。撑满口径改成
         // maxHeight - bottomInset 后，总高 + 留白 == 视口高，不再多滚。
-        final contentHeight =
-            totalHeight < constraints.maxHeight - bottomInset
+        final contentHeight = totalHeight < constraints.maxHeight - bottomInset
                 ? constraints.maxHeight - bottomInset
                 : totalHeight;
         return MediaQuery(
@@ -2004,7 +2003,9 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
       child: Stack(
         children: [
           // 网格背景线（界面设置可关）
-          if (ui.showGridLines)
+          // WB_SPEC_240 §3：编辑模式下临时开启 0.5dp 浅灰网格线（平时无框
+          // 时也能看见格子），退出编辑模式后恢复原设置。
+          if (ui.showGridLines || editMode)
             _GridLines(
               cellWidth: cellWidth,
               rowHeight: rowHeight,
@@ -2028,9 +2029,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
               left: 0,
               right: 0,
               height: kBandHeight,
-              child: IgnorePointer(
-                child: _FullBand(band: b, axisWidth: 0),
-              ),
+              child: IgnorePointer(child: _FullBand(band: b, axisWidth: 0)),
             ),
           // 长按高亮选区：主题色描边 + 浅填充 + 中央加号（再次单击进新建页）
           if (_highlight != null && displayDays.contains(_highlight!.day))
@@ -2438,7 +2437,10 @@ class _PositionedCourseCard extends StatelessWidget {
           ui.colorScheme,
         ),
         cornerRadius: ui.cornerRadius,
-        borderWidth: ui.borderWidth,
+        // WB_SPEC_240 §5：编辑模式下课程卡外圈描边至少 1.0dp（样品口径）；
+        // 非编辑模式沿用界面设置。铅笔角标：CourseCard 本就没有铅笔角标
+        // （只有「+N」/「调」文字角标），§2 的删除项已满足，无代码可删。
+        borderWidth: (editMode && ui.borderWidth < 1.0) ? 1.0 : ui.borderWidth,
         textScale: ui.cardTextScale,
         showClassroom: ui.showClassroom,
         showTeacher: ui.showTeacher,
@@ -2703,9 +2705,9 @@ class _ClassFocusBar extends StatelessWidget {
   }
 }
 
-/// 导出方式 BottomSheet 入口（WB_SPEC_237 §2）：从 ⋮ 菜单「导出课表图片」进。
+/// 导出方式 BottomSheet 入口（WB_SPEC_239 §2）：从 ⋮ 菜单「导出课表图片」进。
 ///
-/// 只弹选择器，不直接生成；PDF 行点后才生成（生成中 sheet 保持打开、
+/// 只弹选择器，不直接生成；单图行点后才生成（生成中 sheet 保持打开、
 /// 按钮置灰 + 文案切「生成中…」），生成完收起 sheet 再分享。
 void showExportBottomSheet(BuildContext context, WidgetRef ref) {
   final displayWeek = ref.read(displayWeekProvider);
@@ -2720,11 +2722,11 @@ void showExportBottomSheet(BuildContext context, WidgetRef ref) {
   );
 }
 
-/// 导出 BottomSheet 内容（WB_SPEC_237 §2）：
-/// PDF 行「导出整学期完整课表（PDF）」/ PNG 行「导出当前第 X 周课表（高清图片）」/
+/// 导出 BottomSheet 内容（WB_SPEC_239 §2）：
+/// 单图行「导出整学期完整课表（图片）」/ PNG 行「导出当前第 X 周课表（高清图片）」/
 /// 取消行「取消 / 关闭」。
 ///
-/// 用 ConsumerStatefulWidget 承载 exportingPdf 状态（StatefulBuilder 的
+/// 用 ConsumerStatefulWidget 承载 exportingSemester 状态（StatefulBuilder 的
 /// builder 回调内声明会被重建重置，加载态不生效）。
 /// [parentContext] 是周视图页的 context：sheet 收起后弹 SnackBar / 失败
 /// 弹窗要用它（sheet 自身的 context 收起后就失效了）。
@@ -2745,16 +2747,15 @@ class ExportBottomSheetContent extends ConsumerStatefulWidget {
 
 class _ExportBottomSheetContentState
     extends ConsumerState<ExportBottomSheetContent> {
-  bool _exportingPdf = false;
+  bool _exportingSemester = false;
 
   void _showEmptySemesterSnackBar() {
     Navigator.pop(context);
-    ScaffoldMessenger.of(widget.parentContext).showSnackBar(
-      const SnackBar(content: Text('本学期还没有课')),
-    );
+    ScaffoldMessenger.of(widget.parentContext)
+        .showSnackBar(const SnackBar(content: Text('本学期还没有课')));
   }
 
-  Future<void> _exportPdf() async {
+  Future<void> _exportSemesterSinglePng() async {
     // P1-1：关键数据等 provider 就绪再读（.future），不要用 .value ?? 默认值
     // 静默兜底——provider 还在 loading 时 .value 是 null，会误判空学期、
     // 丢用户设置、或报「没有可用的节次时间表」。
@@ -2771,9 +2772,9 @@ class _ExportBottomSheetContentState
       return;
     }
     if (!mounted) return;
-    setState(() => _exportingPdf = true);
-    // 让「生成中…」先画一帧再开始重活（字体加载 + 整学期 PDF 构建是 CPU
-    // 重活，直接做会把这一帧也拖住、加载态闪不出来）。
+    setState(() => _exportingSemester = true);
+    // 让「生成中…」先画一帧再开始重活（离屏渲染 + 编码是真异步，
+    // 直接做会把这一帧也拖住、加载态闪不出来）。
     await Future<void>.delayed(Duration.zero);
     // P1-6：这一帧内用户可能已关掉 sheet，继续操作前先确认还挂着。
     if (!mounted) return;
@@ -2791,40 +2792,48 @@ class _ExportBottomSheetContentState
         settings: bandSettings,
       );
       final semester = await ref.read(currentSemesterProvider.future);
-      final maxWeek = SemesterExportHelper.calculateMaxWeek(courses);
-      if (maxWeek <= 0) {
+      if (SemesterExportHelper.calculateMaxWeek(courses) <= 0) {
         throw StateError('当前学期无有效课程数据');
       }
       // 生成放 sheet 里（保持打开，显示「生成中…」）；生成完再收起、分享。
-      final bytes = await SemesterPdfExport.generatePdfBytes(
+      // invokeShare: false——先只拿字节，收起 sheet、弹提示后再调分享
+      // （P1-2 时序：提示在分享面板打开前出现）。
+      final bytes = await generateAndShareSemesterSinglePng(
+        context: widget.parentContext,
         semester: semester,
-        allCourses: courses,
+        courses: courses,
         slots: slots,
         bands: bands,
-        ui: uiSettings,
-        maxWeek: maxWeek,
+        uiSettings: uiSettings,
+        invokeShare: false,
       );
       if (!mounted) return;
       Navigator.pop(context);
       popped = true;
       // P1-2：分享面板打开前先弹提示（之前在 await share 之后才弹，
       // 面板关了才看到，「正在打开」已是过去时）。
-      ScaffoldMessenger.of(widget.parentContext).showSnackBar(
-        SnackBar(content: Text('已生成 $maxWeek 页 PDF，正在打开分享面板…')),
+      ScaffoldMessenger.of(widget.parentContext)
+          .showSnackBar(const SnackBar(content: Text('已生成整学期课表图片，正在打开分享面板…')));
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile.fromData(
+              bytes,
+              name: '${semester.name}课表.png',
+              mimeType: 'image/png',
+            ),
+          ],
+          text: '这是${semester.name}完整课表，请查收',
+        ),
       );
-      await SemesterPdfExport.sharePdfBytes(semester: semester, bytes: bytes);
     } catch (e) {
       if (popped) {
         // 分享阶段失败：sheet 已收起，用外层 context 弹失败弹窗。
-        showAppInfoDialog(
-          widget.parentContext,
-          title: '导出失败',
-          message: '$e',
-        );
+        showAppInfoDialog(widget.parentContext, title: '导出失败', message: '$e');
         return;
       }
       if (!mounted) return;
-      setState(() => _exportingPdf = false);
+      setState(() => _exportingSemester = false);
       // 生成阶段失败：sheet 还开着，就地弹失败弹窗（可重试）。
       showAppInfoDialog(context, title: '导出失败', message: '$e');
     }
@@ -2839,43 +2848,41 @@ class _ExportBottomSheetContentState
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Text(
             '导出课表',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.bold),
           ),
         ),
         ListTile(
-          leading: const Icon(Icons.picture_as_pdf_outlined),
-          title: Text(_exportingPdf
-              ? '生成中…'
-              : '导出整学期完整课表（PDF）'),
-          subtitle:
-              const Text('包含全部周次（页数按课表自动算） · 适合打印存档'),
-          trailing: _exportingPdf
+          key: const ValueKey<String>('export_semester_single_png'),
+          leading: const Icon(Icons.image_outlined),
+          title: Text(_exportingSemester ? '生成中…' : '导出整学期完整课表（图片）'),
+          subtitle: const Text('整学期一张图 · 适合发给同学或存档'),
+          trailing: _exportingSemester
               ? const SizedBox(
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : null,
-          enabled: !_exportingPdf,
-          onTap: _exportingPdf
+          enabled: !_exportingSemester,
+          onTap: _exportingSemester
               ? null
               : () {
                   AppHaptics.tap();
-                  _exportPdf();
+                  _exportSemesterSinglePng();
                 },
           enableFeedback: false,
         ),
         ListTile(
+          key: const ValueKey<String>('export_current_week_png'),
           leading: const Icon(Icons.image_outlined),
           title: Text('导出当前第 ${widget.displayWeek} 周课表（高清图片）'),
           subtitle: const Text('适合发给同学或设为锁屏壁纸'),
-          // P1-6：生成期间三行全禁（之前只禁 PDF 行，点 PNG/取消会
+          // P1-6：生成期间两行全禁（之前只禁 PDF 行，点 PNG/取消会
           // 一边跑生成一边跳页/关 sheet，生成白算还可能对已 dispose 的
           // State 操作）。取消要等生成结束，不另做中止逻辑。
-          enabled: !_exportingPdf,
-          onTap: _exportingPdf
+          enabled: !_exportingSemester,
+          onTap: _exportingSemester
               ? null
               : () {
                   AppHaptics.tap();
@@ -2891,6 +2898,7 @@ class _ExportBottomSheetContentState
         ),
         const Divider(height: 1),
         ListTile(
+          key: const ValueKey<String>('export_cancel'),
           title: Center(
             child: Text(
               '取消 / 关闭',
@@ -2900,8 +2908,8 @@ class _ExportBottomSheetContentState
               ),
             ),
           ),
-          enabled: !_exportingPdf,
-          onTap: _exportingPdf
+          enabled: !_exportingSemester,
+          onTap: _exportingSemester
               ? null
               : () {
                   AppHaptics.tap();
@@ -2910,6 +2918,75 @@ class _ExportBottomSheetContentState
           enableFeedback: false,
         ),
       ],
+    );
+  }
+}
+
+/// WB_SPEC_240 §3：AppBar 编辑模式标题胶囊组件（只写「✏️ 编辑模式」）
+class EditModeTitlePill extends StatelessWidget {
+  const EditModeTitlePill({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      key: const ValueKey<String>('appbar_edit_mode_pill'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: isDark ? 0.22 : 0.12),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(
+          color: scheme.primary.withValues(alpha: 0.35),
+          width: 1.0,
+        ),
+      ),
+      child: Text(
+        '✏️ 编辑模式',
+        style: TextStyle(
+          fontSize: 13.5,
+          fontWeight: FontWeight.w700,
+          color: scheme.primary,
+          height: 1.1,
+        ),
+      ),
+    );
+  }
+}
+
+/// WB_SPEC_240 §4：AppBar 下方、星期表头上方常驻 26dp 提示条
+class EditModeBanner extends StatelessWidget {
+  const EditModeBanner({super.key});
+
+  static const double kBannerHeight = 26.0;
+  static const String kBannerText = '点空白格加课 · 长按课程可编辑（已锁定滑动）';
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark
+        ? const Color(0xFF2A2416)
+        : scheme.primary.withValues(alpha: 0.08);
+    final textColor = isDark ? const Color(0xFFEBC9A0) : scheme.primary;
+
+    return Container(
+      key: const ValueKey<String>('edit_mode_persistent_banner'),
+      width: double.infinity,
+      height: kBannerHeight,
+      color: bgColor,
+      alignment: Alignment.center,
+      child: Text(
+        kBannerText,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
+          color: textColor,
+          height: 1.1,
+        ),
+      ),
     );
   }
 }

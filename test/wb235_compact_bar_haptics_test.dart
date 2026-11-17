@@ -472,7 +472,7 @@ void main() {
         ),
       ));
       advance();
-      await tester.tap(find.text('设置'));
+      await tester.tap(find.text('我的'));
       await settle(tester);
 
       expect(switched, HomeShellTab.settings);

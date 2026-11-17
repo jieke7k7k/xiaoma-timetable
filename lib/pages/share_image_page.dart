@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/course.dart';
+import '../models/semester.dart';
 import '../models/time_slot.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
@@ -74,19 +75,20 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
   Future<void> _share() async {
     setState(() => _sharing = true);
     try {
-      final boundary = _boundaryKey.currentContext!.findRenderObject()
+      final boundary =
+          _boundaryKey.currentContext!.findRenderObject()
           as RenderRepaintBoundary;
       final rawSize = boundary.size;
       // WB_SPEC_237 §8：像素比封顶（宽 ≤1080、高 ≤1920），基准 3.0 倍。
-      final pixelRatio =
-          cappedExportPixelRatio(rawSize.width, rawSize.height);
+      final pixelRatio = cappedExportPixelRatio(rawSize.width, rawSize.height);
       final pngBytes = await renderWithinLimit(
         (ratio) => _renderPng(boundary, ratio),
         pixelRatio,
       );
       if (pngBytes == null) throw StateError('图片生成失败');
       final week = ref.read(displayWeekProvider);
-      await SharePlus.instance.share(ShareParams(
+      await SharePlus.instance.share(
+        ShareParams(
         files: [
           XFile.fromData(
             pngBytes,
@@ -96,7 +98,8 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
         ],
         // WB_SPEC_232 第 4 节：分享文案不再带「· 小马课表」
         text: '我的课表（第 $week 周）',
-      ));
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -139,9 +142,16 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final effective = effectiveCoursesForWeek(
-        courses: courses, overrides: overrides, week: week);
-    final displayDays =
-        computeDisplayDays(effective, week, showOther, autoCollapse);
+      courses: courses,
+      overrides: overrides,
+      week: week,
+    );
+    final displayDays = computeDisplayDays(
+      effective,
+      week,
+      showOther,
+      autoCollapse,
+    );
     final dates = WeekCalc.weekDatesOf(semester.startDateParsed, week);
     final sortedSlots = [...slots]
       ..sort((a, b) => a.section.compareTo(b.section));
@@ -170,7 +180,8 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
                 '正在导出第 $week 周 · 与主页同比例出图，点「分享图片」发给同学或保存',
                 style: TextStyle(
                     fontSize: 13,
-                    color: Theme.of(context).colorScheme.outline),
+                  color: Theme.of(context).colorScheme.outline,
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -226,7 +237,8 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
                 ? const SizedBox(
                     width: 16,
                     height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(Icons.share_outlined),
             label: Text(_sharing ? '生成中…' : '分享图片'),
           ),
@@ -271,8 +283,7 @@ class _ExportSheet extends StatelessWidget {
 
   static const _weekNames = ['一', '二', '三', '四', '五', '六', '日'];
 
-  int _bandsBefore(int section) =>
-      bands.where((b) => section > b.after).length;
+  int _bandsBefore(int section) => bands.where((b) => section > b.after).length;
 
   @override
   Widget build(BuildContext context) {
@@ -304,9 +315,13 @@ class _ExportSheet extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Expanded(
-                  child: Text(title,
+                  child: Text(
+                    title,
                       style: const TextStyle(
-                          fontSize: 17, fontWeight: FontWeight.bold)),
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -315,8 +330,10 @@ class _ExportSheet extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text(dateRange,
-                  style: TextStyle(fontSize: 11, color: scheme.outline)),
+              child: Text(
+                dateRange,
+                style: TextStyle(fontSize: 11, color: scheme.outline),
+              ),
             ),
           ),
           // 表头（与主页同高同结构：左月、星期+日期，今天带圆点）
@@ -328,9 +345,10 @@ class _ExportSheet extends StatelessWidget {
                 SizedBox(
                   width: axisW,
                   child: Center(
-                    child: Text('${dates.first.month}月',
-                        style:
-                            TextStyle(fontSize: 11, color: scheme.outline)),
+                    child: Text(
+                      '${dates.first.month}月',
+                      style: TextStyle(fontSize: 11, color: scheme.outline),
+                    ),
                   ),
                 ),
                 for (final d in displayDays)
@@ -339,9 +357,10 @@ class _ExportSheet extends StatelessWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(_weekNames[d - 1],
-                            style: TextStyle(
-                                fontSize: 10, color: scheme.outline)),
+                        Text(
+                          _weekNames[d - 1],
+                          style: TextStyle(fontSize: 10, color: scheme.outline),
+                        ),
                         const SizedBox(height: 2),
                         Container(
                           width: 22,
@@ -384,16 +403,14 @@ class _ExportSheet extends StatelessWidget {
                     top: topOf(r) + rowH,
                     left: 0,
                     right: 0,
-                    child: Container(
-                        height: 0.5, color: scheme.outlineVariant),
+                    child: Container(height: 0.5, color: scheme.outlineVariant),
                   ),
                 for (final b in bands)
                   Positioned(
                     top: topOf(b.after + 1),
                     left: 0,
                     right: 0,
-                    child: Container(
-                        height: 0.5, color: scheme.outlineVariant),
+                    child: Container(height: 0.5, color: scheme.outlineVariant),
                   ),
                 // 纵向列线：竖线按节次段分段，跳过休息带（WB_SPEC_210 第 2 节，
                 // 与主页共用 verticalLineSegments 同一份口径，带子内不画竖线）
@@ -408,7 +425,9 @@ class _ExportSheet extends StatelessWidget {
                       top: seg.start,
                       height: seg.end - seg.start,
                       child: Container(
-                          width: 0.5, color: scheme.outlineVariant),
+                        width: 0.5,
+                        color: scheme.outlineVariant,
+                      ),
                     ),
                 // 时间轴：节次 + 起止时间（跟随界面设置 axisShowTime）
                 for (final s in slots)
@@ -420,18 +439,29 @@ class _ExportSheet extends StatelessWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text('${s.section}',
+                        Text(
+                          '${s.section}',
                             style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
-                                color: scheme.onSurfaceVariant)),
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
                         if (ui.axisShowTime) ...[
-                          Text(s.startTime,
+                          Text(
+                            s.startTime,
                               style: TextStyle(
-                                  fontSize: 8, color: scheme.outline)),
-                          Text(s.endTime,
+                              fontSize: 8,
+                              color: scheme.outline,
+                            ),
+                          ),
+                          Text(
+                            s.endTime,
                               style: TextStyle(
-                                  fontSize: 8, color: scheme.outline)),
+                              fontSize: 8,
+                              color: scheme.outline,
+                            ),
+                          ),
                         ],
                       ],
                     ),
@@ -472,8 +502,7 @@ class _ExportSheet extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color:
-                                  scheme.outline.withValues(alpha: 0.8),
+                              color: scheme.outline.withValues(alpha: 0.8),
                               letterSpacing: 4,
                             ),
                           ),
@@ -483,8 +512,8 @@ class _ExportSheet extends StatelessWidget {
                               b.interval,
                               style: TextStyle(
                                   fontSize: 11,
-                                  color:
-                                      scheme.outline.withValues(alpha: 0.8)),
+                                color: scheme.outline.withValues(alpha: 0.8),
+                              ),
                             ),
                           ],
                         ],
@@ -572,8 +601,7 @@ class _ExportSheet extends StatelessWidget {
         course: slot.courses.first,
         onTap: () {},
         onLongPress: () {},
-        badgeText:
-            slot.extraCount > 0 ? '+${slot.extraCount}' : null,
+        badgeText: slot.extraCount > 0 ? '+${slot.extraCount}' : null,
         displayColorValue: mapCourseColor(
           slot.courses.first.colorValue,
           ui.colorScheme,
@@ -586,5 +614,503 @@ class _ExportSheet extends StatelessWidget {
         showNote: ui.showNote,
       ),
     );
+  }
+}
+
+/// 2MB 体积上限常量（WB_SPEC_237 / WB_SPEC_239 §3 & §5）
+const int kMaxPngBytes = 2 * 1024 * 1024;
+
+/// 方案 C：整学期一张图课表画布（WB_SPEC_239 §3 & §4）
+///
+/// 关键尺寸（375dp 宽 → 1080px 导出宽，pixelRatio 2.88）：
+/// - 标题栏 54dp（主标题 17sp 加粗，副标题 11sp）
+/// - 星期表头 34dp（11sp 加粗，周一～周日）
+/// - 时间轴宽 34dp（节次 10sp 加粗，时间 7.5sp）
+/// - 单节行高 36dp；午间/晚间分隔带 20dp（文字 9.5sp）
+class SemesterSingleImageSheet extends StatelessWidget {
+  const SemesterSingleImageSheet({
+    super.key,
+    this.width = 375.0,
+    required this.semester,
+    required this.courses,
+    required this.slots,
+    required this.bands,
+    required this.ui,
+    required this.displayDays,
+  });
+
+  final double width;
+  final Semester semester;
+  final List<Course> courses;
+  final List<TimeSlot> slots;
+  final List<GridBand> bands;
+  final UiSettings ui;
+  final List<int> displayDays;
+
+  static const List<String> _dayNames = [
+    '',
+    '周一',
+    '周二',
+    '周三',
+    '周四',
+    '周五',
+    '周六',
+    '周日',
+  ];
+
+  static const double kHeaderHeight = 54.0;
+  static const double kWeekBarHeight = 34.0;
+  // 时间轴宽与本周导出图（_ExportSheet）共用 kTimeAxisWidth（50dp）：
+  // f5 初版自造的 34dp 在测试字体下连「08:00」都放不下（37.5dp），
+  // 换行后把 36dp 的行高撑爆 7.5px；真机数字约 0.5em 虽能放下，
+  // 但与现有导出图不一致，统一用共享常量。
+  static const double kAxisWidth = kTimeAxisWidth;
+  static const double kRowHeight = 36.0;
+  static const double kSemesterBandHeight = 20.0;
+
+  int _bandsBefore(int section) => bands.where((b) => section > b.after).length;
+
+  String _formatDateDot(DateTime dt) {
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    return '${dt.year}.$m.$d';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxWeek = SemesterExportHelper.calculateMaxWeek(courses);
+    final effectiveMaxWeek = maxWeek > 0 ? maxWeek : 1;
+    final start = semester.startDateParsed;
+    final end = start.add(Duration(days: effectiveMaxWeek * 7 - 1));
+    final dateRangeText =
+        '${_formatDateDot(start)} – ${_formatDateDot(end)} · 共 $effectiveMaxWeek 周（按课表自动检测）';
+    final mainTitleText = '${semester.name} · 全学期课表（1–$effectiveMaxWeek周）';
+
+    final maxSection = slots.isEmpty ? 14 : slots.length;
+    final colW = (width - kAxisWidth) / displayDays.length;
+    final gridH = maxSection * kRowHeight + bands.length * kSemesterBandHeight;
+
+    double topOf(int section) =>
+        (section - 1) * kRowHeight +
+        _bandsBefore(section) * kSemesterBandHeight;
+    double bandTop(GridBand b) =>
+        b.after * kRowHeight + _bandsBefore(b.after) * kSemesterBandHeight;
+
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sheetBg = isDark ? const Color(0xFF1E1C19) : const Color(0xFFFAF9F5);
+    final bandBg = isDark ? const Color(0xFF2E2A24) : const Color(0xFFF2EFE9);
+    final bandTextColor = isDark
+        ? const Color(0xFFC9B896)
+        : const Color(0xFF78716C);
+    final gridLineColor = isDark
+        ? const Color(0xFF3A3733)
+        : const Color(0xFFEBE8E0);
+
+    // 画布固定 375 宽：内部 MediaQuery 也按画布尺寸走，让 ConflictBlock
+    // 的小屏字号判定（视口 ≤600）与画布一致——否则在平板/宽视口设备上
+    // 导出会走宽屏字号，标签塞不进 46dp 的列而溢出；导出图在任何设备
+    // 上都应长一个样（WB_SPEC_239 §3：1080×1920 固定尺寸）。
+    final sheetHeight = kHeaderHeight + kWeekBarHeight + gridH + 8.0;
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(size: Size(width, sheetHeight)),
+      child: Container(
+        width: width,
+        color: sheetBg,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 1. 顶部标题栏（54dp）
+            SizedBox(
+              height: kHeaderHeight,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      mainTitleText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: scheme.onSurface,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      dateRangeText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: scheme.onSurfaceVariant,
+                        height: 1.15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // 2. 星期表头（34dp，写周一～周日）
+            Container(
+              height: kWeekBarHeight,
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: gridLineColor, width: 0.5),
+                  bottom: BorderSide(color: gridLineColor, width: 0.5),
+                ),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: kAxisWidth,
+                    child: Center(
+                      child: Text(
+                        '节次',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                  for (final d in displayDays)
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          _dayNames[d],
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            // 3. 周视图网格主体
+            SizedBox(
+              width: width,
+              height: gridH,
+              child: Stack(
+                children: [
+                  // 左侧时间轴（宽 34dp，节次 10sp 加粗，起止时间 7.5sp）
+                  for (final slot in slots)
+                    Positioned(
+                      left: 0,
+                      top: topOf(slot.section),
+                      width: kAxisWidth,
+                      height: kRowHeight,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: Border(
+                            right: BorderSide(color: gridLineColor, width: 0.5),
+                            bottom: BorderSide(
+                              color: gridLineColor.withValues(alpha: 0.5),
+                              width: 0.5,
+                            ),
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '${slot.section}',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: scheme.onSurface,
+                                height: 1.1,
+                              ),
+                            ),
+                            if (ui.axisShowTime) ...[
+                              // 起止时间拆成两个独立 Text（与本周导出图 _ExportSheet
+                              // 同款写法）：一个 Text 里写 '08:00\n08:40' 时，
+                              // 轴宽不够会把每行都换行，行高直接撑爆。
+                              Text(
+                                slot.startTime,
+                                style: TextStyle(
+                                  fontSize: 7.5,
+                                  color: scheme.onSurfaceVariant,
+                                  height: 1.05,
+                                ),
+                              ),
+                              Text(
+                                slot.endTime,
+                                style: TextStyle(
+                                  fontSize: 7.5,
+                                  color: scheme.onSurfaceVariant,
+                                  height: 1.05,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  // 午间 / 晚间分隔带（高 20dp，文字 9.5sp）
+                  for (final b in bands)
+                    Positioned(
+                      left: 0,
+                      top: bandTop(b),
+                      width: width,
+                      height: kSemesterBandHeight,
+                      child: Container(
+                        color: bandBg,
+                        alignment: Alignment.center,
+                        child: Text(
+                          '${b.label} ${b.interval}',
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w600,
+                            color: bandTextColor,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // 课程块与冲突块渲染
+                  for (var di = 0; di < displayDays.length; di++)
+                    for (final mSlot
+                        in SemesterExportHelper.layoutSemesterMasterDay(
+                          dayCourses: courses,
+                          dayOfWeek: displayDays[di],
+                          maxSection: maxSection,
+                        ))
+                      Positioned(
+                        left: kAxisWidth + di * colW + 1.0,
+                        top: topOf(mSlot.startSection) + 1.0,
+                        width: colW - 2.0,
+                        height: mSlot.span * kRowHeight - 2.0,
+                        child: _buildMasterSlotWidget(
+                          mSlot,
+                          colW - 2.0,
+                          mSlot.span * kRowHeight - 2.0,
+                        ),
+                      ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMasterSlotWidget(SemesterMasterSlot mSlot, double w, double h) {
+    switch (mSlot.kind) {
+      case SemesterMasterSlotKind.conflict:
+        final pair = mSlot.conflictPair!;
+        return ConflictBlock(
+          topCourse: pair.topCourse,
+          bottomCourse: pair.bottomCourse,
+          width: w,
+          height: h,
+          colorId: ui.conflictBlockColorId,
+          intensity: ui.conflictGradientIntensity,
+          blurEnabled: ui.conflictBlurEnabled,
+        );
+      case SemesterMasterSlotKind.parityPair:
+        final topC = mSlot.courses[0];
+        final botC = mSlot.courses[1];
+        return Column(
+          children: [
+            Expanded(
+              child: _SingleMasterCard(course: topC, ui: ui, compact: true),
+            ),
+            const SizedBox(height: 1.5),
+            Expanded(
+              child: _SingleMasterCard(course: botC, ui: ui, compact: true),
+            ),
+          ],
+        );
+      case SemesterMasterSlotKind.single:
+        return _SingleMasterCard(
+          course: mSlot.courses.first,
+          ui: ui,
+          compact: false,
+        );
+    }
+  }
+}
+
+/// 方案 C 普通课程卡片（课名 10sp 加粗、教室/老师 8.5sp、周次胶囊 7.5sp 加粗白底 65%）
+class _SingleMasterCard extends StatelessWidget {
+  const _SingleMasterCard({
+    required this.course,
+    required this.ui,
+    required this.compact,
+  });
+
+  final Course course;
+  final UiSettings ui;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final bgColor = Color(mapCourseColor(course.colorValue, ui.colorScheme));
+    final weekCapsule = SemesterExportHelper.formatWeekCapsule(course);
+    final metaParts = <String>[
+      if (ui.showClassroom &&
+          course.classroom != null &&
+          course.classroom!.trim().isNotEmpty)
+        course.classroom!.trim(),
+      if (!compact &&
+          ui.showTeacher &&
+          course.teacher != null &&
+          course.teacher!.trim().isNotEmpty)
+        course.teacher!.trim(),
+    ];
+    final metaText = metaParts.join(' · ');
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: 3, vertical: compact ? 1.5 : 3),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(compact ? 5 : 7),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                course.name,
+                maxLines: compact ? 1 : 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: compact ? 8.5 : 10.0,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1F2937),
+                  height: 1.2,
+                ),
+              ),
+              if (metaText.isNotEmpty) ...[
+                const SizedBox(height: 1),
+                Text(
+                  metaText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: compact ? 7.5 : 8.5,
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFF374151),
+                    height: 1.15,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (weekCapsule.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 0.5),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.65),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: Text(
+                weekCapsule,
+                maxLines: 1,
+                style: const TextStyle(
+                  fontSize: 7.5,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF374151),
+                  height: 1.3,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 离屏渲染整学期单张 PNG 并调用 SharePlus 分享（WB_SPEC_239 §2 & §3）
+///
+/// 像素比与体积降级复用本文件已有的 [cappedExportPixelRatio] /
+/// [renderWithinLimit]（与本周 PNG 同一套口径，不另起签名）。
+/// [invokeShare] 为 false 时只返回字节、不调分享面板——导出 BottomSheet
+/// 先收起 sheet、弹「正在打开分享面板」提示，再自己调分享（P1-2 时序）。
+///
+/// 注意：形参名用 [uiSettings] 而不用 `ui`——`ui` 会遮住本文件顶部的
+/// `dart:ui as ui` 前缀，导致 `ui.ImageByteFormat` 解析到 UiSettings 上。
+Future<Uint8List> generateAndShareSemesterSinglePng({
+  required BuildContext context,
+  required Semester semester,
+  required List<Course> courses,
+  required List<TimeSlot> slots,
+  required List<GridBand> bands,
+  required UiSettings uiSettings,
+  List<int> displayDays = const [1, 2, 3, 4, 5, 6, 7],
+  bool invokeShare = true,
+}) async {
+  final boundaryKey = GlobalKey();
+  final overlay = Overlay.of(context);
+  late OverlayEntry entry;
+
+  entry = OverlayEntry(
+    builder: (ctx) => Positioned(
+      left: -2000,
+      top: 0,
+      child: Material(
+        type: MaterialType.transparency,
+        child: RepaintBoundary(
+          key: boundaryKey,
+          child: SemesterSingleImageSheet(
+            width: 375.0,
+            semester: semester,
+            courses: courses,
+            slots: slots,
+            bands: bands,
+            ui: uiSettings,
+            displayDays: displayDays,
+          ),
+        ),
+      ),
+    ),
+  );
+
+  overlay.insert(entry);
+  try {
+    await WidgetsBinding.instance.endOfFrame;
+    final boundary =
+        boundaryKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+    final pngBytes = await renderWithinLimit((ratio) async {
+      final img = await boundary.toImage(pixelRatio: ratio);
+      final bd = await img.toByteData(format: ui.ImageByteFormat.png);
+      img.dispose();
+      if (bd == null) throw StateError('整学期图片编码失败');
+      return bd.buffer.asUint8List();
+    }, cappedExportPixelRatio(boundary.size.width, boundary.size.height));
+    if (pngBytes == null) throw StateError('整学期图片编码失败');
+
+    if (invokeShare) {
+      final fileName = '${semester.name}课表.png';
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile.fromData(pngBytes, name: fileName, mimeType: 'image/png'),
+          ],
+          text: '这是${semester.name}完整课表，请查收',
+        ),
+      );
+    }
+    return pngBytes;
+  } finally {
+    entry.remove();
   }
 }

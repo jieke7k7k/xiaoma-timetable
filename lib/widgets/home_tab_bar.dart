@@ -4,15 +4,20 @@ import '../ui/bottom_bar_metrics.dart';
 import '../ui/liquid_glass.dart';
 import '../utils/app_haptics.dart';
 
-/// 壳内一级视图的两键：课表 / 设置（原在 home_capsule.dart，胶囊删除后迁入此处）。
-enum HomeShellTab { schedule, settings }
+/// 壳内一级视图的三键：今日 / 课表 / 设置（原在 home_capsule.dart，胶囊删除后迁入此处）。
+///
+/// WB_SPEC_238 §2：底栏由两键变三键，今日在左、课表居中、我的在右；
+/// 「我的」= 现在的设置页，内部枚举名保留 settings 兼容既有引用，只改底栏标签文字。
+enum HomeShellTab { today, schedule, settings }
 
 /// 标签栏底部栏（WB_SPEC_216 第 1 节·新默认形态；
-/// WB_SPEC_217 第 1 节·丝滑切换；2026-11-05 按 Argon Q1 方案改为无框选中态）。
+/// WB_SPEC_217 第 1 节·丝滑切换；2026-11-05 按 Argon Q1 方案改为无框选中态；
+/// WB_SPEC_238 §2·三键：今日 / 课表 / 我的）。
 ///
-/// 布局与功能：整宽贴底、不悬浮、无阴影、两格等宽、图标在上文字在下、
-/// 文案「课表 / 设置」不变、点「课表」回课表视图（已在课表则回本周）、
-/// 点「设置」进壳内设置根页。
+/// 布局与功能：整宽贴底、不悬浮、无阴影、三格等宽、图标在上文字在下、
+/// 文案「今日 / 课表 / 我的」不变、点「今日」进今日视图、
+/// 点「课表」回课表视图（已在课表则回本周）、
+/// 点「我的」进壳内设置根页。
 ///
 /// 无框选中态（Argon 方案 Q1，用户反馈「选中框」后改）：
 /// - **没有包住图标/文字的色块**：50% 宽金黄渐变滑块已删，选中只剩三重
@@ -97,15 +102,29 @@ class _HomeTabBarState extends State<HomeTabBar> {
             // 字体放大时由 _tab 内部的 Column 居中，不会纵向溢出。
             height: HomeTabBar.height,
             child: Stack(
-              // 两层从下到上：选中小短条 → 两格按键（玻璃层与金黄滑块已删，
+              // 两层从下到上：选中小短条 → 三格按键（玻璃层与金黄滑块已删，
               // 见本文件头注释）
               fit: StackFit.expand,
               children: [
-                // ① 选中指示小短条：16×2.5dp，随选中项在左右两格之间滑动
+                // ① 选中指示小短条：16×2.5dp，随选中项在三格之间滑动
                 _selectionPill(),
-                // ② 两格按键：仍 Expanded 等宽平铺，宽度与 2.1.5 一致
+                // ② 三格按键：仍 Expanded 等宽平铺，宽度与 2.1.5 一致
                 Row(
                   children: [
+                    _tab(
+                      context,
+                      tab: HomeShellTab.today,
+                      key: kHomeTabBarTodayKey,
+                      pressKey: kHomeTabBarTodayPressKey,
+                      liftKey: kHomeTabBarTodayLiftKey,
+                      iconKey: kHomeTabBarTodayIconKey,
+                      labelKey: kHomeTabBarTodayLabelKey,
+                      icon: Icons.today_outlined,
+                      selectedIcon: Icons.today,
+                      label: '今日',
+                      selected: widget.activeTab == HomeShellTab.today,
+                      onTap: () => widget.onSelectTab(HomeShellTab.today),
+                    ),
                     _tab(
                       context,
                       tab: HomeShellTab.schedule,
@@ -130,7 +149,9 @@ class _HomeTabBarState extends State<HomeTabBar> {
                       labelKey: kHomeTabBarSettingsLabelKey,
                       icon: Icons.settings_outlined,
                       selectedIcon: Icons.settings,
-                      label: '设置',
+                      // WB_SPEC_238 §2：只改底栏标签文字「设置」→「我的」，
+                      // 设置根页本身（标题、入口、文案）一字不改。
+                      label: '我的',
                       selected: widget.activeTab == HomeShellTab.settings,
                       onTap: () => widget.onSelectTab(HomeShellTab.settings),
                     ),
@@ -146,20 +167,24 @@ class _HomeTabBarState extends State<HomeTabBar> {
 
   /// 选中指示小短条（Argon 方案 Q1：无框选中态的唯一指示器）。
   ///
-  /// 一根 16×2.5dp 的主题色小短条，贴在栏底上方 3dp，随选中项在左右两格
+  /// 一根 16×2.5dp 的主题色小短条，贴在栏底上方 3dp，随选中项在三格
   /// 之间滑动（[AnimatedAlign] 的 alignment 从 -1 到 +1，320ms 减速曲线）。
-  /// 短条放在 50% 宽的容器里水平居中，容器本身不贴边——视觉上短条始终
+  /// 短条放在 1/3 栏宽的容器里水平居中，容器本身不贴边——视觉上短条始终
   /// 悬在选中那格的正下方中央。
   ///
   /// 旧的 50% 宽金黄渐变滑块已删：用户反馈它就是「选中框」，任何包住
   /// 图标/文字的色块（含淡 tint、M3 小胶囊）都必须排除。
   Widget _selectionPill() {
-    final isSchedule = widget.activeTab == HomeShellTab.schedule;
+    // WB_SPEC_238 §2：三格对齐——今日 -1、课表 0、我的 +1；y=1 贴栏底
+    final double alignX = switch (widget.activeTab) {
+      HomeShellTab.today => -1,
+      HomeShellTab.schedule => 0,
+      HomeShellTab.settings => 1,
+    };
     final scheme = Theme.of(context).colorScheme;
     return AnimatedAlign(
       key: kHomeTabBarIndicatorKey,
-      // -1 = 贴左（课表格），+1 = 贴右（设置格）；y=1 贴栏底
-      alignment: Alignment(isSchedule ? -1 : 1, 1),
+      alignment: Alignment(alignX, 1),
       duration: kSelectionPillDuration,
       curve: kSelectionPillCurve,
       child: IgnorePointer(
@@ -192,7 +217,7 @@ class _HomeTabBarState extends State<HomeTabBar> {
     );
   }
 
-  /// 标签栏里的一格：图标在上、文字在下，垂直居中，两格等宽（各占一半）。
+  /// 标签栏里的一格：图标在上、文字在下，垂直居中，三格等宽（各占三分之一）。
   ///
   /// 三层动画各管各的（Argon 方案第 2 / 3 条）：
   /// - 按压：[AnimatedScale]，按下 90ms→0.92、松手 350ms 弹簧→1.0；
@@ -247,9 +272,7 @@ class _HomeTabBarState extends State<HomeTabBar> {
         child: AnimatedScale(
           key: pressKey,
           scale: pressed ? kLiquidPressedScale : 1.0,
-          duration: pressed
-              ? kLiquidPressDownDuration
-              : kLiquidPressUpDuration,
+          duration: pressed ? kLiquidPressDownDuration : kLiquidPressUpDuration,
           curve: pressed ? Curves.easeOut : kLiquidSpringCurve,
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -315,21 +338,26 @@ const Key kHomeTabBarIndicatorKey = ValueKey('home_tab_bar_indicator');
 /// 选中指示器容器的 Key（[FractionallySizedBox]：测试据此断言宽度为栏宽 50%）
 const Key kHomeTabBarIndicatorBoxKey = ValueKey('home_tab_bar_indicator_box');
 
+/// 标签栏里「今日」格的 Key
+const Key kHomeTabBarTodayKey = ValueKey('home_tab_bar_today_key');
+
 /// 标签栏里「课表」格的 Key
 const Key kHomeTabBarScheduleKey = ValueKey('home_tab_bar_schedule_key');
 
-/// 标签栏里「设置」格的 Key
+/// 标签栏里「设置」格的 Key（标签文字是「我的」，键名保留 settings 兼容既有引用）
 const Key kHomeTabBarSettingsKey = ValueKey('home_tab_bar_settings_key');
 
+/// 「今日」格按压缩放层的 Key（[AnimatedScale]）
+const Key kHomeTabBarTodayPressKey = ValueKey('home_tab_bar_today_press');
+
 /// 「课表」格按压缩放层的 Key（[AnimatedScale]）
-const Key kHomeTabBarSchedulePressKey = ValueKey(
-  'home_tab_bar_schedule_press',
-);
+const Key kHomeTabBarSchedulePressKey = ValueKey('home_tab_bar_schedule_press');
 
 /// 「设置」格按压缩放层的 Key（[AnimatedScale]）
-const Key kHomeTabBarSettingsPressKey = ValueKey(
-  'home_tab_bar_settings_press',
-);
+const Key kHomeTabBarSettingsPressKey = ValueKey('home_tab_bar_settings_press');
+
+/// 「今日」格图标上浮层的 Key（[AnimatedSlide]）
+const Key kHomeTabBarTodayLiftKey = ValueKey('home_tab_bar_today_lift');
 
 /// 「课表」格图标上浮层的 Key（[AnimatedSlide]）
 const Key kHomeTabBarScheduleLiftKey = ValueKey('home_tab_bar_schedule_lift');
@@ -337,11 +365,17 @@ const Key kHomeTabBarScheduleLiftKey = ValueKey('home_tab_bar_schedule_lift');
 /// 「设置」格图标上浮层的 Key（[AnimatedSlide]）
 const Key kHomeTabBarSettingsLiftKey = ValueKey('home_tab_bar_settings_lift');
 
-/// 「课表」格图标的 Key（[LiquidIcon]：WB_SPEC_235 起不再外包放大层）
+/// 「今日」格图标的 Key（[LiquidIcon]：WB_SPEC_235 起不再外包放大层）
+const Key kHomeTabBarTodayIconKey = ValueKey('home_tab_bar_today_icon');
+
+/// 「课表」格图标的 Key（[LiquidIcon]）
 const Key kHomeTabBarScheduleIconKey = ValueKey('home_tab_bar_schedule_icon');
 
 /// 「设置」格图标的 Key（[LiquidIcon]）
 const Key kHomeTabBarSettingsIconKey = ValueKey('home_tab_bar_settings_icon');
+
+/// 「今日」格文字的 Key（[LiquidLabel]）
+const Key kHomeTabBarTodayLabelKey = ValueKey('home_tab_bar_today_label');
 
 /// 「课表」格文字的 Key（[LiquidLabel]）
 const Key kHomeTabBarScheduleLabelKey = ValueKey('home_tab_bar_schedule_label');

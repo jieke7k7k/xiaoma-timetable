@@ -1,5 +1,7 @@
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
+
 import '../models/course.dart';
 
 /// 冲突块外观数据辅助类（WB_SPEC_237 §5）
@@ -57,8 +59,7 @@ class ConflictBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final baseColors = ConflictBlockAppearance.getColors(colorId);
-    final actualDark =
-        ConflictBlockAppearance.darkEnd(colorId, intensity);
+    final actualDark = ConflictBlockAppearance.darkEnd(colorId, intensity);
 
     final halfHeight = height / 2;
     final hideTeacher = halfHeight < 50;
@@ -107,7 +108,9 @@ class ConflictBlock extends StatelessWidget {
                 padding: halfPadding,
                 child: CustomPaint(
                   painter: _DashedBottomPainter(
-                      color: const Color(0xFF6B7280), strokeWidth: 1.5),
+                    color: const Color(0xFF6B7280),
+                    strokeWidth: 1.5,
+                  ),
                   child: _buildHalfContent(
                     course: topCourse,
                     tagText: '前半学期',
@@ -214,17 +217,17 @@ class ConflictBlock extends StatelessWidget {
           Row(
             children: [
               tag,
-              const SizedBox(width: 4),
+              // 间隙 2px（不是 4px）：375 宽单图里半块可用宽只有约 35.4dp，
+              // 小屏标签本身已占 32dp，4px 间隙会让 Row 溢出 0.6px
+              // （WB_SPEC_239 单图 2 节冲突走的就是这一路）。
+              const SizedBox(width: 2),
               Expanded(
                 child: Text.rich(
                   TextSpan(
                     children: [
                       TextSpan(text: course.name, style: nameStyle),
                       if (meta.isNotEmpty)
-                        TextSpan(
-                          text: ' · $meta',
-                          style: metaStyle,
-                        ),
+                        TextSpan(text: ' · $meta', style: metaStyle),
                     ],
                   ),
                   maxLines: 1,
@@ -272,7 +275,9 @@ class ConflictBlock extends StatelessWidget {
         Row(
           children: [
             tag,
-            const SizedBox(width: 4),
+            // 间隙 2px：与单行分支同理，375 宽单图半块可用宽约 35.4dp，
+            // 标签 32dp + 4px 间隙会溢出 0.6px。
+            const SizedBox(width: 2),
             Expanded(
               child: Text(
                 course.name,

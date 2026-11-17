@@ -58,8 +58,7 @@ void main() {
   // 全局异常兜底（1.3.1）：整个启动流程包进 zone——框架层错误（构建/布局/绘制）
   // 由 FlutterError.onError 接住，zone 内未捕获的异步异常由第二个回调接住，
   // 两条路统一落到 _recordError，不再红屏原文、也不静默闪退。
-  runZonedGuarded(
-    () async {
+  runZonedGuarded(() async {
       WidgetsFlutterBinding.ensureInitialized();
       // 框架层错误（构建/布局/绘制抛的异常）：先按 Flutter 默认方式输出到
       // 控制台，再记一条日志。不转发给 zone，避免同一错误重复记录两次。
@@ -77,9 +76,7 @@ void main() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_initNotifications());
       });
-    },
-    (error, stack) => unawaited(_recordError(error, stack)),
-  );
+  }, (error, stack) => unawaited(_recordError(error, stack)));
 }
 
 /// 启动前置初始化（1.3.2 瘦身）：只留导入字体。
@@ -266,8 +263,7 @@ final Map<String, WidgetBuilder> appRoutes = {
         '/settings-permissions': (context) => const PermissionsSettingsPage(),
         '/settings-widget': (context) => const WidgetSettingsPage(),
         // WB_SPEC_228 §9：4 个专项子页（第 3 层，全平铺）
-        '/settings-appearance-grid': (context) =>
-            const AppearanceGridSettingsPage(),
+  '/settings-appearance-grid': (context) => const AppearanceGridSettingsPage(),
         '/settings-card-style': (context) => const CardStylePage(),
         '/settings-font': (context) => const FontSettingsPage(),
         '/settings-section-rules': (context) => const SectionRulesPage(),
@@ -339,7 +335,9 @@ class SimpleTimetableApp extends ConsumerWidget {
         // 曲线 fastOutSlowIn、不做预测性返回；系统移除动画时归零，见 AppSlidePageTransitionsBuilder）
         pageTransitionsTheme: const PageTransitionsTheme(
           builders: {
-            TargetPlatform.android: AppSlidePageTransitionsBuilder(android: true),
+            TargetPlatform.android: AppSlidePageTransitionsBuilder(
+              android: true,
+            ),
             TargetPlatform.iOS: AppSlidePageTransitionsBuilder(android: false),
           },
         ),
@@ -392,7 +390,9 @@ class SimpleTimetableApp extends ConsumerWidget {
         // 2.1.0（WB_SPEC_212 第 5 节）：深色与浅色同款右滑转场，全 App 统一
         pageTransitionsTheme: const PageTransitionsTheme(
           builders: {
-            TargetPlatform.android: AppSlidePageTransitionsBuilder(android: true),
+            TargetPlatform.android: AppSlidePageTransitionsBuilder(
+              android: true,
+            ),
             TargetPlatform.iOS: AppSlidePageTransitionsBuilder(android: false),
           },
         ),
@@ -473,9 +473,10 @@ class _RootGate extends ConsumerWidget {
 /// （WB_SPEC_214：解锁展开与第三个键随对应功能一并删除）。
 ///
 /// 2.5.0（WB_SPEC_234）：底部栏开关整体删除，底栏无条件常显，这里**永远是**
-/// 单层壳结构——壳内承载［课表、设置根页］两个一级视图，原地淡入淡出切换，
-/// 底部栏恒为标签栏两键［课表｜设置］；设置根页作为一级视图、无返回箭头；
-/// 壳内 Tab 恒为课表起。
+/// 单层壳结构——壳内承载［今日、课表、设置根页］三个一级视图，原地淡入淡出切换，
+/// 底部栏恒为标签栏三键［今日｜课表｜我的］（WB_SPEC_238 §2：今日在左、
+/// 课表居中、我的在右；「我的」= 设置根页，只改底栏标签文字，页内一字不改）；
+/// 设置根页作为一级视图、无返回箭头；壳内 Tab 恒为课表起。
 ///
 /// 2.1.5（WB_SPEC_216 第 1 节）：底部栏是图标+文字标签栏——整宽贴住
 /// 屏幕底边、顶部一条细分割线，两格等宽（图标在上、文字在下），选中态图标与
@@ -600,12 +601,21 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   /// （设置页首次 build/layout 掉帧），且两页交叉淡入淡出、中段各占 50%
   /// 透明度叠出重影（Argon 诊断）。
   Widget _buildShell(ShellTransitionStyle style) {
-    final view = ShellTransitionView(currentTab: _tab, style: style);
+    final view = ShellTransitionView(
+      currentTab: _tab,
+      style: style,
+      // WB_SPEC_238 §3：今日视图空状态点「课表」二字切回课表 Tab
+      onNavigateToSchedule: () {
+        if (_tab != HomeShellTab.schedule) {
+          setState(() => _tab = HomeShellTab.schedule);
+        }
+      },
+    );
 
     return Stack(
       children: [
         Positioned.fill(child: view),
-        // 顶层：标签栏（恒两键［课表｜设置］），悬浮贴底
+        // 顶层：标签栏（恒三键［今日｜课表｜我的］），悬浮贴底
         Positioned(
           left: 0,
           right: 0,

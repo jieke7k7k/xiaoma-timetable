@@ -39,9 +39,9 @@ const Duration kSelectionPillDuration = Duration(milliseconds: 320);
 /// 选中指示小短条滑动曲线：减速曲线（Argon 方案 Q1）。
 const Cubic kSelectionPillCurve = Curves.easeOutCubic;
 
-/// 选中指示器容器宽度占栏宽的比例：小短条放在 50% 宽的容器里水平居中，
-/// 容器随选中项在左右两格之间滑动（AnimatedAlign -1/+1），短条本身不贴边。
-const double kLiquidIndicatorWidthFactor = 0.5;
+/// 选中指示器容器宽度占栏宽的比例：小短条放在 1/3 栏宽的容器里水平居中，
+/// 容器随选中项在三格之间滑动（AnimatedAlign -1/0/+1，WB_SPEC_238 §2），短条本身不贴边。
+const double kLiquidIndicatorWidthFactor = 1 / 3;
 
 /// 指示器滑动时长：380ms（Argon 方案）。
 const Duration kLiquidSlideDuration = Duration(milliseconds: 380);
@@ -124,18 +124,20 @@ class _LiquidIconState extends AnimatedWidgetBaseState<LiquidIcon> {
 
   @override
   void forEachTween(TweenVisitor<dynamic> visitor) {
-    _color =
-        visitor(
+    _color = visitor(
               _color,
               widget.color,
               (dynamic value) => ColorTween(begin: value as Color?),
-            )
-            as ColorTween?;
+    ) as ColorTween?;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Icon(widget.icon, size: widget.size, color: _color?.evaluate(animation));
+    return Icon(
+      widget.icon,
+      size: widget.size,
+      color: _color?.evaluate(animation),
+    );
   }
 }
 
@@ -170,13 +172,11 @@ class _LiquidLabelState extends AnimatedWidgetBaseState<LiquidLabel> {
 
   @override
   void forEachTween(TweenVisitor<dynamic> visitor) {
-    _style =
-        visitor(
+    _style = visitor(
               _style,
               widget.style,
               (dynamic value) => TextStyleTween(begin: value as TextStyle),
-            )
-            as TextStyleTween?;
+    ) as TextStyleTween?;
   }
 
   @override

@@ -13,6 +13,7 @@ import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/models/ui_settings.dart';
 import 'package:xiaoma_timetable/ui/shell_transition.dart';
 import 'package:xiaoma_timetable/pages/settings_page.dart';
+import 'package:xiaoma_timetable/pages/today_view_page.dart';
 import 'package:xiaoma_timetable/pages/week_view_page.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
 import 'package:xiaoma_timetable/providers/providers.dart';
@@ -22,7 +23,7 @@ import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 ///
 /// 2.1.7 同版本修复：胶囊形态整体删除，底部栏只有「图标+文字标签栏」
 /// [HomeTabBar]；旧库里的 `bottomBarStyle` 字段整体忽略：
-/// 1. 默认渲染：WeekViewPage + 标签栏（HomeTabBar），恒两键［课表｜设置］；
+/// 1. 默认渲染：WeekViewPage + 标签栏（HomeTabBar），恒三键［今日｜课表｜我的］；
 /// 2. 点「设置」键切到壳内设置根页，且无左上角返回箭头；
 /// 3. 旧库里残留的 `bottomBarStyle`（`capsule` / `bar`）读取后直接忽略，
 ///    仍出标签栏，不会无栏、不会崩；
@@ -138,7 +139,7 @@ void main() {
     });
   }
 
-  testWidgets('默认形态＝标签栏：WeekViewPage + HomeTabBar 恒两键，无 IndexedStack/NavigationBar', (
+  testWidgets('默认形态＝标签栏：WeekViewPage + HomeTabBar 恒三键，无 IndexedStack/NavigationBar', (
     tester,
   ) async {
     await seedUi(tester, const UiSettings());
@@ -147,13 +148,22 @@ void main() {
     // 课表一级视图 + 标签栏都存在
     expect(find.byType(WeekViewPage), findsOneWidget);
     expect(find.byType(HomeTabBar), findsOneWidget);
+    // 默认动效 B 是 PageTransitionSwitcher：只挂载当前页，今日视图初始不在树里
+    expect(find.byType(TodayViewPage), findsNothing);
     // 三页签结构已删除（栏是自绘组件，不是系统底栏）
     expect(find.byType(IndexedStack), findsNothing);
     expect(find.byType(BottomNavigationBar), findsNothing);
     expect(find.byType(NavigationBar), findsNothing);
-    // 栏里恰两键，无「主页」键，也没有 AI 键及其图标
+    // 栏里恰三键，无「主页」键，也没有 AI 键及其图标
     // （2026-11-05：默认动效是双页常驻，设置页 AppBar 标题「设置」也在树里，
     // 须把文字断言限定在栏内，否则会多命中常驻页的标题）
+    expect(
+      find.descendant(
+        of: find.byType(HomeTabBar),
+        matching: find.text('今日'),
+      ),
+      findsOneWidget,
+    );
     expect(
       find.descendant(
         of: find.byType(HomeTabBar),
@@ -164,11 +174,11 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(HomeTabBar),
-        matching: find.text('设置'),
+        matching: find.text('我的'),
       ),
       findsOneWidget,
     );
-    expect(find.text('我的'), findsNothing);
+    expect(find.text('设置'), findsNothing);
     expect(find.text('主页'), findsNothing);
     expect(find.byIcon(Icons.smart_toy_outlined), findsNothing);
     expect(
@@ -180,8 +190,8 @@ void main() {
             ),
           )
           .length,
-      2,
-      reason: '底部栏恒为［课表｜设置］两键',
+      3,
+      reason: '底部栏恒为［今日｜课表｜我的］三键',
     );
     // 标签栏：宽度撑满整宽、贴底
     final screenWidth = tester.getSize(find.byType(MaterialApp)).width;
@@ -198,11 +208,11 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('点设置键切到壳内设置根页，且无返回箭头', (tester) async {
+  testWidgets('点「我的」键切到壳内设置根页，且无返回箭头', (tester) async {
     await seedUi(tester, const UiSettings());
     await pumpHome(tester);
 
-    // 此刻栏上的「设置」键是切换入口（2026-11-05：默认动效双页常驻，
+    // 此刻栏上的「我的」键是切换入口（2026-11-05：默认动效双页常驻，
     // 设置页 AppBar 标题「设置」也在树里，须按栏键点，不能按文字点）
     await tester.tap(find.byKey(kHomeTabBarSettingsKey));
     await tester.pump();
@@ -261,6 +271,8 @@ void main() {
     expect(find.byType(ParallaxShellBody), findsNothing);
     expect(find.byType(QuickFadeShellBody), findsNothing);
     expect(find.byType(WeekViewPage), findsOneWidget);
+    expect(find.byType(TodayViewPage), findsNothing);
+    expect(find.byType(SettingsPage), findsNothing);
 
     // 课表 → 设置：220ms 内完成
     await tester.tap(find.byKey(kHomeTabBarSettingsKey));
@@ -286,10 +298,11 @@ void main() {
     );
     await pumpHome(tester);
 
-    // 动效 A：ParallaxShellBody 挂载，且两页都在树里（常驻保活，
+    // 动效 A：ParallaxShellBody 挂载，且三页都在树里（常驻保活，
     // 透明度 0 的那页也在，只是不显示——切页时 0 重建）
     expect(find.byType(ParallaxShellBody), findsOneWidget);
     expect(find.byType(WeekViewPage), findsOneWidget);
+    expect(find.byType(TodayViewPage), findsOneWidget);
     expect(find.byType(SettingsPage), findsOneWidget);
     expect(find.byType(PageTransitionSwitcher), findsNothing);
     expect(find.byType(QuickFadeShellBody), findsNothing);
@@ -321,6 +334,7 @@ void main() {
     expect(find.byType(PageTransitionSwitcher), findsOneWidget);
     expect(find.byType(ParallaxShellBody), findsNothing);
     expect(find.byType(WeekViewPage), findsOneWidget);
+    expect(find.byType(TodayViewPage), findsNothing);
 
     await tester.tap(find.byKey(kHomeTabBarSettingsKey));
     await tester.pump();
@@ -343,12 +357,38 @@ void main() {
 
     expect(find.byType(QuickFadeShellBody), findsOneWidget);
     expect(find.byType(WeekViewPage), findsOneWidget);
+    expect(find.byType(TodayViewPage), findsOneWidget);
     expect(find.byType(SettingsPage), findsOneWidget);
 
     await tester.tap(find.byKey(kHomeTabBarSettingsKey));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(SettingsPage), findsOneWidget);
+    await tester.tap(find.byKey(kHomeTabBarScheduleKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(WeekViewPage), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('点今日键进今日视图（WB_SPEC_238 §2）', (tester) async {
+    await seedUi(tester, const UiSettings());
+    await pumpHome(tester);
+
+    // 默认在课表页，今日视图不在树里（默认动效 B 只挂载当前页）
+    expect(find.byType(WeekViewPage), findsOneWidget);
+    expect(find.byType(TodayViewPage), findsNothing);
+
+    // 点今日键：切到今日视图
+    await tester.tap(find.byKey(kHomeTabBarTodayKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(TodayViewPage), findsOneWidget);
+    expect(find.text('今日课程'), findsOneWidget);
+
+    // 点课表键：切回课表页
     await tester.tap(find.byKey(kHomeTabBarScheduleKey));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
