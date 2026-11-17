@@ -492,6 +492,10 @@ class SemesterPdfExport {
       final start =
           g.map((c) => c.startSection).reduce((a, b) => a < b ? a : b);
       final end = g.map((c) => c.endSection).reduce((a, b) => a > b ? a : b);
+      // P1-5：三门及以上同组不画冲突块（只画两门）——已统计，测试学期
+      // 数据（8 门课，18 周）按节次重叠分组数过，最大一组 2 门，≥3 门
+      // 组 0 个，所以这个 fallback 目前走不到；真出现三门同组时按
+      // 规格 §14 报他定，不擅自改（见 wb237 测试 §4.1 的统计用例）。
       if (g.length == 2) {
         final pair = SemesterExportHelper.checkConflict(g[0], g[1], week);
         if (pair != null) {

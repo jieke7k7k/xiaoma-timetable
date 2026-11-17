@@ -113,6 +113,7 @@ class ConflictBlock extends StatelessWidget {
                     tagText: '前半学期',
                     hideTeacher: hideTeacher,
                     halfHeight: halfHeight,
+                    isSmallScreen: isSmallScreen,
                     tagFontSize: tagFontSize,
                     nameFontSize: nameFontSize,
                     metaFontSize: metaFontSize,
@@ -131,6 +132,7 @@ class ConflictBlock extends StatelessWidget {
                   tagText: '后半学期',
                   hideTeacher: hideTeacher,
                   halfHeight: halfHeight,
+                  isSmallScreen: isSmallScreen,
                   tagFontSize: tagFontSize,
                   nameFontSize: nameFontSize,
                   metaFontSize: metaFontSize,
@@ -161,6 +163,7 @@ class ConflictBlock extends StatelessWidget {
     required String tagText,
     required bool hideTeacher,
     required double halfHeight,
+    required bool isSmallScreen,
     required double tagFontSize,
     required double nameFontSize,
     required double metaFontSize,
@@ -169,6 +172,37 @@ class ConflictBlock extends StatelessWidget {
     final meta = hideTeacher
         ? (course.classroom ?? '')
         : '${course.classroom ?? ''}${course.teacher != null ? ' · ${course.teacher}' : ''}';
+    final tag = Container(
+      padding: tagPadding,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text(
+        tagText,
+        style: TextStyle(
+          fontSize: tagFontSize,
+          fontWeight: FontWeight.w600,
+          color: const Color(0xFF4B5563),
+          // 标签是纯中文（「前半学期」/「后半学期」，无下行字母），行高
+          // 收到 1.1 也不裁字；不收的话字体自然行高约 1.9 倍，38px 半块
+          // 的三行会溢出（见三行分支的注释）。
+          height: 1.1,
+        ),
+      ),
+    );
+    final nameStyle = TextStyle(
+      fontSize: nameFontSize,
+      fontWeight: FontWeight.w700,
+      color: const Color(0xFF1F2937),
+      height: 1.25,
+    );
+    final metaStyle = TextStyle(
+      fontSize: metaFontSize,
+      fontWeight: FontWeight.w500,
+      color: const Color(0xFF374151),
+      height: 1.25,
+    );
     // 半块太矮（<38px）时两行放不下会溢出（RenderFlex overflow），改成单行：
     // 标签 + 课名 · 教室（老师名已按 <50 规则藏掉）。单节课的冲突块半块
     // 只有约 21px，只能走这一路。
@@ -179,44 +213,17 @@ class ConflictBlock extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                padding: tagPadding,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.7),
-                  borderRadius: BorderRadius.circular(3),
-                ),
-                child: Text(
-                  tagText,
-                  style: TextStyle(
-                    fontSize: tagFontSize,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF4B5563),
-                  ),
-                ),
-              ),
+              tag,
               const SizedBox(width: 4),
               Expanded(
                 child: Text.rich(
                   TextSpan(
                     children: [
-                      TextSpan(
-                        text: course.name,
-                        style: TextStyle(
-                          fontSize: nameFontSize,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF1F2937),
-                          height: 1.25,
-                        ),
-                      ),
+                      TextSpan(text: course.name, style: nameStyle),
                       if (meta.isNotEmpty)
                         TextSpan(
                           text: ' · $meta',
-                          style: TextStyle(
-                            fontSize: metaFontSize,
-                            fontWeight: FontWeight.w500,
-                            color: const Color(0xFF374151),
-                            height: 1.25,
-                          ),
+                          style: metaStyle,
                         ),
                     ],
                   ),
@@ -229,39 +236,49 @@ class ConflictBlock extends StatelessWidget {
         ],
       );
     }
+    // 半块够高时标签独占一行（与 PDF 的 _conflictHalfWidget 同口径，
+    // 规格 §4.2：每半顶部一个小 pill）。三行实测约 28px（小屏，字号
+    // 7/8.5/8，标签行高 1.1、行间无间隔）/ 34px（宽屏，字号 8/10.5/9.5）；
+    // 半块内容区 = halfHeight − 6.5（外框 margin 1 + 边框 1.5 + 内边距 4，
+    // 按半块分摊），所以小屏半块 ≥38px（内容区 31.5px）、宽屏 ≥44px
+    // （内容区 37.5px）才走这路；够不着时退回两行（标签+课名同行、
+    // 教室一行），课名可能被截断，是既定折中，不要硬改出溢出。
+    // PDF 不用改：它一直用小屏字号，三行在 ≥38pt 时放得下。
+    if (halfHeight >= (isSmallScreen ? 38 : 44)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          tag,
+          Text(
+            course.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: nameStyle,
+          ),
+          Text(
+            meta,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: metaStyle,
+          ),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Row(
           children: [
-            Container(
-              padding: tagPadding,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.7),
-                borderRadius: BorderRadius.circular(3),
-              ),
-              child: Text(
-                tagText,
-                style: TextStyle(
-                  fontSize: tagFontSize,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF4B5563),
-                ),
-              ),
-            ),
+            tag,
             const SizedBox(width: 4),
             Expanded(
               child: Text(
                 course.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: nameFontSize,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF1F2937),
-                  height: 1.25,
-                ),
+                style: nameStyle,
               ),
             ),
           ],
@@ -271,12 +288,7 @@ class ConflictBlock extends StatelessWidget {
           meta,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: metaFontSize,
-            fontWeight: FontWeight.w500,
-            color: const Color(0xFF374151),
-            height: 1.25,
-          ),
+          style: metaStyle,
         ),
       ],
     );

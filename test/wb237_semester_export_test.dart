@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -24,6 +24,7 @@ import 'package:xiaoma_timetable/providers/providers.dart';
 import 'package:xiaoma_timetable/services/semester_pdf_export.dart';
 import 'package:xiaoma_timetable/ui/grid_metrics.dart';
 import 'package:xiaoma_timetable/utils/semester_export_helper.dart';
+import 'package:xiaoma_timetable/utils/slot_layout.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
 import 'package:xiaoma_timetable/utils/week_calc.dart';
 import 'package:xiaoma_timetable/widgets/conflict_block.dart';
@@ -277,6 +278,10 @@ Future<void> _pumpPage(
 }
 
 void main() {
+  // §10.4 变异自检（人工步骤，不写进测试，留痕在此）：
+  // 落盘时已逐条做过，4 条全部变红后还原——强度插值忽略 t、周数改取
+  // totalWeeks、虚线改实线、模糊去 ClipRRect；git diff 复核无残留。
+  // 变异是改源码再跑测试的人工操作，不适合写成自动化用例。
   group('WB_SPEC_237 §3 周数：按课程 weeks 最大值算 N，不取 totalWeeks', () {
     test('课程最晚 18 周 → N=18；最晚 12 周 → N=12', () {
       expect(
@@ -400,6 +405,35 @@ void main() {
       expect(pair, isNotNull);
       expect(pair!.topCourse.name, 'A');
     });
+
+    test('三门及以上同格：测试学期数据里不存在（P1-5 统计，fallback 不改）',
+        () {
+      // P1-5 统计（2026-11-17）：wb237 测试学期数据（8 门课，18 周）逐周
+      // 数过——SlotLayout 本周课与含置灰两种口径下最大同格都是 2 门，
+      // ≥3 同格 0 处；PDF 节次重叠分组最大一组也是 2 门。
+      // 所以 ≥3 门的 fallback（普通多课卡 +N，不画冲突块）目前走不到，
+      // 行为先不动；真出现三门同格时按规格 §14 报他定，不擅自改。
+      // 这个用例是统计的回归 guard：数据里一旦出现 ≥3 同格就变红提醒。
+      final courses = _semesterCourses();
+      for (var week = 1; week <= 18; week++) {
+        for (var day = 1; day <= 7; day++) {
+          for (final showDimmed in [false, true]) {
+            final slots = SlotLayout.layoutDay(
+              dayCourses: [
+                for (final c in courses)
+                  if (c.dayOfWeek == day) c,
+              ],
+              week: week,
+              showDimmed: showDimmed,
+              maxSection: 14,
+            );
+            for (final s in slots) {
+              expect(s.courses.length, lessThanOrEqualTo(2));
+            }
+          }
+        }
+      }
+    });
   });
 
   group('WB_SPEC_237 §5 强度插值与外观设置', () {
@@ -513,6 +547,53 @@ void main() {
 
     test('宽高都超：取更小的那个', () {
       expect(cappedExportPixelRatio(400, 1000), closeTo(1920 / 1000, 1e-9));
+    });
+  });
+
+  group('WB_SPEC_237 §8 PNG 体积上限（renderWithinLimit 纯函数）', () {
+    // P1-8：_share() 里的「>2MB 逐档降像素比重渲」循环抽成了顶层纯函数，
+    // 单测喂假渲染就能断言 ≤2MB 的兜底行为，不用在 flutter_tester 里
+    // 调 toImage（会死等，是测试环境限制，不是生产问题）。
+    test('首次 ≤2MB：只渲一次', () async {
+      var calls = 0;
+      final bytes = await renderWithinLimit((ratio) async {
+        calls++;
+        return Uint8List(1024);
+      }, 3.0);
+      expect(calls, 1);
+      expect(bytes!.lengthInBytes, 1024);
+    });
+
+    test('首次超限：逐档降比重渲，直到 ≤2MB', () async {
+      final ratios = <double>[];
+      final bytes = await renderWithinLimit((ratio) async {
+        ratios.add(ratio);
+        // 模拟：像素比越高字节越多。按档给固定值（不用阈值判断，
+        // 避免 1.6875 这类中间值落错档）：
+        // 3.0→3MB（超），2.25→2.2MB（超），1.6875→1.5MB（过）。
+        if (ratio == 3.0) return Uint8List(3 * 1024 * 1024);
+        if (ratio == 2.25) return Uint8List((2.2 * 1024 * 1024).toInt());
+        return Uint8List((1.5 * 1024 * 1024).toInt());
+      }, 3.0);
+      expect(bytes!.lengthInBytes, lessThanOrEqualTo(2 * 1024 * 1024));
+      expect(ratios, [3.0, 2.25, 1.6875]);
+    });
+
+    test('降到 1.0 仍超限：返回最后一次的结果（由调用方决定是否分享）',
+        () async {
+      final ratios = <double>[];
+      final bytes = await renderWithinLimit((ratio) async {
+        ratios.add(ratio);
+        return Uint8List(3 * 1024 * 1024);
+      }, 3.0);
+      expect(bytes!.lengthInBytes, 3 * 1024 * 1024);
+      expect(ratios.last, 1.0);
+      expect(ratios.length, greaterThan(1));
+    });
+
+    test('渲染返回 null：返回 null（调用方报生成失败）', () async {
+      final bytes = await renderWithinLimit((_) async => null, 3.0);
+      expect(bytes, isNull);
     });
   });
 
@@ -680,6 +761,95 @@ void main() {
         8.0,
       );
     });
+
+    testWidgets('半块 38–50 时藏老师名（两行/三行分支都只留教室）',
+        (tester) async {
+      // 半块 45px：≥38 走三行（标签独占一行），<50 藏老师名。
+      await tester.pumpWidget(block(height: 90, width: 200));
+      expect(find.text('药物化学'), findsOneWidget);
+      expect(find.text('药理学'), findsOneWidget);
+      expect(find.text('16-102'), findsOneWidget);
+      expect(find.text('16-639'), findsOneWidget);
+      expect(find.textContaining('王老师'), findsNothing);
+      expect(find.textContaining('李老师'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('半块 38–44（宽屏）走两行布局，不溢出', (tester) async {
+      // 宽屏（默认 800 宽）下半块 40px：三行约 37px 放不下（内容区只剩
+      // 35px），退回两行（标签+课名同行、教室一行）；老师名仍按 <50 藏掉。
+      await tester.pumpWidget(block(height: 80, width: 200));
+      expect(find.text('药物化学'), findsOneWidget);
+      expect(find.textContaining('王老师'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('小屏半块 38px 走三行（标签独占一行），不溢出',
+        (tester) async {
+      // P1-4 回归：小屏字号（7/8.5/8）下三行约 31px，半块 38px 的
+      // 内容区 33px 放得下；标签与课名各占一行，课名不再被标签挤掉。
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(block(height: 76, width: 200));
+      expect(find.text('药物化学'), findsOneWidget);
+      expect(find.text('前半学期'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('窄列（43px，周视图真实列宽）三行不溢出', (tester) async {
+      // 周视图列宽约 46px，块宽约 43px：三行布局里课名拿满列宽，
+      // 长课名最多被省略号截断，不溢出。
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(block(height: 120, width: 43));
+      expect(find.text('药物化学'), findsOneWidget);
+      expect(find.text('前半学期'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('深色模式：冲突块文字仍用深色（块底是浅色渐变），无溢出',
+        (tester) async {
+      // 规格 §4.2：深色模式下冲突块文字仍用深色（块底是浅色渐变）。
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: Scaffold(
+            body: SizedBox(
+              width: 200,
+              height: 120,
+              child: ConflictBlock(
+                topCourse: _course(
+                  name: '药物化学',
+                  classroom: '16-102',
+                  teacher: '王老师',
+                  weeks: _weeks(1, 8),
+                ),
+                bottomCourse: _course(
+                  name: '药理学',
+                  classroom: '16-639',
+                  teacher: '李老师',
+                  weeks: _weeks(9, 16),
+                ),
+                height: 120,
+                width: 200,
+                colorId: 'caramel',
+                intensity: 1.0,
+                blurEnabled: false,
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(find.text('药物化学'), findsOneWidget);
+      expect(find.text('16-102 · 王老师'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.text('药物化学')).style?.color,
+        const Color(0xFF1F2937),
+      );
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('WB_SPEC_237 §6 冲突块外观编辑器', () {
@@ -756,6 +926,40 @@ void main() {
       await tester.drag(find.byType(Slider).last, const Offset(-200, 0));
       await tester.pumpAndSettle();
       expect(fake.value.conflictGradientIntensity, lessThan(1.0));
+    });
+
+    testWidgets('强度 30% 时预览深端是样品值 #DDB68B（浮点 221.5/255）',
+        (tester) async {
+      // P1-8：只断言强度值变了不够，要断言预览颜色跟着强度变。
+      // 滑杆拖动给不出精确的 30%，这里直接把强度设到 0.3（等价于把
+      // 滑杆拉到 30% 处），再读预览 ConflictBlock 的渐变深端。
+      // 颜色数学本身由 §5 的纯函数用例钉死（darkEnd 30% 的 R 是 221.5，
+      // 不是 221 也不是 222；转 8bit 时才进到 222 = 0xDE）。
+      await _pumpPage(
+        tester,
+        home: const CardStylePage(),
+        overrides: overrides(),
+      );
+      fake.set(const UiSettings(conflictGradientIntensity: 0.3));
+      await tester.pumpAndSettle();
+      final containers = tester.widgetList<Container>(
+        find.descendant(
+          of: find.byType(ConflictBlock),
+          matching: find.byType(Container),
+        ),
+      );
+      final gradientContainer = containers.firstWhere((c) {
+        final d = c.decoration;
+        return d is BoxDecoration && d.gradient is LinearGradient;
+      });
+      final gradient =
+          (gradientContainer.decoration as BoxDecoration).gradient
+              as LinearGradient;
+      expect(
+        gradient.colors[1],
+        ConflictBlockAppearance.darkEnd('caramel', 0.3),
+      );
+      expect(gradient.colors[1].r, closeTo(221.5 / 255, 0.002));
     });
 
     testWidgets('模糊开关：点开后设置变成 true', (tester) async {
@@ -897,6 +1101,91 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('导出失败'), findsNothing);
     });
+
+    testWidgets('有课点 PDF 行：分享只传单个文件，提示在分享面板打开前出现',
+        (tester) async {
+      // P1-8：mock share_plus 通道，拦截 share 调用，断言只传单个文件。
+      final captured = <MethodCall>[];
+      const channel = MethodChannel('dev.fluttercommunity.plus/share');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        captured.add(call);
+        return ''; // dismissed；_exportPdf 不关心结果，只等它返回
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
+      });
+      // sharePdfBytes 先调 getTemporaryDirectory() 写临时文件——
+      // 测试里 path_provider 没实现，不 mock 会在 share 之前就抛错，
+      // mock 永远拦不到调用（之前 captured=0 就是这个原因）。
+      const pathProviderChannel =
+          MethodChannel('plugins.flutter.io/path_provider');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(pathProviderChannel, (call) async {
+        if (call.method == 'getTemporaryDirectory') return '/tmp';
+        return null;
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(pathProviderChannel, null);
+      });
+      await pumpSheet(
+        tester,
+        overrides: baseOverrides(courses: _semesterCourses()),
+      );
+      await tester.runAsync(() async {
+        await tester.tap(find.text('导出整学期完整课表（PDF）'));
+        await tester.pump();
+      });
+      // 18 页 PDF 生成是真异步（冷加载 17.8MB 中文字体时较慢），
+      // 等 120 轮（约 12 秒真时间）才够；轮到即停，不拖时间。
+      for (var i = 0; i < 120; i++) {
+        if (captured.isNotEmpty) break;
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)),
+        );
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(captured.length, 1);
+      expect(captured.first.method, 'share');
+      final paths = (captured.first.arguments as Map)['paths'] as List;
+      expect(paths.length, 1);
+      // P1-2 的时序：提示在 pop 之后、调 share 之前弹。share 已被 mock
+      // 接住并返回；再推 500ms 假时间，让 pop 动画（约 300ms）走完、
+      // 提示进场，此时提示应当已经在树里（而不是等分享面板关了才出现）。
+      // 别用 pumpAndSettle：提示 4 秒后自动消失，会被它一起推没。
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('导出课表'), findsNothing);
+      expect(find.textContaining('正在打开分享面板'), findsOneWidget);
+    });
+
+    testWidgets('生成期间 PNG 行与取消行都点不了', (tester) async {
+      // P1-6：生成期间三行全禁。点 PDF 行后「生成中…」出现时，
+      // PNG 行与取消行都是 disabled，点它们没反应、sheet 不关。
+      await pumpSheet(
+        tester,
+        overrides: baseOverrides(courses: _semesterCourses()),
+      );
+      await tester.runAsync(() async {
+        await tester.tap(find.text('导出整学期完整课表（PDF）'));
+        await tester.pump();
+      });
+      expect(find.text('生成中…'), findsOneWidget);
+      final pngTile = tester.widget<ListTile>(
+        find.ancestor(
+          of: find.text('导出当前第 3 周课表（高清图片）'),
+          matching: find.byType(ListTile),
+        ),
+      );
+      expect(pngTile.enabled, isFalse);
+      await tester.tap(find.text('导出当前第 3 周课表（高清图片）'));
+      await tester.pump();
+      expect(find.text('导出课表'), findsOneWidget);
+      await tester.tap(find.text('取消 / 关闭'));
+      await tester.pump();
+      expect(find.text('导出课表'), findsOneWidget);
+    });
   });
 
   group('WB_SPEC_237 §8 导出图（_ExportSheet）画冲突块', () {
@@ -994,6 +1283,9 @@ void main() {
       );
       // 找到包着导出图的 RepaintBoundary（_ExportSheet 外层 _boundaryKey）：
       // ConflictBlock 的祖先里可能有多个 RepaintBoundary，取最外层。
+      // find.ancestor 的候选顺序是 visitAncestorElements 的顺序（由内向外，
+      // 见 flutter_test 的 _AncestorWidgetFinder），所以 .last 就是最外层，
+      // 不是内层——复审报告说「.last 可能取到内层」是误报，已按源码核实。
       // 注意：不要在这里调 boundary.toImage()——本测试环境的
       // flutter_tester 对这张大图光栅化会死等（两轮实测各挂 6 分钟以上、
       // CPU 近 0），是测试环境限制，不是生产问题。尺寸约束改用
@@ -1155,6 +1447,36 @@ void main() {
       expect(pageText(doc, 0), contains('午间'));
       expect(pageText(doc, 0), contains('晚间'));
       doc.dispose();
+    });
+
+    test('模糊开关不影响 PDF（开/关出的页数与文本一致）', () async {
+      // P1-8：PDF 是矢量重画，做不了背景模糊；_conflictBlockWidget 只读
+      // 颜色与强度，不读 blurEnabled。字节不能直接比——pdf 包的文档 ID
+      // 含时间戳与随机数，每次生成都不同；比页数与提取文本。
+      final bytesOn = await SemesterPdfExport.generatePdfBytes(
+        semester: semester,
+        allCourses: courses,
+        slots: slots,
+        bands: bands,
+        ui: const UiSettings(conflictBlurEnabled: true),
+        maxWeek: SemesterExportHelper.calculateMaxWeek(courses),
+      );
+      final bytesOff = await SemesterPdfExport.generatePdfBytes(
+        semester: semester,
+        allCourses: courses,
+        slots: slots,
+        bands: bands,
+        ui: const UiSettings(conflictBlurEnabled: false),
+        maxWeek: SemesterExportHelper.calculateMaxWeek(courses),
+      );
+      final docOn = PdfDocument(inputBytes: bytesOn);
+      final docOff = PdfDocument(inputBytes: bytesOff);
+      expect(docOn.pages.count, docOff.pages.count);
+      for (var i = 0; i < docOn.pages.count; i++) {
+        expect(pageText(docOn, i), pageText(docOff, i));
+      }
+      docOn.dispose();
+      docOff.dispose();
     });
 
     test('中间无课的周出空白页，不跳页：页数仍 = N', () async {
@@ -1343,6 +1665,47 @@ void main() {
         ),
         findsOneWidget,
       );
+      await finish(tester);
+    });
+
+    testWidgets('调进别人时段的课不画冲突块（P1-7：降级成普通多课卡）',
+        (tester) async {
+      // 再加一门周二 3-4 的有机化学，并把药物化学在第 6 周调到周二 3-4：
+      // 调过去的药物化学与有机化学同格，但它是本周临时落在这里，
+      // 「前半/后半学期」的半学期口径不成立，不画冲突块，退回普通多课卡。
+      // 注意：testWidgets 体跑在 FakeAsync 区，直接 await 真实异步的
+      // Dao 查询会挂住（insert 能完、query 不回），必须包进 runAsync
+      // 走真实异步区（pumpHome 也是这么包的）。
+      await tester.runAsync(() async {
+        await Dao.instance.insertCourse(
+          _course(
+            name: '有机化学',
+            dayOfWeek: 2,
+            startSection: 3,
+            endSection: 4,
+            weeks: _weeks(1, 16),
+            classroom: '16-201',
+          ),
+        );
+        final all = await Dao.instance.getAllCourses();
+        final chemId = all.firstWhere((c) => c.name == '药物化学').id!;
+        await Dao.instance.upsertOverride(
+          CourseOverride(
+            courseId: chemId,
+            originalWeek: 6,
+            targetWeek: 6,
+            targetDayOfWeek: 2,
+            targetStartSection: 3,
+            targetEndSection: 4,
+          ),
+        );
+      });
+      await pumpHome(tester);
+      // 周一 1-2 只剩药理学（药物化学调走了），周二 3-4 是调过去的
+      // 药物化学 + 有机化学——两处都不画冲突块。
+      expect(find.byType(ConflictBlock), findsNothing);
+      // 调过去的两门课还在（普通多课卡 +1 角标，点开能选）。
+      expect(find.text('+1'), findsOneWidget);
       await finish(tester);
     });
   });

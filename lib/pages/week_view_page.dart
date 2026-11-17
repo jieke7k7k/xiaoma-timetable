@@ -1833,18 +1833,6 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
     bandsBefore(section, widget.activeBands),
   );
 
-  /// 段内第一门课在该周的单次调课记录。
-  /// 草稿课（无 id）或该周本就不上课的课程（调课记录无效）返回 null。
-  CourseOverride? _overrideForSlot(
-    Map<int, CourseOverride> overrideMap,
-    DisplaySlot slot,
-    int week,
-  ) {
-    final first = slot.courses.first;
-    if (first.id == null || !first.isActiveInWeek(week)) return null;
-    return overrideMap[first.id];
-  }
-
   /// 坐标 → （星期， 节次）；点在分隔带上或越界返回 null
   ({int day, int row})? _cellAt(
     Offset pos,
@@ -2079,7 +2067,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
                 _PositionedCourseCard(
                   slot: slot,
                   week: week,
-                  courseOverride: _overrideForSlot(overrideMap, slot, week),
+                  overrideMap: overrideMap,
                   left: dayIndex * cellWidth,
                   top: _topOf(slot.startSection),
                   width: cellWidth,
@@ -2320,7 +2308,7 @@ class _PositionedCourseCard extends StatelessWidget {
   const _PositionedCourseCard({
     required this.slot,
     required this.week,
-    required this.courseOverride,
+    required this.overrideMap,
     required this.left,
     required this.top,
     required this.width,
@@ -2336,29 +2324,62 @@ class _PositionedCourseCard extends StatelessWidget {
   /// 界面设置（配色方案/圆角/边框/字号/显示项），渲染卡片时用
   final UiSettings ui;
 
-  /// 该课在该周的单次调课记录（无则 null）
-  final CourseOverride? courseOverride;
+  /// 该周每门课的单次调课记录（按课程 id 索引；长按菜单 / 「调」角标 /
+  /// 冲突块降级都按目标课程单独查，不再共用 slot 首课的那一条）。
+  final Map<int, CourseOverride> overrideMap;
   final double left;
   final double top;
   final double width;
   final double height;
+
+  /// 该课程在本周的单次调课记录（无则 null）。
+  ///
+  /// 与 effectiveCoursesForWeek 同口径：课程本周本就不上课时 override
+  /// 无效，忽略。
+  CourseOverride? _overrideForCourse(Course course) {
+    if (course.id == null || !course.isActiveInWeek(week)) return null;
+    return overrideMap[course.id];
+  }
+
+  /// 该课程是否被单次调课调走了位置（非停课的调整）。
+  ///
+  /// 冲突块的分组是按原始 weeks 算的；调走的课只在本周临时落在这个
+  /// 时段，「前半/后半学期」的半学期口径对它不成立。
+  /// 注：只改教室（不改星期/节次）的调整也会命中这里，冲突块会被
+  /// 降级成普通多课卡——是可接受的保守处理（两门课都还在，点开能选），
+  /// 比画一个误导的半学期块安全。
+  bool _isMovedThisWeek(Course course) {
+    final o = _overrideForCourse(course);
+    return o != null && !o.isCancellation;
+  }
 
   @override
   Widget build(BuildContext context) {
     const pad = 1.5;
     final isMulti = slot.kind == SlotKind.multi;
     // 「调」角标：仅单课时段显示；multi 时让位给「+N」（调整信息在详情里仍可见）
-    final isMoved = courseOverride != null && !courseOverride!.isCancellation;
+    final firstOverride = _overrideForCourse(slot.courses.first);
+    final isMoved = firstOverride != null && !firstOverride.isCancellation;
     // WB_SPEC_237 §8：双课冲突且按 §4.1 分组时，画冲突块（不复用 ConflictDetector）。
     // 半区点按：点上半进上半那门详情、点下半进下半那门；长按（仅编辑模式）
     // 按半区进对应课程的菜单。
+    // P1-5：三门及以上同格不画冲突块（只画两门）——已统计，测试学期
+    // 数据（8 门课，18 周）逐周数过，最大同格 2 门，≥3 同格 0 处，
+    // 所以这个 fallback 目前走不到；真出现三门同格时按规格 §14 报他定，
+    // 不擅自改（见 wb237 测试 §4.1 的统计用例）。
     if (isMulti && slot.courses.length == 2) {
       final conflictPair = SemesterExportHelper.checkConflict(
         slot.courses[0],
         slot.courses[1],
         week,
       );
-      if (conflictPair != null) {
+      // P1-7：本周被单次调课调进这个时段的课，只临时落在这里，
+      // 「前半/后半学期」的半学期口径对它不成立——不画冲突块，
+      // 退回普通多课卡（+N），两门课都还在，点开能选。
+      // 被取消的课不会进这个分支（effectiveCoursesForWeek 已把它移除）。
+      if (conflictPair != null &&
+          !_isMovedThisWeek(conflictPair.topCourse) &&
+          !_isMovedThisWeek(conflictPair.bottomCourse)) {
         final blockHeight = height - pad * 2;
         return Positioned(
           left: left + pad,
@@ -2379,7 +2400,15 @@ class _PositionedCourseCard extends StatelessWidget {
                 final targetCourse = details.localPosition.dy < blockHeight / 2
                     ? conflictPair.topCourse
                     : conflictPair.bottomCourse;
-                _showMenu(context, targetCourse, week, courseOverride);
+                // P1-7：按目标课程取它自己的 override（之前把 slot 首课的
+                // 那一条同时传给上/下半，点下半会拿到上半课的调整记录，
+                // 菜单可能对错课做操作）。
+                _showMenu(
+                  context,
+                  targetCourse,
+                  week,
+                  _overrideForCourse(targetCourse),
+                );
               }
             },
             child: ConflictBlock(
@@ -2426,7 +2455,7 @@ class _PositionedCourseCard extends StatelessWidget {
         // 非编辑模式长按无反应，防止误触进修改菜单
         onLongPress: () {
           if (editMode) {
-            _showMenu(context, slot.courses.first, week, courseOverride);
+            _showMenu(context, slot.courses.first, week, firstOverride);
           }
         },
       ),
@@ -2726,33 +2755,44 @@ class _ExportBottomSheetContentState
   }
 
   Future<void> _exportPdf() async {
-    final courses = ref.read(coursesProvider).value ?? [];
+    // P1-1：关键数据等 provider 就绪再读（.future），不要用 .value ?? 默认值
+    // 静默兜底——provider 还在 loading 时 .value 是 null，会误判空学期、
+    // 丢用户设置、或报「没有可用的节次时间表」。
+    late final List<Course> courses;
+    try {
+      courses = await ref.read(coursesProvider.future);
+    } catch (e) {
+      if (!mounted) return;
+      showAppInfoDialog(context, title: '导出失败', message: '$e');
+      return;
+    }
     if (courses.isEmpty) {
       _showEmptySemesterSnackBar();
       return;
     }
+    if (!mounted) return;
     setState(() => _exportingPdf = true);
     // 让「生成中…」先画一帧再开始重活（字体加载 + 整学期 PDF 构建是 CPU
     // 重活，直接做会把这一帧也拖住、加载态闪不出来）。
     await Future<void>.delayed(Duration.zero);
+    // P1-6：这一帧内用户可能已关掉 sheet，继续操作前先确认还挂着。
+    if (!mounted) return;
     // sheet 是否已收起（分享阶段失败时 State 已 dispose，不 setState）
     var popped = false;
     try {
-      final uiSettings =
-          ref.read(uiSettingsProvider).value ?? const UiSettings();
-      final slots = ref.read(timeSlotsProvider).value ?? [];
-      final seg = ref.read(segmentSettingsProvider).value;
-      final bandSettings =
-          ref.read(bandSettingsProvider).value ?? const BandSettings();
+      final uiSettings = await ref.read(uiSettingsProvider.future);
+      final slots = await ref.read(timeSlotsProvider.future);
+      final seg = await ref.read(segmentSettingsProvider.future);
+      final bandSettings = await ref.read(bandSettingsProvider.future);
       final bands = computeActiveBands(
-        lunchAfter: seg?.lunchAfterSection ?? 5,
-        dinnerAfter: seg?.dinnerAfterSection ?? 9,
+        lunchAfter: seg.lunchAfterSection,
+        dinnerAfter: seg.dinnerAfterSection,
         sectionCount: slots.length,
         settings: bandSettings,
       );
-      final semester = ref.read(currentSemesterProvider).value;
+      final semester = await ref.read(currentSemesterProvider.future);
       final maxWeek = SemesterExportHelper.calculateMaxWeek(courses);
-      if (semester == null || maxWeek <= 0) {
+      if (maxWeek <= 0) {
         throw StateError('当前学期无有效课程数据');
       }
       // 生成放 sheet 里（保持打开，显示「生成中…」）；生成完再收起、分享。
@@ -2767,10 +2807,12 @@ class _ExportBottomSheetContentState
       if (!mounted) return;
       Navigator.pop(context);
       popped = true;
-      await SemesterPdfExport.sharePdfBytes(semester: semester, bytes: bytes);
+      // P1-2：分享面板打开前先弹提示（之前在 await share 之后才弹，
+      // 面板关了才看到，「正在打开」已是过去时）。
       ScaffoldMessenger.of(widget.parentContext).showSnackBar(
         SnackBar(content: Text('已生成 $maxWeek 页 PDF，正在打开分享面板…')),
       );
+      await SemesterPdfExport.sharePdfBytes(semester: semester, bytes: bytes);
     } catch (e) {
       if (popped) {
         // 分享阶段失败：sheet 已收起，用外层 context 弹失败弹窗。
@@ -2829,16 +2871,22 @@ class _ExportBottomSheetContentState
           leading: const Icon(Icons.image_outlined),
           title: Text('导出当前第 ${widget.displayWeek} 周课表（高清图片）'),
           subtitle: const Text('适合发给同学或设为锁屏壁纸'),
-          onTap: () {
-            AppHaptics.tap();
-            final courses = ref.read(coursesProvider).value ?? [];
-            if (courses.isEmpty) {
-              _showEmptySemesterSnackBar();
-              return;
-            }
-            Navigator.pop(context); // 先收起 BottomSheet，避免遮挡分享页
-            Navigator.pushNamed(widget.parentContext, '/share-image');
-          },
+          // P1-6：生成期间三行全禁（之前只禁 PDF 行，点 PNG/取消会
+          // 一边跑生成一边跳页/关 sheet，生成白算还可能对已 dispose 的
+          // State 操作）。取消要等生成结束，不另做中止逻辑。
+          enabled: !_exportingPdf,
+          onTap: _exportingPdf
+              ? null
+              : () {
+                  AppHaptics.tap();
+                  final courses = ref.read(coursesProvider).value ?? [];
+                  if (courses.isEmpty) {
+                    _showEmptySemesterSnackBar();
+                    return;
+                  }
+                  Navigator.pop(context); // 先收起 BottomSheet，避免遮挡分享页
+                  Navigator.pushNamed(widget.parentContext, '/share-image');
+                },
           enableFeedback: false,
         ),
         const Divider(height: 1),
@@ -2852,10 +2900,13 @@ class _ExportBottomSheetContentState
               ),
             ),
           ),
-          onTap: () {
-            AppHaptics.tap();
-            Navigator.pop(context);
-          },
+          enabled: !_exportingPdf,
+          onTap: _exportingPdf
+              ? null
+              : () {
+                  AppHaptics.tap();
+                  Navigator.pop(context);
+                },
           enableFeedback: false,
         ),
       ],

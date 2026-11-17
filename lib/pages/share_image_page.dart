@@ -30,6 +30,29 @@ double cappedExportPixelRatio(double width, double height) {
   return ratio;
 }
 
+/// 体积上限 2MB：逐档降像素比重渲，每次复核体积，直到 ≤2MB 或降到 1.0。
+///
+/// 抽成顶层纯逻辑（P1-8）：循环本身不依赖 widget，只依赖「按像素比渲染」
+/// 这个回调；抽出来后单测可以直接喂假渲染断言 ≤2MB 的兜底行为，
+/// 不用在 flutter_tester 里调 toImage（会死等）。
+/// 行为与原来内联在 _share() 里的循环一致：某次重渲返回 null 时保留
+/// 上一次的字节；降到 1.0 仍超限时照样返回（由调用方决定是否分享）。
+Future<Uint8List?> renderWithinLimit(
+  Future<Uint8List?> Function(double ratio) render,
+  double initialRatio, {
+  int maxBytes = 2 * 1024 * 1024,
+}) async {
+  var ratio = initialRatio;
+  var bytes = await render(ratio);
+  while (bytes != null && bytes.lengthInBytes > maxBytes && ratio > 1.0) {
+    ratio = (ratio * 0.75).clamp(1.0, 3.0);
+    final retry = await render(ratio);
+    if (retry == null) break;
+    bytes = retry;
+  }
+  return bytes;
+}
+
 /// 课表导出图片页
 ///
 /// 1.2.0 初版用自定版式（720 宽、海报比例），用户反馈「形状和主页对不上」。
@@ -55,18 +78,13 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
           as RenderRepaintBoundary;
       final rawSize = boundary.size;
       // WB_SPEC_237 §8：像素比封顶（宽 ≤1080、高 ≤1920），基准 3.0 倍。
-      var pixelRatio =
+      final pixelRatio =
           cappedExportPixelRatio(rawSize.width, rawSize.height);
-      final firstRender = await _renderPng(boundary, pixelRatio);
-      if (firstRender == null) throw StateError('图片生成失败');
-      var pngBytes = firstRender;
-      // 体积上限 2MB：逐档降像素比重渲，每次复核体积，直到 ≤2MB 或降到 1.0。
-      while (pngBytes.lengthInBytes > 2 * 1024 * 1024 && pixelRatio > 1.0) {
-        pixelRatio = (pixelRatio * 0.75).clamp(1.0, 3.0);
-        final retry = await _renderPng(boundary, pixelRatio);
-        if (retry == null) break;
-        pngBytes = retry;
-      }
+      final pngBytes = await renderWithinLimit(
+        (ratio) => _renderPng(boundary, ratio),
+        pixelRatio,
+      );
+      if (pngBytes == null) throw StateError('图片生成失败');
       final week = ref.read(displayWeekProvider);
       await SharePlus.instance.share(ShareParams(
         files: [
@@ -93,9 +111,15 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
     RenderRepaintBoundary boundary,
     double pixelRatio,
   ) async {
+    // P1-3：toImage() 拿到的 ui.Image 必须 dispose，否则 >2MB 重渲循环
+    // 里连建多张全尺寸位图不释放，内存峰值越堆越高。
     final image = await boundary.toImage(pixelRatio: pixelRatio);
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    return byteData?.buffer.asUint8List();
+    try {
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } finally {
+      image.dispose();
+    }
   }
 
   @override
@@ -504,6 +528,10 @@ class _ExportSheet extends StatelessWidget {
 
   /// 一格课程卡：双课冲突且按 §4.1 分组时画 ConflictBlock（checkConflict
   /// 只调一次，结果复用），否则画原样 CourseCard。
+  /// P1-5：三门及以上同格不画冲突块（只画两门）——已统计，测试学期
+  /// 数据（8 门课，18 周）逐周数过，最大同格 2 门，≥3 同格 0 处，
+  /// 所以这个 fallback 目前走不到；真出现三门同格时按规格 §14 报他定，
+  /// 不擅自改（见 wb237 测试 §4.1 的统计用例）。
   Widget _slotWidget({
     required DisplaySlot slot,
     required double left,
