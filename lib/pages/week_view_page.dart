@@ -2070,7 +2070,12 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
                   left: dayIndex * cellWidth,
                   top: _topOf(slot.startSection),
                   width: cellWidth,
-                  height: slot.span * rowHeight,
+                  // P1-3 同款：卡高 = 末节下一节顶 − 首节顶（含跨过的午间/晚间
+                  // 分隔带）。旧公式 span × 行高漏了带子：5–6 节跨午间带时
+                  // 短 24dp，卡底留空、与下一节错位。不跨带时与旧公式等价
+                  //（topOf 差值 = span × 行高）。
+                  height:
+                      _topOf(slot.endSection + 1) - _topOf(slot.startSection),
                   editMode: editMode,
                   ui: ui,
                 ),

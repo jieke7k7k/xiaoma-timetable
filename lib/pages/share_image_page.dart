@@ -542,7 +542,14 @@ class _ExportSheet extends StatelessWidget {
                         left: axisW + di * colW + 1.5,
                         top: topOf(slot.startSection) + 1.5,
                         width: colW - 3,
-                        height: slot.span * rowH - 3,
+                        // P1-3 同款：卡高 = 末节下一节顶 − 首节顶 − 3（含跨过的
+                        // 午间/晚间分隔带；3dp 是上下各 1.5dp 留白，与 top 的
+                        // +1.5 对应）。旧公式 span × 行高 − 3 漏了带子：5–6 节
+                        // 跨午间带时短 24dp。不跨带时与旧公式等价。
+                        height:
+                            topOf(slot.endSection + 1) -
+                            topOf(slot.startSection) -
+                            3,
                       ),
               ],
             ),
