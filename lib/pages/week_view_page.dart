@@ -2038,13 +2038,29 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
         );
       },
       // 长按空白格：起高亮（编辑模式开不开都行，这是防误触之外的第二入口）
+      // WB_SPEC_242 §2(b) P0 修复：选区框已存在且长按点落在当前选区内时
+      // （如按住底部把手想拖动扩展），不要重置选区——否则长按会把选区
+      // 缩成单格（_anchorRow 被重设），再拖就丢了原来的范围。此时只让
+      // onLongPressMoveUpdate 按原锚点扩展，或走把手的 verticalDrag。
       onLongPressStart: (details) {
         final cell = _cellAt(details.localPosition, daySlots);
         if (cell == null) return;
+        final hl = _highlight;
+        if (hl != null &&
+            cell.day == hl.day &&
+            cell.row >= hl.start &&
+            cell.row <= hl.end) {
+          // 按在当前选区内：不重置选区与锚点，拖动由 onLongPressMoveUpdate
+          // 或把手热区接管；同时复位把手拖动累计，避免串味。
+          _dragAccumDy = 0;
+          widget.onScrollLockChanged(true);
+          return;
+        }
         if (!_isEmptyCell(daySlots, cell.day, cell.row)) return;
         // 长按空白格起高亮：中档（WB_SPEC_235 §7：改走门控）
         AppHaptics.medium();
         _anchorRow = cell.row;
+        _dragAccumDy = 0;
         _updateHighlight((day: cell.day, start: cell.row, end: cell.row));
         widget.onScrollLockChanged(true);
       },
@@ -2063,8 +2079,14 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
           _updateHighlight((day: hl.day, start: ns, end: ne));
         }
       },
-      onLongPressEnd: (_) => widget.onScrollLockChanged(false),
-      onLongPressCancel: () => widget.onScrollLockChanged(false),
+      onLongPressEnd: (_) {
+        _dragAccumDy = 0;
+        widget.onScrollLockChanged(false);
+      },
+      onLongPressCancel: () {
+        _dragAccumDy = 0;
+        widget.onScrollLockChanged(false);
+      },
       child: Stack(
         children: [
           // 网格背景线（界面设置可关）
@@ -3154,9 +3176,9 @@ class _SelectionHandleState extends State<_SelectionHandle>
         weight: 50,
       ),
     ]).animate(_controller);
-    _controller.repeat(count: 2).whenComplete(() {
-      if (mounted) _controller.stop();
-    });
+    // 周期 600ms（上下各 300ms），重复 2 次后自动停止（repeat 自带停止，
+    // 不用再 whenComplete 里 stop）。
+    _controller.repeat(count: 2);
   }
 
   @override
@@ -3207,6 +3229,12 @@ class _EditModeToastState extends State<EditModeToast>
   late final Animation<double> _fade;
   late final Animation<Offset> _slide;
 
+  /// WB_SPEC_242 §1 P1 修复：3 秒自动淡出用 Timer 存句柄，dispose 与
+  /// 手动关闭时 cancel，避免「手动关 + 自动关」双触发、dispose 后调
+  /// reverse。原 Future.delayed 无 cancel，手动点 × 后计时器到点还
+  /// 会再 reverse 一次。
+  Timer? _autoDismissTimer;
+
   @override
   void initState() {
     super.initState();
@@ -3226,8 +3254,8 @@ class _EditModeToastState extends State<EditModeToast>
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
     _controller.forward();
     // 停留 3 秒后自动淡出
-    Future<void>.delayed(const Duration(seconds: 3), () async {
-      if (!mounted) return;
+    _autoDismissTimer = Timer(const Duration(seconds: 3), () async {
+      if (!mounted || _controller.isAnimating) return;
       await _controller.reverse();
       if (!mounted) return;
       widget.onDismiss();
@@ -3236,11 +3264,13 @@ class _EditModeToastState extends State<EditModeToast>
 
   @override
   void dispose() {
+    _autoDismissTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
   Future<void> _handleClose() async {
+    _autoDismissTimer?.cancel();
     if (!mounted) return;
     await _controller.reverse();
     if (!mounted) return;
