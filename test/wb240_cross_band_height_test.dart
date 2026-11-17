@@ -87,11 +87,16 @@ void main() {
     TimeSlot(section: 14, startTime: '23:35', endTime: '00:20'),
   ];
 
-  /// 三门 2 节课：不跨带（1–2）作对照、跨午间带（5–6）、跨晚间带（9–10）。
+  /// 五门 2 节课：不跨带（1–2）作对照、跨午间带（5–6）、跨晚间带（9–10）；
+  /// 另加两门止于带前的课（3–5 止于午间带前、6–9 止于晚间带前）——
+  /// 2.7.0 回归：topOf(end+1) 公式会把带后的带子也算进来，这两门课
+  /// 会盖住午间/晚间带；正确高度 = 末节底 − 首节顶，不含带后带子。
   List<Course> courses() => [
     course(name: '普通课程', day: 1, start: 1, end: 2),
     course(name: '跨带课程', day: 1, start: 5, end: 6),
     course(name: '晚间跨带课程', day: 2, start: 9, end: 10),
+    course(name: '止于午间带前', day: 3, start: 3, end: 5),
+    course(name: '止于晚间带前', day: 4, start: 6, end: 9),
   ];
 
   List<Override> overrides(List<Course> list) => [
@@ -233,6 +238,31 @@ void main() {
       }
       await finishWeekView(tester);
     });
+
+    testWidgets('3–5 节止于午间带前：卡高不含带子；6–9 节止于晚间带前同理', (
+      tester,
+    ) async {
+      await pumpUntilCards(
+        tester,
+        home: const WeekViewPage(),
+        list: courses(),
+        physicalSize: const Size(1170, 2532),
+        pixelRatio: 3.0,
+      );
+      // 3 节课：3×46 − 3 = 135（若含带子会是 159，2.7.0 回归值）
+      final beforeLunch = cardHeights('止于午间带前');
+      expect(beforeLunch, isNotEmpty);
+      for (final h in beforeLunch) {
+        expect(h, 3 * 46 - 3);
+      }
+      // 4 节课：4×46 − 3 = 181（若含带子会是 205，2.7.0 回归值）
+      final beforeDinner = cardHeights('止于晚间带前');
+      expect(beforeDinner, isNotEmpty);
+      for (final h in beforeDinner) {
+        expect(h, 4 * 46 - 3);
+      }
+      await finishWeekView(tester);
+    });
   });
 
   group('本周导出图跨带课程卡高', () {
@@ -262,6 +292,20 @@ void main() {
         pixelRatio: 1.0,
       );
       expect(cardHeights('晚间跨带课程'), [crossBandCardHeight]);
+    });
+
+    testWidgets('3–5 节止于午间带前：卡高不含带子；6–9 节止于晚间带前同理', (
+      tester,
+    ) async {
+      await pumpUntilCards(
+        tester,
+        home: const ShareImagePage(),
+        list: courses(),
+        physicalSize: const Size(1200, 6000),
+        pixelRatio: 1.0,
+      );
+      expect(cardHeights('止于午间带前'), [3 * 46 - 3]);
+      expect(cardHeights('止于晚间带前'), [4 * 46 - 3]);
     });
   });
 }

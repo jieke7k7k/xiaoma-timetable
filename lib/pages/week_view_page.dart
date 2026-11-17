@@ -2037,7 +2037,10 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
               left: displayDays.indexOf(_highlight!.day) * cellWidth + 1.5,
               top: _topOf(_highlight!.start) + 1.5,
               width: cellWidth - 3,
-              height: _topOf(_highlight!.end + 1) - _topOf(_highlight!.start) - 3,
+              height: _topOf(_highlight!.end) +
+                  rowHeight -
+                  _topOf(_highlight!.start) -
+                  3,
               child: IgnorePointer(
                 child: Container(
                   decoration: BoxDecoration(
@@ -2075,7 +2078,9 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
                   // 短 24dp，卡底留空、与下一节错位。不跨带时与旧公式等价
                   //（topOf 差值 = span × 行高）。
                   height:
-                      _topOf(slot.endSection + 1) - _topOf(slot.startSection),
+                      _topOf(slot.endSection) +
+                          rowHeight -
+                          _topOf(slot.startSection),
                   editMode: editMode,
                   ui: ui,
                 ),

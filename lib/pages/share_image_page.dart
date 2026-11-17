@@ -542,12 +542,16 @@ class _ExportSheet extends StatelessWidget {
                         left: axisW + di * colW + 1.5,
                         top: topOf(slot.startSection) + 1.5,
                         width: colW - 3,
-                        // P1-3 同款：卡高 = 末节下一节顶 − 首节顶 − 3（含跨过的
-                        // 午间/晚间分隔带；3dp 是上下各 1.5dp 留白，与 top 的
-                        // +1.5 对应）。旧公式 span × 行高 − 3 漏了带子：5–6 节
-                        // 跨午间带时短 24dp。不跨带时与旧公式等价。
+                        // 跨带卡高 = 末节底 − 首节顶 − 3（含跨过的午间/晚间
+                        // 分隔带；3dp 是上下各 1.5dp 留白，与 top 的 +1.5 对应）。
+                        // 注意：用 topOf(end)+行高，不用 topOf(end+1)——末节
+                        // 后有带子时 topOf(end+1) 会把带子也算进来，3–5 节
+                        // 这种止于带前的课会盖住午间/晚间带（2.7.0 回归）。
+                        // 旧公式 span × 行高 − 3 漏了带子：5–6 节跨午间带时
+                        // 短 24dp。不跨带时与旧公式等价。
                         height:
-                            topOf(slot.endSection + 1) -
+                            topOf(slot.endSection) +
+                            rowH -
                             topOf(slot.startSection) -
                             3,
                       ),
@@ -714,11 +718,14 @@ class SemesterSingleImageSheet extends StatelessWidget {
     double bandTop(GridBand b) =>
         b.after * kRowHeight + _bandsBefore(b.after) * kSemesterBandHeight;
 
-    // P1-3：课程块高度 = 末节下一节顶 - 首节顶 - 2（含跨过的午间/晚间
+    // P1-3：课程块高度 = 末节底 - 首节顶 - 2（含跨过的午间/晚间
     // 分隔带高度）。旧公式 span × 行高 - 2 漏了带子：5–6 节跨午间带时
     // 少 20dp，卡片底边截断错位（冲突块同理）。
+    // 注意：用 topOf(end)+行高，不用 topOf(end+1)——末节后有带子时
+    // topOf(end+1) 会把带子也算进来，3–5 节这种止于带前的课会盖住
+    // 午间/晚间带（2.7.0 回归）。
     double slotHeight(SemesterMasterSlot m) =>
-        topOf(m.endSection + 1) - topOf(m.startSection) - 2.0;
+        topOf(m.endSection) + kRowHeight - topOf(m.startSection) - 2.0;
 
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
