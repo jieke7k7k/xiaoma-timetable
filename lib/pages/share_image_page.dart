@@ -13,6 +13,7 @@ import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../services/fonts_service.dart';
 import '../utils/app_haptics.dart';
+import '../ui/app_styles.dart';
 import '../ui/grid_metrics.dart';
 import '../utils/color_schemes.dart';
 import '../utils/override_effect.dart';
@@ -727,16 +728,18 @@ class SemesterSingleImageSheet extends StatelessWidget {
     double slotHeight(SemesterMasterSlot m) =>
         topOf(m.endSection) + kRowHeight - topOf(m.startSection) - 2.0;
 
-    final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sheetBg = isDark ? const Color(0xFF1E1C19) : const Color(0xFFFAF9F5);
-    final bandBg = isDark ? const Color(0xFF2E2A24) : const Color(0xFFF2EFE9);
-    final bandTextColor = isDark
-        ? const Color(0xFFC9B896)
-        : const Color(0xFF78716C);
-    final gridLineColor = isDark
-        ? const Color(0xFF3A3733)
-        : const Color(0xFFEBE8E0);
+    // WB_SPEC_241：导出图固定浅色（239 定案：卡片用存储色原色，深色
+    // 模式下也不发灰），颜色统一走浅色 colorScheme（与 _ExportSheet
+    // 的导出 Theme 同口径），不再硬编码色值；与 App 内周视图共用
+    // 同一套设计 token（surface / surfaceContainer / onSurface 等）。
+    final scheme = buildAppColorScheme(
+      Color(ui.themeSeedValue),
+      Brightness.light,
+    );
+    final sheetBg = scheme.surface;
+    final bandBg = scheme.surfaceContainer;
+    final bandTextColor = scheme.onSurfaceVariant;
+    final gridLineColor = scheme.outlineVariant;
 
     // P1-2：画布高度固定为 1080×1920 反推的逻辑高（375dp 宽时 666.67dp），
     // 不再随内容自然高走（14 节 + 2 带自然高只有 640dp，导出是 1080×1843；
@@ -1030,6 +1033,12 @@ class _SingleMasterCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bgColor = Color(mapCourseColor(course.colorValue, ui.colorScheme));
+    // WB_SPEC_241：文字色与胶囊走浅色 colorScheme（与 App 内周视图
+    // 同口径），不再硬编码 0xFF1F2937 / 0xFF374151。
+    final scheme = buildAppColorScheme(
+      Color(ui.themeSeedValue),
+      Brightness.light,
+    );
     final weekCapsule = SemesterExportHelper.formatWeekCapsule(course);
     // 矮卡先藏教室/老师，再藏周次胶囊；课名永远保留。
     final showMeta = height >= 40;
@@ -1056,7 +1065,9 @@ class _SingleMasterCard extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 3, vertical: padV),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(height >= 30 ? 7 : 5),
+        // WB_SPEC_241：课卡圆角与 App 内周视图一致，用 ui.cornerRadius
+        //（默认 12），不再硬编码 7/5。
+        borderRadius: BorderRadius.circular(ui.cornerRadius),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1072,7 +1083,7 @@ class _SingleMasterCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: nameSize,
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFF1F2937),
+                  color: scheme.onSurface,
                   height: 1.2,
                 ),
               ),
@@ -1082,10 +1093,10 @@ class _SingleMasterCard extends StatelessWidget {
                   metaText,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 8.5,
                     fontWeight: FontWeight.w500,
-                    color: Color(0xFF374151),
+                    color: scheme.onSurfaceVariant,
                     height: 1.15,
                   ),
                 ),
@@ -1096,16 +1107,16 @@ class _SingleMasterCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 0.5),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.65),
-                borderRadius: BorderRadius.circular(3),
+                color: scheme.surfaceContainerHighest.withValues(alpha: 0.65),
+                borderRadius: BorderRadius.circular(AppRadii.chip),
               ),
               child: Text(
                 weekCapsule,
                 maxLines: 1,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 7.5,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF374151),
+                  color: scheme.onSurfaceVariant,
                   height: 1.3,
                 ),
               ),
