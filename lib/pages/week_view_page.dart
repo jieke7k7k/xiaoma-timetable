@@ -2037,7 +2037,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
               left: displayDays.indexOf(_highlight!.day) * cellWidth + 1.5,
               top: _topOf(_highlight!.start) + 1.5,
               width: cellWidth - 3,
-              height: (_highlight!.end - _highlight!.start + 1) * rowHeight - 3,
+              height: _topOf(_highlight!.end + 1) - _topOf(_highlight!.start) - 3,
               child: IgnorePointer(
                 child: Container(
                   decoration: BoxDecoration(
