@@ -86,6 +86,10 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
         pixelRatio,
       );
       if (pngBytes == null) throw StateError('图片生成失败');
+      // P1-5：与整学期导出同一口径——降到 1.0 仍超限时不分享超限文件。
+      if (!isWithinPngLimit(pngBytes)) {
+        throw StateError('图片超过 2MB 上限，分享失败');
+      }
       final week = ref.read(displayWeekProvider);
       await SharePlus.instance.share(
         ShareParams(
@@ -620,6 +624,10 @@ class _ExportSheet extends StatelessWidget {
 /// 2MB 体积上限常量（WB_SPEC_237 / WB_SPEC_239 §3 & §5）
 const int kMaxPngBytes = 2 * 1024 * 1024;
 
+/// 体积复核（P1-5）：[renderWithinLimit] 降到 1.0 仍超限时照样返回最后一次
+/// 结果，调用方必须用它复核——超限不得分享（微信发不出去还占流量）。
+bool isWithinPngLimit(Uint8List bytes) => bytes.lengthInBytes <= kMaxPngBytes;
+
 /// 方案 C：整学期一张图课表画布（WB_SPEC_239 §3 & §4）
 ///
 /// 关键尺寸（375dp 宽 → 1080px 导出宽，pixelRatio 2.88）：
@@ -660,6 +668,9 @@ class SemesterSingleImageSheet extends StatelessWidget {
 
   static const double kHeaderHeight = 54.0;
   static const double kWeekBarHeight = 34.0;
+  // 目标导出像素尺寸（WB_SPEC_239 §3）：1080×1920。
+  static const double kTargetExportWidthPx = 1080.0;
+  static const double kTargetExportHeightPx = 1920.0;
   // 时间轴宽与本周导出图（_ExportSheet）共用 kTimeAxisWidth（50dp）：
   // f5 初版自造的 34dp 在测试字体下连「08:00」都放不下（37.5dp），
   // 换行后把 36dp 的行高撑爆 7.5px；真机数字约 0.5em 虽能放下，
@@ -696,6 +707,12 @@ class SemesterSingleImageSheet extends StatelessWidget {
     double bandTop(GridBand b) =>
         b.after * kRowHeight + _bandsBefore(b.after) * kSemesterBandHeight;
 
+    // P1-3：课程块高度 = 末节下一节顶 - 首节顶 - 2（含跨过的午间/晚间
+    // 分隔带高度）。旧公式 span × 行高 - 2 漏了带子：5–6 节跨午间带时
+    // 少 20dp，卡片底边截断错位（冲突块同理）。
+    double slotHeight(SemesterMasterSlot m) =>
+        topOf(m.endSection + 1) - topOf(m.startSection) - 2.0;
+
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final sheetBg = isDark ? const Color(0xFF1E1C19) : const Color(0xFFFAF9F5);
@@ -707,18 +724,26 @@ class SemesterSingleImageSheet extends StatelessWidget {
         ? const Color(0xFF3A3733)
         : const Color(0xFFEBE8E0);
 
-    // 画布固定 375 宽：内部 MediaQuery 也按画布尺寸走，让 ConflictBlock
-    // 的小屏字号判定（视口 ≤600）与画布一致——否则在平板/宽视口设备上
-    // 导出会走宽屏字号，标签塞不进 46dp 的列而溢出；导出图在任何设备
-    // 上都应长一个样（WB_SPEC_239 §3：1080×1920 固定尺寸）。
-    final sheetHeight = kHeaderHeight + kWeekBarHeight + gridH + 8.0;
+    // P1-2：画布高度固定为 1080×1920 反推的逻辑高（375dp 宽时 666.67dp），
+    // 不再随内容自然高走（14 节 + 2 带自然高只有 640dp，导出是 1080×1843；
+    // 默认 13 节时自然高 604dp，导出是 1080×1740）。内容不足时底部补白，
+    // 行高仍按规格 36dp 不动；节次更多、自然高超过目标时不裁内容，
+    // 按自然高出图（这时不保证 1920，规格只覆盖标准 13–14 节）。
+    final naturalHeight = kHeaderHeight + kWeekBarHeight + gridH + 8.0;
+    final targetHeight = kTargetExportHeightPx * width / kTargetExportWidthPx;
+    final sheetHeight = naturalHeight > targetHeight
+        ? naturalHeight
+        : targetHeight;
+    final bottomPad =
+        sheetHeight - (kHeaderHeight + kWeekBarHeight + gridH);
     return MediaQuery(
       data: MediaQuery.of(context).copyWith(size: Size(width, sheetHeight)),
       child: Container(
         width: width,
+        height: sheetHeight,
         color: sheetBg,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: MainAxisSize.max,
           children: [
             // 1. 顶部标题栏（54dp）
             SizedBox(
@@ -891,17 +916,17 @@ class SemesterSingleImageSheet extends StatelessWidget {
                         left: kAxisWidth + di * colW + 1.0,
                         top: topOf(mSlot.startSection) + 1.0,
                         width: colW - 2.0,
-                        height: mSlot.span * kRowHeight - 2.0,
+                        height: slotHeight(mSlot),
                         child: _buildMasterSlotWidget(
                           mSlot,
                           colW - 2.0,
-                          mSlot.span * kRowHeight - 2.0,
+                          slotHeight(mSlot),
                         ),
                       ),
                 ],
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: bottomPad),
           ],
         ),
       ),
@@ -924,49 +949,87 @@ class SemesterSingleImageSheet extends StatelessWidget {
       case SemesterMasterSlotKind.parityPair:
         final topC = mSlot.courses[0];
         final botC = mSlot.courses[1];
+        final halfH = (h - 1.5) / 2;
         return Column(
           children: [
             Expanded(
-              child: _SingleMasterCard(course: topC, ui: ui, compact: true),
+              child: _SingleMasterCard(course: topC, ui: ui, height: halfH),
             ),
             const SizedBox(height: 1.5),
             Expanded(
-              child: _SingleMasterCard(course: botC, ui: ui, compact: true),
+              child: _SingleMasterCard(course: botC, ui: ui, height: halfH),
             ),
+          ],
+        );
+      case SemesterMasterSlotKind.stack:
+        // P1-1 多行分块：每门各占一行，行高按实际均分传给卡片（P1-4 分档）。
+        final n = mSlot.courses.length;
+        final rowH = (h - 1.0 * (n - 1)) / n;
+        return Column(
+          children: [
+            for (var k = 0; k < n; k++) ...[
+              if (k > 0) const SizedBox(height: 1.0),
+              Expanded(
+                child: _SingleMasterCard(
+                  course: mSlot.courses[k],
+                  ui: ui,
+                  height: rowH,
+                ),
+              ),
+            ],
           ],
         );
       case SemesterMasterSlotKind.single:
         return _SingleMasterCard(
           course: mSlot.courses.first,
           ui: ui,
-          compact: false,
+          height: h,
         );
     }
   }
 }
 
 /// 方案 C 普通课程卡片（课名 10sp 加粗、教室/老师 8.5sp、周次胶囊 7.5sp 加粗白底 65%）
+///
+/// P1-4：按卡片实际高度分档显示，矮卡逐级藏内容，实测不再溢出——
+/// 旧写法在单节卡（34dp）与单双周半格卡（约 34dp）里仍全量放
+/// 「课名 + 教室/老师 + 周次胶囊」，带教室/老师时 RenderFlex 溢出 6px。
+/// 各档按 Ahem 测试字体实测内容高划线（真机字体自然行高更大，留有余量）：
+/// - ≥52dp：课名（最多 2 行）+ 教室/老师 + 周次胶囊（需约 51.5dp）；
+/// - 40–52dp：课名（1 行）+ 教室/老师 + 周次胶囊（需约 39.5dp）；
+/// - 30–40dp：课名（1 行）+ 周次胶囊，藏教室/老师（需约 28.8dp）；
+/// - 14–30dp：只留课名（8.5sp，1 行，需约 13.2dp）；
+/// - <14dp：只留课名（7.5sp，1 行，需约 10dp，供 1 节 3 门叠排行）。
 class _SingleMasterCard extends StatelessWidget {
   const _SingleMasterCard({
     required this.course,
     required this.ui,
-    required this.compact,
+    required this.height,
   });
 
   final Course course;
   final UiSettings ui;
-  final bool compact;
+
+  /// 卡片可用高度（dp，父级按格高均分后传入）。
+  final double height;
 
   @override
   Widget build(BuildContext context) {
     final bgColor = Color(mapCourseColor(course.colorValue, ui.colorScheme));
     final weekCapsule = SemesterExportHelper.formatWeekCapsule(course);
+    // 矮卡先藏教室/老师，再藏周次胶囊；课名永远保留。
+    final showMeta = height >= 40;
+    final showCapsule = height >= 30;
+    final nameMaxLines = height >= 52 ? 2 : 1;
+    final nameSize = height >= 30 ? 10.0 : (height >= 14 ? 8.5 : 7.5);
+    final padV = height >= 30 ? 3.0 : (height >= 14 ? 1.5 : 0.5);
     final metaParts = <String>[
-      if (ui.showClassroom &&
+      if (showMeta &&
+          ui.showClassroom &&
           course.classroom != null &&
           course.classroom!.trim().isNotEmpty)
         course.classroom!.trim(),
-      if (!compact &&
+      if (showMeta &&
           ui.showTeacher &&
           course.teacher != null &&
           course.teacher!.trim().isNotEmpty)
@@ -976,10 +1039,10 @@ class _SingleMasterCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 3, vertical: compact ? 1.5 : 3),
+      padding: EdgeInsets.symmetric(horizontal: 3, vertical: padV),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(compact ? 5 : 7),
+        borderRadius: BorderRadius.circular(height >= 30 ? 7 : 5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -990,10 +1053,10 @@ class _SingleMasterCard extends StatelessWidget {
             children: [
               Text(
                 course.name,
-                maxLines: compact ? 1 : 2,
+                maxLines: nameMaxLines,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: compact ? 8.5 : 10.0,
+                  fontSize: nameSize,
                   fontWeight: FontWeight.w700,
                   color: const Color(0xFF1F2937),
                   height: 1.2,
@@ -1005,17 +1068,17 @@ class _SingleMasterCard extends StatelessWidget {
                   metaText,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: compact ? 7.5 : 8.5,
+                  style: const TextStyle(
+                    fontSize: 8.5,
                     fontWeight: FontWeight.w500,
-                    color: const Color(0xFF374151),
+                    color: Color(0xFF374151),
                     height: 1.15,
                   ),
                 ),
               ],
             ],
           ),
-          if (weekCapsule.isNotEmpty)
+          if (showCapsule && weekCapsule.isNotEmpty)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 0.5),
               decoration: BoxDecoration(
@@ -1097,6 +1160,11 @@ Future<Uint8List> generateAndShareSemesterSinglePng({
       return bd.buffer.asUint8List();
     }, cappedExportPixelRatio(boundary.size.width, boundary.size.height));
     if (pngBytes == null) throw StateError('整学期图片编码失败');
+    // P1-5：renderWithinLimit 降到 1.0 仍超限时返回最后一次结果；
+    // 这里复核体积，超限抛错走「导出失败」弹窗，不分享超限文件。
+    if (!isWithinPngLimit(pngBytes)) {
+      throw StateError('整学期图片超过 2MB 上限，导出失败');
+    }
 
     if (invokeShare) {
       final fileName = '${semester.name}课表.png';

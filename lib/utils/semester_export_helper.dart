@@ -5,6 +5,7 @@ enum SemesterMasterSlotKind {
   single, // 单门课独占
   conflict, // 真冲突 或 半学期前后交接（画焦糖渐变冲突块）
   parityPair, // 单双周交错同格（上下各自配色并排，不画焦糖块）
+  stack, // 同格 ≥3 门（P1-1 多行分块兜底：全部课程纵向叠排，不丢课）
 }
 
 /// 方案 C 全学期母版单个课程块描述
@@ -179,7 +180,7 @@ class SemesterExportHelper {
             courses: group,
           ),
         );
-      } else {
+      } else if (group.length == 2) {
         final pair = checkConflict(group[0], group[1]);
         if (pair != null) {
           result.add(
@@ -204,6 +205,21 @@ class SemesterExportHelper {
             ),
           );
         }
+      } else {
+        // P1-1：同格 ≥3 门不再只取前两门（第 3 门起会静默丢失）——
+        // 多行分块兜底：组内全部课程纵向叠排，每门各占一行（带周次胶囊），
+        // 不画冲突块、不做两两判定。237 §14 第 3 条的「不存在则不处理」是
+        // 按测试学期数据（最大同格 2 门）写的；课程模型本身不限制同格门数，
+        // 用户正常加课就能造出 3 门同格，所以这里必须兜底，不能丢课。
+        result.add(
+          SemesterMasterSlot(
+            dayOfWeek: dayOfWeek,
+            startSection: groupStart,
+            endSection: groupEnd,
+            kind: SemesterMasterSlotKind.stack,
+            courses: group,
+          ),
+        );
       }
       i = j;
     }
