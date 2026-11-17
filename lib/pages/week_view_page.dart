@@ -116,6 +116,11 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
   /// 关闭时点空白无反应、点课程只看详情，防止误触（用户真机反馈）
   bool _editMode = false;
 
+  /// WB_SPEC_242 §1：编辑模式悬浮胶囊飘窗是否显示。进编辑模式时置
+  /// true（飘窗滑入，3 秒后自动淡出或点 × 后由 EditModeToast 回调置
+  /// false）；退出编辑模式时复位 false。
+  bool _showEditModeToast = false;
+
   /// 网格纵向滚动锁：长按空白格拖动扩展节次期间锁定纵向滚动，避免手势打架
   bool _gridScrollLocked = false;
 
@@ -720,6 +725,13 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
     }
 
     return Scaffold(
+      // WB_SPEC_242 §1 方案 A：编辑模式下课表区域背景微调为略深暖灰
+      //（浅色 #F2F0EC，深色 surfaceContainer），全局「进入编辑态」氛围感。
+      backgroundColor: _editMode
+          ? (Theme.of(context).brightness == Brightness.dark
+              ? Theme.of(context).colorScheme.surfaceContainer
+              : const Color(0xFFF2F0EC))
+          : null,
       appBar: AppBar(
         // 恒色（1.2.2）：默认 AppBar 在内容滚动/回弹时会自动切换表面着色，
         // 下拉瞬间顶部发白（用户实测对比图）。钉死背景色并关掉自动着色。
@@ -825,7 +837,11 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
               onPressed: () {
                 if (_guardJumper()) return;
                 AppHaptics.tap();
-                setState(() => _editMode = false);
+                // WB_SPEC_242 §1：退出编辑模式时飘窗一并复位。
+                setState(() {
+                  _editMode = false;
+                  _showEditModeToast = false;
+                });
               },
               icon: const Icon(Icons.check, size: 18),
               label: const Text('完成'),
@@ -839,9 +855,12 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
                 if (_guardJumper()) return;
                 // WB_SPEC_235 §7：存量 lightImpact 改走统一门控（轻点档）
                 AppHaptics.tap();
-                setState(() => _editMode = true);
-                // WB_SPEC_240 §2：不再弹 2 秒 SnackBar，改由常驻 26dp
-                // 提示条与标题胶囊提示（该 SnackBar 挡第 12–13 节）。
+                // WB_SPEC_242 §1：进编辑模式时挂载悬浮胶囊飘窗（3 秒
+                // 自动淡出或点 × 关闭），不再弹 SnackBar。
+                setState(() {
+                  _editMode = true;
+                  _showEditModeToast = true;
+                });
               },
             ),
           // 「新建」入口（2.0.0）：底栏三键改版后，原来的「新建」页签挪到这里。
@@ -883,9 +902,6 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
       ),
       body: Column(
         children: [
-          // WB_SPEC_240 §4：AppBar 下方、星期表头上方的常驻 26dp 提示条，
-          // 只在编辑模式下显示，退出时收起（不占位）。
-          if (_editMode) const EditModeBanner(),
           // 当前/下一节课状态条（1.2.0）：点一下回到本周；由「上课播报」开关控制显隐
           // WB_SPEC_223：横幅在跳转条上方，点按层盖不到，回调里守卫。
           if (ui.showClassBroadcast)
@@ -1028,6 +1044,24 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
                         behavior: HitTestBehavior.translucent,
                         onTap: _closeJumper,
                         child: const SizedBox.expand(),
+                      ),
+                    ),
+                  // WB_SPEC_242 §1：编辑模式悬浮胶囊飘窗，叠在课表之上，
+                  // 不参与布局（课表高度不变）。进编辑模式时滑入，3 秒后
+                  // 自动淡出或点 × 关闭；放最后，画在最上层。
+                  if (_editMode && _showEditModeToast)
+                    Positioned(
+                      top: 8,
+                      left: 16,
+                      right: 16,
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: EditModeToast(
+                          onDismiss: () {
+                            if (!mounted) return;
+                            setState(() => _showEditModeToast = false);
+                          },
+                        ),
                       ),
                     ),
                 ],
@@ -1826,6 +1860,37 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
     }
   }
 
+  /// WB_SPEC_242 §2(b)：把手热区拖动累计位移（dp）。手指在选区框底部
+  /// 热区内上下拖时，按整节吸附扩展/收缩选区；累计满一节行高才动一格。
+  double _dragAccumDy = 0;
+
+  /// WB_SPEC_242 §2(b)：把手热区拖动扩展选区。
+  ///
+  /// 与 onLongPressMoveUpdate 同款规则：以 _anchorRow 为中心、按整节
+  /// 吸附、遇已有课程止步（_freeRange）。deltaDy 是本次拖动的纵向位移
+  /// （下正上负），累计满一节行高才扩展/收缩一格，不足一格先攒着。
+  void _updateHighlightByDrag(
+    double deltaDy,
+    Map<int, List<DisplaySlot>> daySlots,
+  ) {
+    final hl = _highlight;
+    final anchor = _anchorRow;
+    if (hl == null || anchor == null) return;
+    _dragAccumDy += deltaDy;
+    final rowHeight = widget.rowHeight;
+    if (_dragAccumDy.abs() < rowHeight) return;
+    final steps = (_dragAccumDy / rowHeight).truncate();
+    _dragAccumDy -= steps * rowHeight;
+    final range = _freeRange(daySlots, hl.day, anchor);
+    // 向下拖：end 往下扩（不超过 hi）；向上拖：end 往上收（不小于 anchor，
+    // 且 start 固定为 anchor——把手只拖动选区下沿，与长按拖动同款语义
+    // 的下沿扩展一致；上沿不动）。
+    final newEnd = (hl.end + steps).clamp(range.lo, range.hi);
+    if (newEnd < anchor) return;
+    if (newEnd == hl.end) return;
+    _updateHighlight((day: hl.day, start: hl.start, end: newEnd));
+  }
+
   double _topOf(int section) => yOffsetTop(
     section,
     widget.rowHeight,
@@ -2013,6 +2078,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
               columnCount: displayDays.length,
               activeBands: activeBands,
               totalHeight: totalHeight,
+              editMode: editMode,
             ),
           // 分隔带（午间/晚间）：画在每一页内部，随页一起滑动（Argon 方案 Q5）。
           // 旧实现在 PageView 外层画单条通栏，滑屏切周时带子静止不动、与网格
@@ -2032,6 +2098,8 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
               child: IgnorePointer(child: _FullBand(band: b, axisWidth: 0)),
             ),
           // 长按高亮选区：主题色描边 + 浅填充 + 中央加号（再次单击进新建页）
+          // WB_SPEC_242 §2：底部加小把手（首次出现浮动 2 次提示可下拉）
+          // + 28dp 透明拖动热区 + 底部 1/3 全可拖（拇指好按）。
           if (_highlight != null && displayDays.contains(_highlight!.day))
             Positioned(
               left: displayDays.indexOf(_highlight!.day) * cellWidth + 1.5,
@@ -2041,25 +2109,57 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
                   rowHeight -
                   _topOf(_highlight!.start) -
                   3,
-              child: IgnorePointer(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: scheme.primary.withValues(alpha: 0.13),
-                    border: Border.all(color: scheme.primary, width: 1.6),
-                    borderRadius: BorderRadius.circular(ui.cornerRadius),
-                  ),
-                  child: Center(
+              child: Stack(
+                children: [
+                  // 选区高亮本体（不拦截手势，交给下方热区）
+                  IgnorePointer(
                     child: Container(
-                      width: 22,
-                      height: 22,
                       decoration: BoxDecoration(
-                        color: scheme.primary,
-                        shape: BoxShape.circle,
+                        color: scheme.primary.withValues(alpha: 0.13),
+                        border: Border.all(color: scheme.primary, width: 1.6),
+                        borderRadius: BorderRadius.circular(ui.cornerRadius),
                       ),
-                      child: Icon(Icons.add, size: 16, color: scheme.onPrimary),
+                      child: Center(
+                        child: Container(
+                          width: 22,
+                          height: 22,
+                          decoration: BoxDecoration(
+                            color: scheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.add, size: 16, color: scheme.onPrimary),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  // WB_SPEC_242 §2(b)：底部 1/3 全可拖 + 28dp 透明热区
+                  // （以把手为中心）。拇指按这条带子任意位置都能拖，不用
+                  // 精准按住下边缘；拖动复用 _updateHighlightByDrag
+                  // （与 onLongPressMoveUpdate 同款吸附规则）。
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 28,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onVerticalDragUpdate: (details) {
+                        _updateHighlightByDrag(details.delta.dy, daySlots);
+                      },
+                      onVerticalDragEnd: (_) => _dragAccumDy = 0,
+                      onVerticalDragCancel: () => _dragAccumDy = 0,
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: _SelectionHandle(
+                            color: scheme.primary.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           // 课程卡片（按三态布局段绝对定位）
@@ -2189,6 +2289,7 @@ class _GridLines extends StatelessWidget {
     required this.columnCount,
     required this.activeBands,
     required this.totalHeight,
+    this.editMode = false,
   });
 
   final double cellWidth;
@@ -2198,9 +2299,15 @@ class _GridLines extends StatelessWidget {
   final List<GridBand> activeBands;
   final double totalHeight;
 
+  /// WB_SPEC_242 §1 方案 A：编辑模式下网格线加深一档。
+  final bool editMode;
+
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.outlineVariant;
+    // WB_SPEC_242 §1 方案 A：编辑模式下网格线加深一档。
+    final color = editMode
+        ? Theme.of(context).colorScheme.outline.withValues(alpha: 0.28)
+        : Theme.of(context).colorScheme.outlineVariant;
     return CustomPaint(
       size: Size(cellWidth * columnCount, totalHeight),
       painter: _GridPainter(
@@ -2448,9 +2555,10 @@ class _PositionedCourseCard extends StatelessWidget {
         ),
         cornerRadius: ui.cornerRadius,
         // WB_SPEC_240 §5：编辑模式下课程卡外圈描边至少 1.0dp（样品口径）；
+        // WB_SPEC_242 §1 方案 A：编辑模式下描边提到 1.5dp 并带极淡投影。
         // 非编辑模式沿用界面设置。铅笔角标：CourseCard 本就没有铅笔角标
         // （只有「+N」/「调」文字角标），§2 的删除项已满足，无代码可删。
-        borderWidth: (editMode && ui.borderWidth < 1.0) ? 1.0 : ui.borderWidth,
+        borderWidth: (editMode && ui.borderWidth < 1.5) ? 1.5 : ui.borderWidth,
         textScale: ui.cardTextScale,
         showClassroom: ui.showClassroom,
         showTeacher: ui.showTeacher,
@@ -2933,68 +3041,268 @@ class _ExportBottomSheetContentState
 }
 
 /// WB_SPEC_240 §3：AppBar 编辑模式标题胶囊组件（只写「✏️ 编辑模式」）
-class EditModeTitlePill extends StatelessWidget {
+/// WB_SPEC_240 §3：进编辑模式后 AppBar 标题区换成「✏️ 编辑模式」胶囊。
+/// WB_SPEC_242 §1 方案 B：入场时做一次呼吸动画（缩放 1.0→1.05→1.0，
+/// 仅一次，不循环），配合飘窗出现。
+class EditModeTitlePill extends StatefulWidget {
   const EditModeTitlePill({super.key});
+
+  @override
+  State<EditModeTitlePill> createState() => _EditModeTitlePillState();
+}
+
+class _EditModeTitlePillState extends State<EditModeTitlePill>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    // 1.0 → 1.05 → 1.0，仅入场播一次
+    _scale = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 1.05)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 50,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.05, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeIn)),
+        weight: 50,
+      ),
+    ]).animate(_controller);
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      key: const ValueKey<String>('appbar_edit_mode_pill'),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration: BoxDecoration(
-        color: scheme.primary.withValues(alpha: isDark ? 0.22 : 0.12),
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(
-          color: scheme.primary.withValues(alpha: 0.35),
-          width: 1.0,
+    return ScaleTransition(
+      scale: _scale,
+      child: Container(
+        key: const ValueKey<String>('appbar_edit_mode_pill'),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        decoration: BoxDecoration(
+          color: scheme.primary.withValues(alpha: isDark ? 0.22 : 0.12),
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(
+            color: scheme.primary.withValues(alpha: 0.35),
+            width: 1.0,
+          ),
         ),
-      ),
-      child: Text(
-        '✏️ 编辑模式',
-        style: TextStyle(
-          fontSize: 13.5,
-          fontWeight: FontWeight.w700,
-          color: scheme.primary,
-          height: 1.1,
+        child: Text(
+          '✏️ 编辑模式',
+          style: TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w700,
+            color: scheme.primary,
+            height: 1.1,
+          ),
         ),
       ),
     );
   }
 }
 
-/// WB_SPEC_240 §4：AppBar 下方、星期表头上方常驻 26dp 提示条
-class EditModeBanner extends StatelessWidget {
-  const EditModeBanner({super.key});
+/// WB_SPEC_242 §2(a)：选区框底部小把手（24×4dp 圆角横条）。
+///
+/// 选区框首次出现时上下浮动 ±3dp、周期 600ms、重复 2 次后静止
+/// （不无限循环），提示这个框可以往下拉。
+class _SelectionHandle extends StatefulWidget {
+  const _SelectionHandle({required this.color});
 
-  static const double kBannerHeight = 26.0;
-  static const String kBannerText = '点空白格加课 · 长按课程可编辑（已锁定滑动）';
+  final Color color;
+
+  @override
+  State<_SelectionHandle> createState() => _SelectionHandleState();
+}
+
+class _SelectionHandleState extends State<_SelectionHandle>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _offset;
+
+  @override
+  void initState() {
+    super.initState();
+    // 周期 600ms，重复 2 次后静止（不无限循环）
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _offset = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0, end: -3)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 50,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: -3, end: 0)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 50,
+      ),
+    ]).animate(_controller);
+    _controller.repeat(count: 2).whenComplete(() {
+      if (mounted) _controller.stop();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _offset,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, _offset.value),
+          child: child,
+        );
+      },
+      child: Container(
+        key: const ValueKey<String>('selection_drag_handle'),
+        width: 24,
+        height: 4,
+        decoration: BoxDecoration(
+          color: widget.color,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+}
+///
+/// 悬浮在顶栏正下方、水平居中，不参与布局（课表高度不变）；进编辑模式
+/// 时下滑淡入（200ms easeOut），停留 3 秒后淡出（250ms），右侧 × 可
+/// 手动关闭。不常驻，不用 SnackBar（挡第 12–13 节）。
+class EditModeToast extends StatefulWidget {
+  const EditModeToast({super.key, required this.onDismiss});
+
+  /// 手动关闭（点右侧 ×）或自动淡出完成后的回调，由父级把可见状态置 false。
+  final VoidCallback onDismiss;
+
+  @override
+  State<EditModeToast> createState() => _EditModeToastState();
+}
+
+class _EditModeToastState extends State<EditModeToast>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _fade;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+      reverseDuration: const Duration(milliseconds: 250),
+    );
+    _fade = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+      reverseCurve: Curves.easeIn,
+    );
+    _slide = Tween<Offset>(
+      begin: const Offset(0, -0.6),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    _controller.forward();
+    // 停留 3 秒后自动淡出
+    Future<void>.delayed(const Duration(seconds: 3), () async {
+      if (!mounted) return;
+      await _controller.reverse();
+      if (!mounted) return;
+      widget.onDismiss();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleClose() async {
+    if (!mounted) return;
+    await _controller.reverse();
+    if (!mounted) return;
+    widget.onDismiss();
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark
-        ? const Color(0xFF2A2416)
-        : scheme.primary.withValues(alpha: 0.08);
-    final textColor = isDark ? const Color(0xFFEBC9A0) : scheme.primary;
-
-    return Container(
-      key: const ValueKey<String>('edit_mode_persistent_banner'),
-      width: double.infinity,
-      height: kBannerHeight,
-      color: bgColor,
-      alignment: Alignment.center,
-      child: Text(
-        kBannerText,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w600,
-          color: textColor,
-          height: 1.1,
+    return SlideTransition(
+      position: _slide,
+      child: FadeTransition(
+        opacity: _fade,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            key: const ValueKey<String>('edit_mode_toast'),
+            height: 38,
+            padding: const EdgeInsets.only(left: 16, right: 6),
+            decoration: BoxDecoration(
+              color: scheme.primary,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: scheme.primary.withValues(alpha: 0.20),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    '点空格加课 · 长按课程编辑',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.onPrimary,
+                      height: 1.1,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                InkResponse(
+                  onTap: _handleClose,
+                  radius: 18,
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Icon(
+                      Icons.close,
+                      size: 16,
+                      color: scheme.onPrimary.withValues(alpha: 0.9),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
