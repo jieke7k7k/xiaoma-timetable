@@ -17,6 +17,7 @@ import '../utils/app_haptics.dart';
 import '../ui/app_styles.dart';
 import '../ui/grid_metrics.dart';
 import '../utils/color_schemes.dart';
+import '../utils/morandi_palette.dart';
 import '../utils/override_effect.dart';
 import '../utils/semester_export_helper.dart';
 import '../utils/slot_layout.dart';
@@ -813,7 +814,6 @@ class SemesterSingleImageSheet extends StatelessWidget {
   // 但与现有导出图不一致，统一用共享常量。
   static const double kAxisWidth = kTimeAxisWidth;
   static const double kRowHeight = 36.0;
-  static const double kSemesterBandHeight = 20.0;
 
   int _bandsBefore(int section) => bands.where((b) => section > b.after).length;
 
@@ -835,13 +835,13 @@ class SemesterSingleImageSheet extends StatelessWidget {
 
     final maxSection = slots.isEmpty ? 14 : slots.length;
     final colW = (width - kAxisWidth) / displayDays.length;
-    final gridH = maxSection * kRowHeight + bands.length * kSemesterBandHeight;
+    final gridH = maxSection * kRowHeight + bands.length * kBandHeight;
 
     double topOf(int section) =>
         (section - 1) * kRowHeight +
-        _bandsBefore(section) * kSemesterBandHeight;
+        _bandsBefore(section) * kBandHeight;
     double bandTop(GridBand b) =>
-        b.after * kRowHeight + _bandsBefore(b.after) * kSemesterBandHeight;
+        b.after * kRowHeight + _bandsBefore(b.after) * kBandHeight;
 
     // P1-3：课程块高度 = 末节底 - 首节顶 - 2（含跨过的午间/晚间
     // 分隔带高度）。旧公式 span × 行高 - 2 漏了带子：5–6 节跨午间带时
@@ -849,6 +849,8 @@ class SemesterSingleImageSheet extends StatelessWidget {
     // 注意：用 topOf(end)+行高，不用 topOf(end+1)——末节后有带子时
     // topOf(end+1) 会把带子也算进来，3–5 节这种止于带前的课会盖住
     // 午间/晚间带（2.7.0 回归）。
+    // WB_SPEC_244：带高由 kSemesterBandHeight = 20 改为 kBandHeight = 24，
+    // 跨带卡高随之变（5–6 节跨午间带 72+24-2=94dp，见 wb239 P1-3）。
     double slotHeight(SemesterMasterSlot m) =>
         topOf(m.endSection) + kRowHeight - topOf(m.startSection) - 2.0;
 
@@ -865,6 +867,13 @@ class SemesterSingleImageSheet extends StatelessWidget {
     // 不再用 surfaceContainer。
     final bandBg = scheme.surfaceContainerHighest.withValues(alpha: 0.6);
     final gridLineColor = scheme.outlineVariant;
+
+    // WB_SPEC_244 §3：纵向分段列线（跳过带子，锚点在网格区内部，不穿透表头）。
+    final vSegments = verticalLineSegments(
+      rowHeight: kRowHeight,
+      sectionCount: maxSection,
+      activeBands: bands,
+    );
 
     // P1-2：画布高度固定为 1080×1920 反推的逻辑高（375dp 宽时 666.67dp），
     // 不再随内容自然高走（14 节 + 2 带自然高只有 640dp，导出是 1080×1843；
@@ -923,10 +932,11 @@ class SemesterSingleImageSheet extends StatelessWidget {
               ),
             ),
 
-            // 2. 星期表头（34dp，写周一～周日）
+            // 2. 星期表头（34dp，surfaceContainerLow 底条，写周一～周日）
             Container(
               height: kWeekBarHeight,
               decoration: BoxDecoration(
+                color: scheme.surfaceContainerLow,
                 border: Border(
                   top: BorderSide(color: gridLineColor, width: 0.5),
                   bottom: BorderSide(color: gridLineColor, width: 0.5),
@@ -970,6 +980,35 @@ class SemesterSingleImageSheet extends StatelessWidget {
               height: gridH,
               child: Stack(
                 children: [
+                  // WB_SPEC_244 §3：底层网格线（_ExportSheet 同款，置于带子与卡片之前）。
+                  // 每节底边通栏横线。
+                  for (var r = 1; r < maxSection; r++)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: topOf(r) + kRowHeight,
+                      height: 0.5,
+                      child: ColoredBox(color: gridLineColor),
+                    ),
+                  // 每条分隔带底边通栏横线。
+                  for (final b in bands)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: topOf(b.after + 1),
+                      height: 0.5,
+                      child: ColoredBox(color: gridLineColor),
+                    ),
+                  // 纵向分段列线（跳过带子，锚点在网格区内部，不穿透表头）。
+                  for (final seg in vSegments)
+                    for (var c = 0; c <= displayDays.length; c++)
+                      Positioned(
+                        left: kAxisWidth + c * colW,
+                        top: seg.start,
+                        width: 0.5,
+                        height: seg.end - seg.start,
+                        child: ColoredBox(color: gridLineColor),
+                      ),
                   // 左侧时间轴（宽 34dp，节次 10sp 加粗，起止时间 7.5sp）
                   for (final slot in slots)
                     Positioned(
@@ -982,7 +1021,7 @@ class SemesterSingleImageSheet extends StatelessWidget {
                           border: Border(
                             right: BorderSide(color: gridLineColor, width: 0.5),
                             bottom: BorderSide(
-                              color: gridLineColor.withValues(alpha: 0.5),
+                              color: gridLineColor,
                               width: 0.5,
                             ),
                           ),
@@ -1025,7 +1064,7 @@ class SemesterSingleImageSheet extends StatelessWidget {
                       ),
                     ),
 
-                  // WB_SPEC_243 §1：午间 / 晚间分隔带（高 20dp）——与 App 内
+                  // WB_SPEC_243 §1：午间 / 晚间分隔带（高 24dp）——与 App 内
                   // 周视图一致：轴列写名称「午间」/「晚间」，通栏只留底色，
                   // 不写居中「午间 12:00-14:00」。
                   for (final b in bands)
@@ -1033,7 +1072,7 @@ class SemesterSingleImageSheet extends StatelessWidget {
                       left: 0,
                       top: bandTop(b),
                       width: width,
-                      height: kSemesterBandHeight,
+                      height: kBandHeight,
                       child: Container(
                         color: bandBg,
                         child: Row(
@@ -1166,18 +1205,49 @@ class _SingleMasterCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bgColor = Color(mapCourseColor(course.colorValue, ui.colorScheme));
-    // WB_SPEC_241：文字色与胶囊走浅色 colorScheme（与 App 内周视图
-    // 同口径），不再硬编码 0xFF1F2937 / 0xFF374151。
     final scheme = buildAppColorScheme(
       Color(ui.themeSeedValue),
       Brightness.light,
     );
     final weekCapsule = SemesterExportHelper.formatWeekCapsule(course);
+
+    // B4 亮度规则：对齐 CourseCard 文字色与描边色
+    // 注意：MorandiPalette 的文字色常量是 int（0xFF…），须包一层 Color，
+    // 与 CourseCard 同款写法；Argon 原码漏了这层，analyze 会报类型错。
+    final useLightText = bgColor.computeLuminance() < 0.42;
+    final textColor = Color(
+      useLightText ? MorandiPalette.darkTextColor : MorandiPalette.textColor,
+    );
+    final subTextColor = Color(
+      useLightText
+          ? MorandiPalette.darkSubTextColor
+          : MorandiPalette.subTextColor,
+    );
+    final borderColor = useLightText
+        ? lightenColor(bgColor)
+        : darkenColor(bgColor);
+
     // 矮卡先藏教室/老师，再藏周次胶囊；课名永远保留。
+    final isHighTier = height >= 70;
     final showMeta = height >= 40;
     final showCapsule = height >= 30;
-    final nameSize = height >= 30 ? 10.0 : (height >= 14 ? 8.5 : 7.5);
-    final padV = height >= 30 ? 3.0 : (height >= 14 ? 1.5 : 0.5);
+    final textScale = ui.cardTextScale;
+
+    final baseNameSize = isHighTier
+        ? 12.0
+        : (height >= 30 ? 10.0 : (height >= 14 ? 8.5 : 7.5));
+    final nameSize = baseNameSize * textScale;
+    final nameWeight = isHighTier ? FontWeight.w600 : FontWeight.w700;
+    final nameHeightRatio = isHighTier ? 1.15 : 1.2;
+
+    final baseMetaSize = isHighTier ? 10.0 : 8.5;
+    final metaSize = baseMetaSize * textScale;
+    final metaWeight = isHighTier ? null : FontWeight.w500;
+    final metaHeightRatio = isHighTier ? 1.1 : 1.18;
+
+    final padV = isHighTier
+        ? 4.0
+        : (height >= 30 ? 3.0 : (height >= 14 ? 1.5 : 0.5));
 
     final classroomText = (showMeta &&
             ui.showClassroom &&
@@ -1192,43 +1262,50 @@ class _SingleMasterCard extends StatelessWidget {
         ? course.teacher!.trim()
         : null;
 
-    // 行数预算（P0-1 复审修正）：名行与元数据行分开计——名行高
-    // nameSize×1.2（10sp 档 12dp），元数据行高 8.5×1.18（约 10dp）。
-    // 用名行高一刀切会低估行数：40dp 卡只剩 1 行、教室/老师全被藏掉，
-    // 52dp 卡只剩 2 行、老师被截。顺序：课名至少 1 行，剩余高度能放
-    // 几行元数据就放几行（放不下时老师先被截）；胶囊预留 11dp（实高约 10.75dp）。
-    final nameLineH = nameSize * 1.2;
-    const metaLineH = 8.5 * 1.18;
+    // 行数预算（WB_SPEC_244 §2.5）：单行像素高度乘 textScale，总行数上限升至 8。
+    final nameLineH = nameSize * nameHeightRatio;
+    final metaLineH = metaSize * metaHeightRatio;
     final reserveH = (showCapsule && weekCapsule.isNotEmpty) ? 11.0 : 0.0;
     final availTextH = (height - padV * 2 - reserveH).clamp(10.0, 400.0);
-    var metaLines = 0;
-    if (classroomText != null) metaLines++;
-    if (teacherText != null) metaLines++;
-    // 先给课名留 1 行，剩下的高度放元数据行。
-    final fittedMetaLines =
-        ((availTextH - nameLineH) / metaLineH).floor().clamp(0, metaLines);
-    // 课名最多 2 行（与原 ≥52 档同口径），其余高度归元数据。
-    final nameMaxLines = height >= 52 ? 2 : 1;
-    final nameLines = ((availTextH - fittedMetaLines * metaLineH) / nameLineH)
-        .floor()
-        .clamp(1, nameMaxLines);
-    final totalMaxLines = nameLines + fittedMetaLines;
+
+    final int totalMaxLines;
+    if (isHighTier) {
+      // 高档（>=70dp，如多节连上 144dp 卡）：对齐 CourseCard 多节卡口径（上限 8 行），
+      // 允许长教室（如「12-分析化学实验室（二）」）自然折多行而不挤掉老师。
+      final extraLines = ((availTextH - nameLineH) / metaLineH).floor();
+      totalMaxLines = (1 + (extraLines < 0 ? 0 : extraLines)).clamp(1, 8);
+    } else {
+      // 中低档（<70dp，含 52dp 单双周半格）：严守 243 P0-1 预算结构，保 52dp 3 行。
+      var metaLines = 0;
+      if (classroomText != null) metaLines++;
+      if (teacherText != null) metaLines++;
+      final fittedMetaLines =
+          ((availTextH - nameLineH) / metaLineH).floor().clamp(0, metaLines);
+      final nameMaxLines = height >= 52 ? 2 : 1;
+      final nameLines = ((availTextH - fittedMetaLines * metaLineH) / nameLineH)
+          .floor()
+          .clamp(1, nameMaxLines);
+      totalMaxLines = (nameLines + fittedMetaLines).clamp(1, 8);
+    }
 
     final metaStyle = TextStyle(
-      fontSize: 8.5,
-      fontWeight: FontWeight.w500,
-      color: scheme.onSurfaceVariant,
-      height: 1.18,
+      fontSize: metaSize,
+      fontWeight: metaWeight,
+      color: subTextColor,
+      height: metaHeightRatio,
     );
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 3, vertical: padV),
+      padding: EdgeInsets.symmetric(horizontal: 6, vertical: padV),
       decoration: BoxDecoration(
         color: bgColor,
-        // WB_SPEC_241：课卡圆角与 App 内周视图一致，用 ui.cornerRadius
-        //（默认 12），不再硬编码 7/5。
         borderRadius: BorderRadius.circular(ui.cornerRadius),
+        border: ui.borderWidth > 0
+            ? Border.fromBorderSide(
+                BorderSide(color: borderColor, width: ui.borderWidth),
+              )
+            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1242,9 +1319,9 @@ class _SingleMasterCard extends StatelessWidget {
                     text: course.name,
                     style: TextStyle(
                       fontSize: nameSize,
-                      fontWeight: FontWeight.w700,
-                      color: scheme.onSurface,
-                      height: 1.2,
+                      fontWeight: nameWeight,
+                      color: textColor,
+                      height: nameHeightRatio,
                     ),
                   ),
                   if (classroomText != null)

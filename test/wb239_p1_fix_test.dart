@@ -176,7 +176,7 @@ void main() {
       img.dispose();
     });
 
-    testWidgets('P1-3 跨带课程卡片高度含分隔带：5–6 节卡高 90dp', (tester) async {
+    testWidgets('P1-3 跨带课程卡片高度含分隔带：5–6 节卡高 94dp', (tester) async {
       await pumpSheet(
         tester,
         courses: [
@@ -189,13 +189,14 @@ void main() {
           ),
         ],
       );
-      // 5–6 节跨午间带（after=5）：topOf(7) - topOf(5) - 2 = 236 - 144 - 2。
+      // 5–6 节跨午间带（after=5）：topOf(7) - topOf(5) - 2 = 240 - 144 - 2
+      //（WB_SPEC_244：带高由 20dp 改为 kBandHeight = 24dp，卡高 90→94）。
       expect(cardBoxOf('跨带课程'), findsOneWidget);
-      expect(tester.getSize(cardBoxOf('跨带课程')).height, 90.0);
+      expect(tester.getSize(cardBoxOf('跨带课程')).height, 94.0);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('P1-3 跨带冲突块高度含分隔带：5–6 节冲突块高 90dp', (tester) async {
+    testWidgets('P1-3 跨带冲突块高度含分隔带：5–6 节冲突块高 94dp', (tester) async {
       await pumpSheet(
         tester,
         courses: [
@@ -205,7 +206,7 @@ void main() {
       );
       expect(find.byType(ConflictBlock), findsOneWidget);
       expect(cardBoxOf('前半课'), findsOneWidget);
-      expect(tester.getSize(cardBoxOf('前半课')).height, 90.0);
+      expect(tester.getSize(cardBoxOf('前半课')).height, 94.0);
       expect(tester.takeException(), isNull);
     });
 
