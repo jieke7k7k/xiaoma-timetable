@@ -17,6 +17,7 @@ import '../utils/conflict_detector.dart';
 import '../utils/ics_parser.dart';
 import '../utils/import_planner.dart';
 import '../utils/morandi_palette.dart';
+import '../utils/same_name_weeks.dart';
 import '../utils/slot_calibrator.dart';
 import '../utils/week_infer.dart';
 import '../utils/week_parser.dart';
@@ -403,6 +404,16 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
             ],
           ),
         );
+        if (mounted) {
+          // WB_SPEC_246 §1：导入成功弹窗关闭后、返回前检查同名周数不一致。
+          // 整个检查（含弹窗与统一）失败都不能反噬导入流程：外层 _confirmImport
+          // 的 catch 会把任何外抛异常当成「导入失败」，所以这里再包一层。
+          try {
+            await _checkSameNameWeeks(target.id!);
+          } catch (e) {
+            debugPrint('同名周数检查外抛异常（已忽略）：$e');
+          }
+        }
         if (mounted) Navigator.pop(context);
       }
     } catch (e) {
@@ -412,6 +423,96 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
             .showSnackBar(SnackBar(content: Text('导入失败：$e')));
       }
     }
+  }
+
+  /// WB_SPEC_246 §1：扫描目标学期全部课程，发现同名周数不一致时弹窗提醒。
+  ///
+  /// - 检测失败（异常）时静默跳过，不拦导入流程；
+  /// - 点「保持不变」不做任何修改；
+  /// - 点「自动统一」在一个事务里批量更新，成功后 reload + Toast，
+  ///   失败 Toast「统一失败，请重试」，不回滚已导入课程。
+  Future<void> _checkSameNameWeeks(int semesterId) async {
+    // 检测阶段失败静默跳过（§1.1），与统一写库失败分开处理。
+    List<Course> courses;
+    List<InconsistentWeekGroup> groups;
+    try {
+      courses = await Dao.instance.getCoursesBySemester(semesterId);
+      groups = findInconsistentWeekGroups(courses);
+    } catch (e) {
+      debugPrint('同名周数检查失败：$e');
+      return;
+    }
+    if (groups.isEmpty) return;
+    if (!mounted) return;
+
+    final byId = <int, Course>{
+      for (final c in courses)
+        if (c.id != null) c.id!: c,
+    };
+    final lines = <String>[];
+    for (final g in groups) {
+      final parts = <String>[];
+      for (final w in g.distinctWeeks) {
+        final count = g.courseIds
+            .where((id) =>
+                byId[id] != null && weeksListEquals(byId[id]!.weeks, w))
+            .length;
+        parts.add(count > 1 ? '${_formatWeeks(w)}周 ×$count' : '${_formatWeeks(w)}周');
+      }
+      lines.add('${g.name}：${parts.join('、')}');
+    }
+
+    final go = await showAppConfirmDialog(
+      context,
+      title: '同名课程周数不一致',
+      message: '以下课程同名但周数不一致：\n${lines.join('\n')}\n\n'
+          '是否自动统一为最长周数？',
+      confirmLabel: '自动统一',
+      cancelLabel: '保持不变',
+    );
+    if (go != true) return;
+    if (!mounted) return;
+
+    // 一个事务里批量更新：目标行本身不写，只写其余行
+    try {
+      var changed = 0;
+      await Dao.instance.runInTransaction((txn) async {
+        for (final g in groups) {
+          final target = g.targetWeeks;
+          for (final id in g.courseIds) {
+            final c = byId[id];
+            if (c == null || weeksListEquals(c.weeks, target)) continue;
+            await Dao.instance.updateCourse(
+              c.copyWith(weeks: target),
+              txn: txn,
+            );
+            changed++;
+          }
+        }
+      });
+
+      await ref.read(coursesProvider.notifier).reload();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已统一 $changed 门课的周数')),
+      );
+    } catch (e) {
+      debugPrint('同名周数统一失败：$e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('统一失败，请重试')),
+        );
+      }
+    }
+  }
+
+  /// 把 weeks 列表格式化为「最小–最大周」或单个数
+  String _formatWeeks(List<int> weeks) {
+    if (weeks.isEmpty) return '';
+    final sorted = List<int>.from(weeks)..sort();
+    final min = sorted.first;
+    final max = sorted.last;
+    return min == max ? '$min' : '$min–$max';
   }
 
   /// 周次溢出提示条：草稿最晚周次超过目标学期总周数时才出现，

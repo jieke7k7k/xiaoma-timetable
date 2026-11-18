@@ -394,12 +394,12 @@ void main() {
     await drain(tester, rounds: 2);
   });
 
-  testWidgets('底部文案改成「颜色按上方选择同步」', (tester) async {
+  testWidgets('底部文案改成「颜色与周次按上方选择同步」', (tester) async {
     await tester.runAsync(seedTwoSlots);
     await openEditor(tester, ids[0]);
 
     expect(
-      find.text('改课程名、老师、教室、备注会同步到本课全部时段；颜色按上方选择同步；时间与周次只改这一条。'),
+      find.text('改课程名、老师、教室、备注会同步到本课全部时段；颜色与周次按上方选择同步；时间只改这一条。'),
       findsOneWidget,
     );
   });

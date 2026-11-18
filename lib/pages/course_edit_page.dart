@@ -12,6 +12,7 @@ import '../utils/app_haptics.dart';
 import '../utils/color_schemes.dart';
 import '../utils/conflict_detector.dart';
 import '../utils/morandi_palette.dart';
+import '../utils/same_name_weeks.dart';
 import '../utils/week_parser.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/select_time_sheet.dart';
@@ -27,7 +28,8 @@ import '../widgets/week_picker.dart';
 /// 一门课在库里是「同学期、同名」的多行，一行一个时段。编辑其中任意一行时：
 /// - 页面列出它的其他时段（「其他时段」区），点一条原地切过去编辑；
 /// - 保存时把名/师/室/注 4 个共享字段同步到本课全部时段，颜色按用户的
-///   「应用到全部 / 仅改本节」选择**按需**同步（第 12.2 节），时间与周次只改当前这一条
+///   「应用到全部 / 仅改本节」选择**按需**同步（第 12.2 节）；时间只改当前这一条，
+///   周次默认同步到全部时段（WB_SPEC_246 §2，可用「仅改本节」关掉）
 ///   （详见 [_buildSiblingsToSync] 与 [CoursesNotifier]）。
 class CourseEditPage extends ConsumerStatefulWidget {
   const CourseEditPage({super.key, this.courseId});
@@ -79,6 +81,12 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
   /// 默认 true（选了颜色就默认整门课一起变）；用户点「仅改本节」置 false。
   /// 切换时段时随 [_applyCourseToForm] 回到默认态——新时段有它自己的初始颜色。
   bool _syncColorToAll = true;
+
+  /// 周次是否同步到本课全部时段（WB_SPEC_246 §2.2，内联行二选一）
+  ///
+  /// 默认 true（改了周次就默认整门课一起变）；用户点「仅改本节」置 false。
+  /// 切换时段时随 [_applyCourseToForm] 回到默认态；只影响本次保存，不持久化。
+  bool _syncWeeksToAll = true;
 
   /// 只跑一次加载（[didChangeDependencies] 可能被多次调用）
   bool _loadStarted = false;
@@ -187,6 +195,8 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     _semesterId = course.semesterId;
     // 换了时段就等于换了「初始颜色」，颜色同步选择回到默认的「应用到全部」
     _syncColorToAll = true;
+    // 周次同步选择同样回到默认的「应用到全部」（WB_SPEC_246 §2.2）
+    _syncWeeksToAll = true;
   }
 
   /// 重新拉一份「其他时段」：同学期、同名（用锁死的 [_originalCourseName]）、
@@ -267,6 +277,19 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
   ///
   /// 只有一个时段的课不显示；没改颜色不显示（不打扰用户，也不改变原有行为）。
   bool get _showColorSyncRow => _siblings.isNotEmpty && _colorChanged;
+
+  /// 本次是否改了周次（对当前时段的库内原值而言；weeks 按集合比较）
+  bool get _weeksChanged {
+    final base = _initialCourse;
+    if (base == null) return false;
+    return !weeksListEquals(_weeks, base.weeks) ||
+        _weekType != base.weekType;
+  }
+
+  /// 是否展开「周次同步」内联行（WB_SPEC_246 §2.2）：多时段课 + 本次改了周次，
+  /// 与颜色同步行同款门控——没改周次时不显示，避免与颜色行的「应用到本课全部」
+  /// 选择重文案（两行同时出现时 find.text 会撞上，复审 P1-2 跟进）。
+  bool get _showWeeksSyncRow => _siblings.isNotEmpty && _weeksChanged;
 
   /// 本学期别的课（不同名；本课自己所有时段除外）占用的颜色 → 课程名列表
   ///
@@ -452,10 +475,11 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     return expected > 1 ? '已同步到本课共 $expected 个时段' : '课程已更新';
   }
 
-  /// 把共享字段（课程名/老师/教室/备注，颜色按需）铺到每个兄弟时段上。
+  /// 把共享字段（课程名/老师/教室/备注，颜色与周次按需）铺到每个兄弟时段上。
   ///
-  /// 关键点（规格第 10.3 节 + 第 12.2 节改法 4）：
-  /// - 兄弟行以**库里的原对象**为底，只覆盖共享字段——时间/周次/考试日期原样保留；
+  /// 关键点（规格第 10.3 节 + 第 12.2 节改法 4 + WB_SPEC_246 §2.3）：
+  /// - 兄弟行以**库里的原对象**为底，只覆盖共享字段——时间/考试日期原样保留；
+  ///   周次默认同步（本次改过周次且开关开），关掉开关时保留兄弟自己的周次；
   /// - 教室/备注异构保护：用户本次没亲手改教室（或备注）时，兄弟时段里本来就
   ///   不同的那个值保留不动（周二理论课 302、周四实验课 105 不会被一起改成 302）；
   /// - 颜色**按需**同步（第 12.2 节取代第 10.3 节的「无条件同步」）：只有本次真改了
@@ -471,6 +495,12 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     final noteTouched = _noteController.text.trim() != norm(base.note);
     // 颜色同步判定：本次改过颜色 + 用户选了「应用到本课全部」
     final syncColor = updated.colorValue != base.colorValue && _syncColorToAll;
+    // 周次同步判定（WB_SPEC_246 §2.3）：本次改过周次（weeks 或 weekType）
+    // + 用户选了「应用到本课全部」。weeks 按集合比较（顺序打乱不算改过），
+    // 与 §1.2 的口径一致。
+    final weeksTouched = !weeksListEquals(updated.weeks, base.weeks) ||
+        updated.weekType != base.weekType;
+    final syncWeeks = weeksTouched && _syncWeeksToAll;
     return [
       for (final s in _siblings)
         Course(
@@ -482,8 +512,8 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
           dayOfWeek: s.dayOfWeek,
           startSection: s.startSection,
           endSection: s.endSection,
-          weeks: s.weeks,
-          weekType: s.weekType,
+          weeks: syncWeeks ? updated.weeks : s.weeks,
+          weekType: syncWeeks ? updated.weekType : s.weekType,
           // 教室：本次亲手改过 → 跟着变；没碰过且兄弟时段自己另有一个非空教室 → 保留
           classroom: _keepOwnValue(
             touched: classroomTouched,
@@ -733,6 +763,38 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     );
   }
 
+  /// WB_SPEC_246 §2.2：周次同步内联行，复用颜色同步的 [_ColorSyncChoice] 样式
+  Widget _buildWeeksSyncRow({required int total}) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      constraints: const BoxConstraints(minHeight: 36),
+      alignment: Alignment.centerLeft,
+      child: Wrap(
+        spacing: AppSpacing.m,
+        runSpacing: AppSpacing.xs,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            '📅 周次：',
+            style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+          ),
+          _ColorSyncChoice(
+            key: const ValueKey('weeks-sync-all'),
+            selected: _syncWeeksToAll,
+            label: '应用到本课全部 $total 个时段',
+            onTap: () => setState(() => _syncWeeksToAll = true),
+          ),
+          _ColorSyncChoice(
+            key: const ValueKey('weeks-sync-current'),
+            selected: !_syncWeeksToAll,
+            label: '仅改本节',
+            onTap: () => setState(() => _syncWeeksToAll = false),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -966,7 +1028,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
               const SizedBox(height: 2),
               Text(
                 '改课程名、老师、教室、备注会同步到本课全部时段；'
-                '颜色按上方选择同步；时间与周次只改这一条。',
+                '颜色与周次按上方选择同步；时间只改这一条。',
                 style: TextStyle(fontSize: 12, color: scheme.outline),
               ),
               // 下间距 18：保证与下方输入框（浮动标签会向上凸出）之间留足空
@@ -1040,10 +1102,20 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
               initialWeeks: _weeks,
               initialWeekType: _weekType,
               onChanged: (weeks, weekType) {
-                _weeks = weeks;
-                _weekType = weekType;
+                // 改周次要 setState：周次同步行按「本次改过周次」门控，
+                // 不重建的话开关行不会在改完周次的第一时间出现。
+                setState(() {
+                  _weeks = weeks;
+                  _weekType = weekType;
+                });
               },
             ),
+            // WB_SPEC_246 §2.2：改过周次且有兄弟时段时显示周次同步开关
+            // （与颜色同步行同款门控；新建/单时段/没改周次都不显示）
+            if (_showWeeksSyncRow) ...[
+              const SizedBox(height: 8),
+              _buildWeeksSyncRow(total: _siblings.length + 1),
+            ],
             const SizedBox(height: 16),
             // 备注
             TextFormField(
