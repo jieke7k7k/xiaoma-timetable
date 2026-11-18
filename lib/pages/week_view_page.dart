@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart' show DeviceGestureSettings;
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import '../models/course.dart';
 import '../models/course_override.dart';
 import '../models/menu_config.dart';
+import '../models/semester.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import 'share_image_page.dart';
@@ -2888,11 +2890,49 @@ class ExportBottomSheetContent extends ConsumerStatefulWidget {
 class _ExportBottomSheetContentState
     extends ConsumerState<ExportBottomSheetContent> {
   bool _exportingSemester = false;
+  bool _savingSemester = false;
+
+  /// WB_SPEC_243 §2：生成期间两行 + 取消全禁（与 P1-6 同款口径）。
+  bool get _busy => _exportingSemester || _savingSemester;
 
   void _showEmptySemesterSnackBar() {
     Navigator.pop(context);
     ScaffoldMessenger.of(widget.parentContext)
         .showSnackBar(const SnackBar(content: Text('本学期还没有课')));
+  }
+
+  /// WB_SPEC_243 §2：分享与保存共用的整学期单图生成核心（P1-1：关键数据
+  /// 等 provider 就绪再读（.future），不要用 .value ?? 默认值静默兜底）。
+  /// 只返回字节与学期，不碰 UI 状态与 sheet 收起，由调用方决定后续动作。
+  Future<({Uint8List bytes, Semester semester})> _renderSemesterBytes(
+    List<Course> courses,
+  ) async {
+    final uiSettings = await ref.read(uiSettingsProvider.future);
+    final slots = await ref.read(timeSlotsProvider.future);
+    final seg = await ref.read(segmentSettingsProvider.future);
+    final bandSettings = await ref.read(bandSettingsProvider.future);
+    final bands = computeActiveBands(
+      lunchAfter: seg.lunchAfterSection,
+      dinnerAfter: seg.dinnerAfterSection,
+      sectionCount: slots.length,
+      settings: bandSettings,
+    );
+    final semester = await ref.read(currentSemesterProvider.future);
+    if (SemesterExportHelper.calculateMaxWeek(courses) <= 0) {
+      throw StateError('当前学期无有效课程数据');
+    }
+    // 生成放 sheet 里（保持打开，显示「生成中…」）；生成完再收起。
+    // invokeShare: false——先只拿字节，由调用方决定分享还是保存。
+    final bytes = await generateAndShareSemesterSinglePng(
+      context: widget.parentContext,
+      semester: semester,
+      courses: courses,
+      slots: slots,
+      bands: bands,
+      uiSettings: uiSettings,
+      invokeShare: false,
+    );
+    return (bytes: bytes, semester: semester);
   }
 
   Future<void> _exportSemesterSinglePng() async {
@@ -2921,32 +2961,7 @@ class _ExportBottomSheetContentState
     // sheet 是否已收起（分享阶段失败时 State 已 dispose，不 setState）
     var popped = false;
     try {
-      final uiSettings = await ref.read(uiSettingsProvider.future);
-      final slots = await ref.read(timeSlotsProvider.future);
-      final seg = await ref.read(segmentSettingsProvider.future);
-      final bandSettings = await ref.read(bandSettingsProvider.future);
-      final bands = computeActiveBands(
-        lunchAfter: seg.lunchAfterSection,
-        dinnerAfter: seg.dinnerAfterSection,
-        sectionCount: slots.length,
-        settings: bandSettings,
-      );
-      final semester = await ref.read(currentSemesterProvider.future);
-      if (SemesterExportHelper.calculateMaxWeek(courses) <= 0) {
-        throw StateError('当前学期无有效课程数据');
-      }
-      // 生成放 sheet 里（保持打开，显示「生成中…」）；生成完再收起、分享。
-      // invokeShare: false——先只拿字节，收起 sheet、弹提示后再调分享
-      // （P1-2 时序：提示在分享面板打开前出现）。
-      final bytes = await generateAndShareSemesterSinglePng(
-        context: widget.parentContext,
-        semester: semester,
-        courses: courses,
-        slots: slots,
-        bands: bands,
-        uiSettings: uiSettings,
-        invokeShare: false,
-      );
+      final res = await _renderSemesterBytes(courses);
       if (!mounted) return;
       Navigator.pop(context);
       popped = true;
@@ -2958,12 +2973,12 @@ class _ExportBottomSheetContentState
         ShareParams(
           files: [
             XFile.fromData(
-              bytes,
-              name: '${semester.name}课表.png',
+              res.bytes,
+              name: '${res.semester.name}课表.png',
               mimeType: 'image/png',
             ),
           ],
-          text: '这是${semester.name}完整课表，请查收',
+          text: '这是${res.semester.name}完整课表，请查收',
         ),
       );
     } catch (e) {
@@ -2976,6 +2991,52 @@ class _ExportBottomSheetContentState
       setState(() => _exportingSemester = false);
       // 生成阶段失败：sheet 还开着，就地弹失败弹窗（可重试）。
       showAppInfoDialog(context, title: '导出失败', message: '$e');
+    }
+  }
+
+  /// WB_SPEC_243 §2：生成整学期单图并直接保存到系统相册（不打开分享面板）。
+  /// 流程与 _exportSemesterSinglePng 同款（.future 读数、popped 时序、
+  /// 生成/保存两阶段失败口径），只把最后一步分享换成保存。
+  Future<void> _saveSemesterSinglePngToLocal() async {
+    late final List<Course> courses;
+    try {
+      courses = await ref.read(coursesProvider.future);
+    } catch (e) {
+      if (!mounted) return;
+      showAppInfoDialog(context, title: '保存失败', message: '$e');
+      return;
+    }
+    if (courses.isEmpty) {
+      _showEmptySemesterSnackBar();
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _savingSemester = true);
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
+    var popped = false;
+    try {
+      final res = await _renderSemesterBytes(courses);
+      if (!mounted) return;
+      Navigator.pop(context);
+      popped = true;
+      final fileName = '${res.semester.name}课表.png';
+      // gal 3.x 会按字节自行识别扩展名并拼到 name 后面（见 gal 源码
+      // getUniqueFileUri），name 里不要带 .png，否则存成「.png.png」。
+      await saveImageToGalleryHandler(res.bytes, name: '${res.semester.name}课表');
+      ScaffoldMessenger.of(widget.parentContext).showSnackBar(
+        SnackBar(content: Text('已保存到相册：$fileName')),
+      );
+    } catch (e) {
+      if (popped) {
+        // 保存阶段失败：sheet 已收起，用外层 context 弹失败弹窗。
+        showAppInfoDialog(widget.parentContext, title: '保存失败', message: '$e');
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _savingSemester = false);
+      // 生成阶段失败：sheet 还开着，就地弹失败弹窗（可重试）。
+      showAppInfoDialog(context, title: '保存失败', message: '$e');
     }
   }
 
@@ -3004,12 +3065,34 @@ class _ExportBottomSheetContentState
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : null,
-          enabled: !_exportingSemester,
-          onTap: _exportingSemester
+          enabled: !_busy,
+          onTap: _busy
               ? null
               : () {
                   AppHaptics.tap();
                   _exportSemesterSinglePng();
+                },
+          enableFeedback: false,
+        ),
+        // WB_SPEC_243 §2：保存整学期课表到本地（系统相册，不打开分享面板）。
+        ListTile(
+          key: const ValueKey<String>('save_semester_single_png'),
+          leading: const Icon(Icons.save_alt_outlined),
+          title: Text(_savingSemester ? '保存中…' : '保存整学期课表到本地'),
+          subtitle: const Text('存到手机相册，随时查看'),
+          trailing: _savingSemester
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : null,
+          enabled: !_busy,
+          onTap: _busy
+              ? null
+              : () {
+                  AppHaptics.tap();
+                  _saveSemesterSinglePngToLocal();
                 },
           enableFeedback: false,
         ),
@@ -3021,8 +3104,8 @@ class _ExportBottomSheetContentState
           // P1-6：生成期间两行全禁（之前只禁 PDF 行，点 PNG/取消会
           // 一边跑生成一边跳页/关 sheet，生成白算还可能对已 dispose 的
           // State 操作）。取消要等生成结束，不另做中止逻辑。
-          enabled: !_exportingSemester,
-          onTap: _exportingSemester
+          enabled: !_busy,
+          onTap: _busy
               ? null
               : () {
                   AppHaptics.tap();
@@ -3048,8 +3131,8 @@ class _ExportBottomSheetContentState
               ),
             ),
           ),
-          enabled: !_exportingSemester,
-          onTap: _exportingSemester
+          enabled: !_busy,
+          onTap: _busy
               ? null
               : () {
                   AppHaptics.tap();

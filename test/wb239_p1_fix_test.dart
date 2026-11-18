@@ -86,8 +86,14 @@ void main() {
 
     /// 课名所在卡片根容器的 finder（卡片根 Container 带 BoxDecoration；
     /// 祖先链里只有这一个带 BoxDecoration 的 Container）。
+    /// WB_SPEC_243 起课卡改用 Text.rich（课名+教室+老师同一段富文本），
+    /// find.text(课名) 精确匹配不到，改按富文本首行 == 课名找。
     Finder cardBoxOf(String courseName) => find.ancestor(
-      of: find.text(courseName),
+      of: find.byWidgetPredicate(
+        (w) =>
+            w is RichText &&
+            w.text.toPlainText().split('\n').first == courseName,
+      ),
       matching: find.byWidgetPredicate(
         (w) => w is Container && w.decoration is BoxDecoration,
       ),

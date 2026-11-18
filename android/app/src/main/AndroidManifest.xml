@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+    <!-- WB_SPEC_243 §2：gal 保存图片到相册，API 29 及以下需要写存储权限 -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <!-- 阶段四：上课本地通知提醒所需权限 -->
     <!-- Android 13+ 通知运行时权限 -->

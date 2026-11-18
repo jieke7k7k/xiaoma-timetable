@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/course.dart';
@@ -22,6 +23,47 @@ import '../utils/slot_layout.dart';
 import '../utils/week_calc.dart';
 import '../widgets/conflict_block.dart';
 import '../widgets/course_card.dart';
+
+/// WB_SPEC_243 §2：相册保存处理器（默认调 Gal.putImageBytes，测试时可替换为 mock）。
+typedef SaveImageToGalleryHandler = Future<void> Function(
+  Uint8List bytes, {
+  required String name,
+});
+
+Future<void> _defaultSaveImageToGallery(
+  Uint8List bytes, {
+  required String name,
+}) async {
+  await Gal.putImageBytes(bytes, name: name);
+}
+
+SaveImageToGalleryHandler saveImageToGalleryHandler =
+    _defaultSaveImageToGallery;
+
+/// WB_SPEC_243 §2：本周导出 PNG 渲染处理器（默认真实 toImage 渲染；测试时
+/// 可替换为假字节——flutter_tester 里调 toImage 会死等，见 WB_SPEC_239
+/// 测试注释。只替换单次光栅化，像素比封顶与 2MB 降级循环仍在 _obtainPngBytes）。
+typedef WeekPngRenderer = Future<Uint8List?> Function(
+  RenderRepaintBoundary boundary,
+  double pixelRatio,
+);
+
+Future<Uint8List?> _defaultWeekPngRenderer(
+  RenderRepaintBoundary boundary,
+  double pixelRatio,
+) async {
+  // P1-3：toImage() 拿到的 ui.Image 必须 dispose，否则 >2MB 重渲循环
+  // 里连建多张全尺寸位图不释放，内存峰值越堆越高。
+  final image = await boundary.toImage(pixelRatio: pixelRatio);
+  try {
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData?.buffer.asUint8List();
+  } finally {
+    image.dispose();
+  }
+}
+
+WeekPngRenderer weekPngRenderer = _defaultWeekPngRenderer;
 
 /// 导出图像素比封顶（WB_SPEC_237 §8）：宽 ≤1080、高 ≤1920，基准 3.0 倍。
 /// 纯函数，可单元测试。
@@ -72,25 +114,119 @@ class ShareImagePage extends ConsumerStatefulWidget {
 class _ShareImagePageState extends ConsumerState<ShareImagePage> {
   final _boundaryKey = GlobalKey();
   bool _sharing = false;
+  bool _saving = false;
+
+  /// WB_SPEC_243 §2：缓存当前页面渲染出的 PNG 字节，使「保存到本地」与「分享图片」
+  /// 共用同一份渲染结果，避免重复渲染。签名覆盖周次、界面设置、有效课程、
+  /// 节次与显示天数——任一变化都失效重算，不拿旧图。
+  Uint8List? _cachedPngBytes;
+  String? _cachedSignature;
+
+  String _computeSignature({
+    required int week,
+    required UiSettings ui,
+    required List<Course> effective,
+    required List<TimeSlot> slots,
+    required List<int> displayDays,
+  }) {
+    final courseSig = effective
+        .map(
+          (c) =>
+              '${c.id}:${c.name}:${c.classroom}:${c.teacher}:${c.colorValue}:${c.dayOfWeek}:${c.startSection}:${c.endSection}:${c.weeks.join(',')}:${c.weekType}',
+        )
+        .join('|');
+    final slotSig = slots
+        .map((s) => '${s.section}:${s.startTime}:${s.endTime}')
+        .join('|');
+    return '$week|${ui.encode()}|$courseSig|$slotSig|${displayDays.join(',')}';
+  }
+
+  /// 渲染一次并缓存字节；签名未变时直接返回已渲染的字节。
+  /// 与原 _share() 同款口径：像素比封顶 + 逐档降级 + 2MB 上限复核。
+  Future<Uint8List> _obtainPngBytes() async {
+    final week = ref.read(displayWeekProvider);
+    // P1-5：用 .future 等 provider 就绪再渲染，避免首次进页 provider
+    // 未就绪时按默认值存了空图（与整学期 _renderSemesterBytes 同口径）。
+    final uiSettings = await ref.read(uiSettingsProvider.future);
+    final courses = await ref.read(coursesProvider.future);
+    final overrides = await ref.read(courseOverridesProvider.future);
+    final slots = await ref.read(timeSlotsProvider.future);
+    final showOther = ref.read(showOtherWeeksProvider);
+    final autoCollapse = ref.read(autoCollapseWeekendProvider);
+    final effective = effectiveCoursesForWeek(
+      courses: courses,
+      overrides: overrides,
+      week: week,
+    );
+    final displayDays = computeDisplayDays(
+      effective,
+      week,
+      showOther,
+      autoCollapse,
+    );
+    final sig = _computeSignature(
+      week: week,
+      ui: uiSettings,
+      effective: effective,
+      slots: slots,
+      displayDays: displayDays,
+    );
+    if (_cachedPngBytes != null && _cachedSignature == sig) {
+      return _cachedPngBytes!;
+    }
+
+    final boundary =
+        _boundaryKey.currentContext!.findRenderObject()
+            as RenderRepaintBoundary;
+    final rawSize = boundary.size;
+    // WB_SPEC_237 §8：像素比封顶（宽 ≤1080、高 ≤1920），基准 3.0 倍。
+    final pixelRatio = cappedExportPixelRatio(rawSize.width, rawSize.height);
+    final pngBytes = await renderWithinLimit(
+      (ratio) => weekPngRenderer(boundary, ratio),
+      pixelRatio,
+    );
+    if (pngBytes == null) throw StateError('图片生成失败');
+    // P1-5：与整学期导出同一口径——降到 1.0 仍超限时不分享/不保存超限文件。
+    if (!isWithinPngLimit(pngBytes)) {
+      throw StateError('图片超过 2MB 上限');
+    }
+    _cachedPngBytes = pngBytes;
+    _cachedSignature = sig;
+    return pngBytes;
+  }
+
+  /// WB_SPEC_243 §2：保存本周课表到系统相册。
+  Future<void> _saveToLocal() async {
+    if (_saving || _sharing) return;
+    setState(() => _saving = true);
+    try {
+      final bytes = await _obtainPngBytes();
+      final week = ref.read(displayWeekProvider);
+      final fileName = '小马课表-第$week周.png';
+      // gal 3.x 会按字节自行识别扩展名并拼到 name 后面（见 gal 源码
+      // getUniqueFileUri），name 里不要带 .png，否则存成「.png.png」。
+      await saveImageToGalleryHandler(bytes, name: '小马课表-第$week周');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已保存到相册：$fileName')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存失败：$e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   Future<void> _share() async {
+    if (_sharing || _saving) return;
     setState(() => _sharing = true);
     try {
-      final boundary =
-          _boundaryKey.currentContext!.findRenderObject()
-          as RenderRepaintBoundary;
-      final rawSize = boundary.size;
-      // WB_SPEC_237 §8：像素比封顶（宽 ≤1080、高 ≤1920），基准 3.0 倍。
-      final pixelRatio = cappedExportPixelRatio(rawSize.width, rawSize.height);
-      final pngBytes = await renderWithinLimit(
-        (ratio) => _renderPng(boundary, ratio),
-        pixelRatio,
-      );
-      if (pngBytes == null) throw StateError('图片生成失败');
-      // P1-5：与整学期导出同一口径——降到 1.0 仍超限时不分享超限文件。
-      if (!isWithinPngLimit(pngBytes)) {
-        throw StateError('图片超过 2MB 上限，分享失败');
-      }
+      final pngBytes = await _obtainPngBytes();
       final week = ref.read(displayWeekProvider);
       await SharePlus.instance.share(
         ShareParams(
@@ -112,21 +248,6 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
       }
     } finally {
       if (mounted) setState(() => _sharing = false);
-    }
-  }
-
-  Future<Uint8List?> _renderPng(
-    RenderRepaintBoundary boundary,
-    double pixelRatio,
-  ) async {
-    // P1-3：toImage() 拿到的 ui.Image 必须 dispose，否则 >2MB 重渲循环
-    // 里连建多张全尺寸位图不释放，内存峰值越堆越高。
-    final image = await boundary.toImage(pixelRatio: pixelRatio);
-    try {
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      return byteData?.buffer.asUint8List();
-    } finally {
-      image.dispose();
     }
   }
 
@@ -229,23 +350,52 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(12),
-          // WB_SPEC_235 跟进 §1-16：分享图片主按钮 = 轻点档
-          child: FilledButton.icon(
-            style: FilledButton.styleFrom(enableFeedback: false),
-            onPressed: _sharing
-                ? null
-                : () {
-                    AppHaptics.tap();
-                    _share();
-                  },
-            icon: _sharing
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.share_outlined),
-            label: Text(_sharing ? '生成中…' : '分享图片'),
+          // WB_SPEC_243 §2：保存到本地 + 分享图片双按钮，共用同一份渲染字节。
+          // WB_SPEC_235 跟进 §1-16：主按钮 = 轻点档。
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  key: const ValueKey<String>('btn_save_week_png'),
+                  style: OutlinedButton.styleFrom(enableFeedback: false),
+                  onPressed: (_saving || _sharing)
+                      ? null
+                      : () {
+                          AppHaptics.tap();
+                          _saveToLocal();
+                        },
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_alt),
+                  label: Text(_saving ? '保存中…' : '保存到本地'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  key: const ValueKey<String>('btn_share_week_png'),
+                  style: FilledButton.styleFrom(enableFeedback: false),
+                  onPressed: (_sharing || _saving)
+                      ? null
+                      : () {
+                          AppHaptics.tap();
+                          _share();
+                        },
+                  icon: _sharing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.share_outlined),
+                  label: Text(_sharing ? '生成中…' : '分享图片'),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -471,7 +621,8 @@ class _ExportSheet extends StatelessWidget {
                       ],
                     ),
                   ),
-                // 分隔带（通栏：左段名称 + 右段名称与时间段，与主页一致）
+                // 分隔带（WB_SPEC_243 §1：与 App 内周视图一致——轴列写名称，
+                // 通栏只留同色底，不画居中名称与时间段）
                 for (final b in bands) ...[
                   Positioned(
                     left: 0,
@@ -496,34 +647,7 @@ class _ExportSheet extends StatelessWidget {
                     top: bandTop(b),
                     right: 0,
                     height: kBandHeight,
-                    child: Container(
-                      color: bandColor,
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            b.label,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: scheme.outline.withValues(alpha: 0.8),
-                              letterSpacing: 4,
-                            ),
-                          ),
-                          if (b.interval.isNotEmpty) ...[
-                            const SizedBox(width: 8),
-                            Text(
-                              b.interval,
-                              style: TextStyle(
-                                  fontSize: 11,
-                                color: scheme.outline.withValues(alpha: 0.8),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
+                    child: Container(color: bandColor),
                   ),
                 ],
                 // 课程卡（布局与主页同一套 SlotLayout）
@@ -737,8 +861,9 @@ class SemesterSingleImageSheet extends StatelessWidget {
       Brightness.light,
     );
     final sheetBg = scheme.surface;
-    final bandBg = scheme.surfaceContainer;
-    final bandTextColor = scheme.onSurfaceVariant;
+    // WB_SPEC_243 §1：带子底色与 App 内周视图（_FullBand）一致，
+    // 不再用 surfaceContainer。
+    final bandBg = scheme.surfaceContainerHighest.withValues(alpha: 0.6);
     final gridLineColor = scheme.outlineVariant;
 
     // P1-2：画布高度固定为 1080×1920 反推的逻辑高（375dp 宽时 666.67dp），
@@ -900,7 +1025,9 @@ class SemesterSingleImageSheet extends StatelessWidget {
                       ),
                     ),
 
-                  // 午间 / 晚间分隔带（高 20dp，文字 9.5sp）
+                  // WB_SPEC_243 §1：午间 / 晚间分隔带（高 20dp）——与 App 内
+                  // 周视图一致：轴列写名称「午间」/「晚间」，通栏只留底色，
+                  // 不写居中「午间 12:00-14:00」。
                   for (final b in bands)
                     Positioned(
                       left: 0,
@@ -909,14 +1036,25 @@ class SemesterSingleImageSheet extends StatelessWidget {
                       height: kSemesterBandHeight,
                       child: Container(
                         color: bandBg,
-                        alignment: Alignment.center,
-                        child: Text(
-                          '${b.label} ${b.interval}',
-                          style: TextStyle(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w600,
-                            color: bandTextColor,
-                          ),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: kAxisWidth,
+                              child: Center(
+                                child: Text(
+                                  b.label,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: scheme.outline.withValues(
+                                      alpha: 0.9,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const Expanded(child: SizedBox.shrink()),
+                          ],
                         ),
                       ),
                     ),
@@ -1008,15 +1146,10 @@ class SemesterSingleImageSheet extends StatelessWidget {
 
 /// 方案 C 普通课程卡片（课名 10sp 加粗、教室/老师 8.5sp、周次胶囊 7.5sp 加粗白底 65%）
 ///
-/// P1-4：按卡片实际高度分档显示，矮卡逐级藏内容，实测不再溢出——
-/// 旧写法在单节卡（34dp）与单双周半格卡（约 34dp）里仍全量放
-/// 「课名 + 教室/老师 + 周次胶囊」，带教室/老师时 RenderFlex 溢出 6px。
-/// 各档按 Ahem 测试字体实测内容高划线（真机字体自然行高更大，留有余量）：
-/// - ≥52dp：课名（最多 2 行）+ 教室/老师 + 周次胶囊（需约 51.5dp）；
-/// - 40–52dp：课名（1 行）+ 教室/老师 + 周次胶囊（需约 39.5dp）；
-/// - 30–40dp：课名（1 行）+ 周次胶囊，藏教室/老师（需约 28.8dp）；
-/// - 14–30dp：只留课名（8.5sp，1 行，需约 13.2dp）；
-/// - <14dp：只留课名（7.5sp，1 行，需约 10dp，供 1 节 3 门叠排行）。
+/// WB_SPEC_243 §1：教室/老师与 CourseCard 同款 Text.rich 分行换行显示，
+/// 不再拼成一行 maxLines: 1 截断（原写法教室截成「16-102 …」、老师看不到）。
+/// 总行数按卡片实际高度动态算（名行 12dp、元数据行约 10dp、胶囊预留 12dp），
+/// 超出行数整体省略，不溢出；矮卡显隐阈值（showMeta ≥40、showCapsule ≥30）不动。
 class _SingleMasterCard extends StatelessWidget {
   const _SingleMasterCard({
     required this.course,
@@ -1043,22 +1176,50 @@ class _SingleMasterCard extends StatelessWidget {
     // 矮卡先藏教室/老师，再藏周次胶囊；课名永远保留。
     final showMeta = height >= 40;
     final showCapsule = height >= 30;
-    final nameMaxLines = height >= 52 ? 2 : 1;
     final nameSize = height >= 30 ? 10.0 : (height >= 14 ? 8.5 : 7.5);
     final padV = height >= 30 ? 3.0 : (height >= 14 ? 1.5 : 0.5);
-    final metaParts = <String>[
-      if (showMeta &&
-          ui.showClassroom &&
-          course.classroom != null &&
-          course.classroom!.trim().isNotEmpty)
-        course.classroom!.trim(),
-      if (showMeta &&
-          ui.showTeacher &&
-          course.teacher != null &&
-          course.teacher!.trim().isNotEmpty)
-        course.teacher!.trim(),
-    ];
-    final metaText = metaParts.join(' · ');
+
+    final classroomText = (showMeta &&
+            ui.showClassroom &&
+            course.classroom != null &&
+            course.classroom!.trim().isNotEmpty)
+        ? course.classroom!.trim()
+        : null;
+    final teacherText = (showMeta &&
+            ui.showTeacher &&
+            course.teacher != null &&
+            course.teacher!.trim().isNotEmpty)
+        ? course.teacher!.trim()
+        : null;
+
+    // 行数预算（P0-1 复审修正）：名行与元数据行分开计——名行高
+    // nameSize×1.2（10sp 档 12dp），元数据行高 8.5×1.18（约 10dp）。
+    // 用名行高一刀切会低估行数：40dp 卡只剩 1 行、教室/老师全被藏掉，
+    // 52dp 卡只剩 2 行、老师被截。顺序：课名至少 1 行，剩余高度能放
+    // 几行元数据就放几行（放不下时老师先被截）；胶囊预留 11dp（实高约 10.75dp）。
+    final nameLineH = nameSize * 1.2;
+    const metaLineH = 8.5 * 1.18;
+    final reserveH = (showCapsule && weekCapsule.isNotEmpty) ? 11.0 : 0.0;
+    final availTextH = (height - padV * 2 - reserveH).clamp(10.0, 400.0);
+    var metaLines = 0;
+    if (classroomText != null) metaLines++;
+    if (teacherText != null) metaLines++;
+    // 先给课名留 1 行，剩下的高度放元数据行。
+    final fittedMetaLines =
+        ((availTextH - nameLineH) / metaLineH).floor().clamp(0, metaLines);
+    // 课名最多 2 行（与原 ≥52 档同口径），其余高度归元数据。
+    final nameMaxLines = height >= 52 ? 2 : 1;
+    final nameLines = ((availTextH - fittedMetaLines * metaLineH) / nameLineH)
+        .floor()
+        .clamp(1, nameMaxLines);
+    final totalMaxLines = nameLines + fittedMetaLines;
+
+    final metaStyle = TextStyle(
+      fontSize: 8.5,
+      fontWeight: FontWeight.w500,
+      color: scheme.onSurfaceVariant,
+      height: 1.18,
+    );
 
     return Container(
       width: double.infinity,
@@ -1073,35 +1234,34 @@ class _SingleMasterCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                course.name,
-                maxLines: nameMaxLines,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: nameSize,
-                  fontWeight: FontWeight.w700,
-                  color: scheme.onSurface,
-                  height: 1.2,
-                ),
-              ),
-              if (metaText.isNotEmpty) ...[
-                const SizedBox(height: 1),
-                Text(
-                  metaText,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 8.5,
-                    fontWeight: FontWeight.w500,
-                    color: scheme.onSurfaceVariant,
-                    height: 1.15,
+          Flexible(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: course.name,
+                    style: TextStyle(
+                      fontSize: nameSize,
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurface,
+                      height: 1.2,
+                    ),
                   ),
-                ),
-              ],
-            ],
+                  if (classroomText != null)
+                    TextSpan(
+                      text: '\n$classroomText',
+                      style: metaStyle,
+                    ),
+                  if (teacherText != null)
+                    TextSpan(
+                      text: '\n$teacherText',
+                      style: metaStyle,
+                    ),
+                ],
+              ),
+              maxLines: totalMaxLines,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
           if (showCapsule && weekCapsule.isNotEmpty)
             Container(
@@ -1150,22 +1310,37 @@ Future<Uint8List> generateAndShareSemesterSinglePng({
   final overlay = Overlay.of(context);
   late OverlayEntry entry;
 
+  // WB_SPEC_243 §1：离屏 Overlay 显式包一层浅色 Theme（种子取当前实际
+  // UiSettings），杜绝深色系统下离屏渲染退回默认冷白色。
+  final lightScheme = buildAppColorScheme(
+    Color(uiSettings.themeSeedValue),
+    Brightness.light,
+  );
+
   entry = OverlayEntry(
     builder: (ctx) => Positioned(
       left: -2000,
       top: 0,
-      child: Material(
-        type: MaterialType.transparency,
-        child: RepaintBoundary(
-          key: boundaryKey,
-          child: SemesterSingleImageSheet(
-            width: 375.0,
-            semester: semester,
-            courses: courses,
-            slots: slots,
-            bands: bands,
-            ui: uiSettings,
-            displayDays: displayDays,
+      child: Theme(
+        data: ThemeData(
+          useMaterial3: true,
+          brightness: Brightness.light,
+          colorScheme: lightScheme,
+          scaffoldBackgroundColor: lightScheme.surface,
+        ),
+        child: Material(
+          color: lightScheme.surface,
+          child: RepaintBoundary(
+            key: boundaryKey,
+            child: SemesterSingleImageSheet(
+              width: 375.0,
+              semester: semester,
+              courses: courses,
+              slots: slots,
+              bands: bands,
+              ui: uiSettings,
+              displayDays: displayDays,
+            ),
           ),
         ),
       ),
