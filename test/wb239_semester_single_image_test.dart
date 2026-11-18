@@ -161,7 +161,12 @@ void main() {
         ),
       );
 
-      expect(find.text('大三下学期 · 全学期课表（1–18周）'), findsOneWidget);
+      // WB_SPEC_245：标题一行到底——学期名 + 「课表」+ 日期范围 +（共 N 周）。
+      expect(find.text('大三下学期 课表 2026.09.07 – 2027.01.10（共 18 周）'),
+          findsOneWidget);
+      // DeepSeek 复审 P2-2：负向断言，旧字样不得出现在图里。
+      expect(find.textContaining('全学期'), findsNothing);
+      expect(find.textContaining('按课表自动检测'), findsNothing);
       expect(find.byType(ConflictBlock), findsOneWidget);
       expect(find.text('1-18周'), findsOneWidget);
     });

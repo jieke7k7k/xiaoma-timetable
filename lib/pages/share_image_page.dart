@@ -829,9 +829,10 @@ class SemesterSingleImageSheet extends StatelessWidget {
     final effectiveMaxWeek = maxWeek > 0 ? maxWeek : 1;
     final start = semester.startDateParsed;
     final end = start.add(Duration(days: effectiveMaxWeek * 7 - 1));
-    final dateRangeText =
-        '${_formatDateDot(start)} – ${_formatDateDot(end)} · 共 $effectiveMaxWeek 周（按课表自动检测）';
-    final mainTitleText = '${semester.name} · 全学期课表（1–$effectiveMaxWeek周）';
+    // WB_SPEC_245：标题一行到底——学期名 + 「课表」+ 日期范围 +（共 N 周）；
+    // 副标题整行与「· 全学期课表（1–N周）」都删掉。
+    final mainTitleText =
+        '${semester.name} 课表 ${_formatDateDot(start)} – ${_formatDateDot(end)}（共 $effectiveMaxWeek 周）';
 
     final maxSection = slots.isEmpty ? 14 : slots.length;
     final colW = (width - kAxisWidth) / displayDays.length;
@@ -914,17 +915,6 @@ class SemesterSingleImageSheet extends StatelessWidget {
                         fontWeight: FontWeight.bold,
                         color: scheme.onSurface,
                         height: 1.2,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      dateRangeText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: scheme.onSurfaceVariant,
-                        height: 1.15,
                       ),
                     ),
                   ],
