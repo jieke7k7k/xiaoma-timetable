@@ -1,5 +1,8 @@
 import '../models/course.dart';
+import '../models/time_slot.dart';
 import 'morandi_palette.dart';
+import 'term_start_date_helper.dart';
+import 'time_slots_checker.dart';
 import 'week_parser.dart';
 
 /// 网页课表解析结果（教务导入 1.3.0）
@@ -11,11 +14,19 @@ class WebScheduleResult {
   final int tablesFound;
   final int cellsScanned;
 
+  /// §8：从教务课表页节次栏直接抽取到的每节起止时间（读不到为空）
+  final List<TimeSlot> extractedTimeSlots;
+
+  /// §9：从教务课表页读到的当前第 X 周（读不到为 null）
+  final int? detectedCurrentWeek;
+
   const WebScheduleResult(
     this.courses,
     this.errors, {
     this.tablesFound = 0,
     this.cellsScanned = 0,
+    this.extractedTimeSlots = const [],
+    this.detectedCurrentWeek,
   });
 }
 
@@ -83,6 +94,8 @@ class WebScheduleParser {
     final errors = <String>[];
     var cellsScanned = 0;
     final seen = <String>{};
+    // §8：逐行行首标签文本（节次栏），解析完统一抽每节起止时间
+    final sectionColumnTexts = <String>[];
 
     for (final t in tables) {
       final rowsRaw = (t as Map)['rows'] as List?;
@@ -117,6 +130,8 @@ class WebScheduleParser {
           for (var c = 0; c < row.length; c++)
             if (!colWeekday.containsKey(c)) row[c],
         ].join(' ');
+        // §8：行首标签就是节次栏文本，留待解析完抽时间
+        sectionColumnTexts.add(labelText);
         final lm = RegExp(r'(\d+)\s*[-~–—]\s*(\d+)').firstMatch(labelText);
         final ls = RegExp(r'^\s*(\d+)\s*$').firstMatch(labelText.trim());
         if (lm != null &&
@@ -159,11 +174,20 @@ class WebScheduleParser {
         });
       }
     }
+    // §8：从行首节次栏文本抽每节起止时间；§9：从页面标题抽当前第 X 周。
+    // 标题里没有「第 X 周」时 detectedCurrentWeek 为 null，导入后不弹窗核对周数。
+    final extractedTimeSlots =
+        TimeSlotsChecker.extractFromSectionTexts(sectionColumnTexts);
+    final detectedCurrentWeek = TermStartDateHelper.extractCurrentWeekFromText(
+      payload['title'] as String?,
+    );
     return WebScheduleResult(
       courses,
       errors,
       tablesFound: tables.length,
       cellsScanned: cellsScanned,
+      extractedTimeSlots: extractedTimeSlots,
+      detectedCurrentWeek: detectedCurrentWeek,
     );
   }
 

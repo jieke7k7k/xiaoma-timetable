@@ -19,6 +19,8 @@ import '../utils/import_planner.dart';
 import '../utils/morandi_palette.dart';
 import '../utils/same_name_weeks.dart';
 import '../utils/slot_calibrator.dart';
+import '../utils/term_start_date_helper.dart';
+import '../utils/time_slots_checker.dart';
 import '../utils/week_infer.dart';
 import '../utils/week_parser.dart';
 import '../widgets/app_dialog.dart';
@@ -46,6 +48,11 @@ class ImportReviewPage extends ConsumerStatefulWidget {
     required this.targetSemester,
     this.timeBlocks = const [],
     this.webImportSummary,
+    this.webTimeSlots,
+    this.schoolPresetTimeSlots,
+    this.ocrTimeSlots,
+    this.confirmedStartDate,
+    this.detectedCurrentWeek,
   });
 
   final List<Course> drafts;
@@ -59,6 +66,21 @@ class ImportReviewPage extends ConsumerStatefulWidget {
   /// 教务网页抓取结果的汇总文案（WB_SPEC_231 第 5.4 节）：
   /// 只有网页抓取这个来源才传，横幅才出现；ICS / 图片 / PDF 导入不传、不出现
   final String? webImportSummary;
+
+  /// §8 来源 1：教务网页节次栏读到的作息（WebScheduleResult.extractedTimeSlots）
+  final List<TimeSlot>? webTimeSlots;
+
+  /// §8 来源 2：schools.json 预设作息（兜底）
+  final List<TimeSlot>? schoolPresetTimeSlots;
+
+  /// §8 来源 3：OCR 图片识别出的作息
+  final List<TimeSlot>? ocrTimeSlots;
+
+  /// §9：选校器里用户确认的开学日期（第 1 周周一）
+  final DateTime? confirmedStartDate;
+
+  /// §9：教务页读到的当前第 X 周（读不到为 null）
+  final int? detectedCurrentWeek;
 
   @override
   ConsumerState<ImportReviewPage> createState() => _ImportReviewPageState();
@@ -414,6 +436,20 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
             debugPrint('同名周数检查外抛异常（已忽略）：$e');
           }
         }
+        if (mounted) {
+          // WB_SPEC_249 §8：同位置再检查作息时间，不同则弹窗问是否切换。
+          try {
+            await _checkAndPromptTimeSlots();
+          } catch (e) {
+            debugPrint('作息时间检查外抛异常（已忽略）：$e');
+          }
+          // WB_SPEC_249 §9：再检查周数（开学日期）。
+          try {
+            await _checkAndPromptTermStartDate();
+          } catch (e) {
+            debugPrint('周数检查外抛异常（已忽略）：$e');
+          }
+        }
         if (mounted) Navigator.pop(context);
       }
     } catch (e) {
@@ -423,6 +459,242 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
             .showSnackBar(SnackBar(content: Text('导入失败：$e')));
       }
     }
+  }
+
+  /// WB_SPEC_249 §8：导入完成后比对作息时间，不同则弹窗询问是否切换为该校作息。
+  ///
+  /// 三个来源都没读到时间就不弹窗；用户点「保持不变」则不动；点「切换」只写
+  /// 有差异的节次（与 227 校准同一口径），再按推算出的明显空档同步午间/晚间带子。
+  Future<void> _checkAndPromptTimeSlots() async {
+    final incoming = TimeSlotsChecker.pickPreferredSlots(
+      fromWebPage: widget.webTimeSlots,
+      fromSchoolPreset: widget.schoolPresetTimeSlots,
+      fromOcr: widget.ocrTimeSlots,
+    );
+    // 三个来源都没读到时间就不弹窗
+    if (incoming == null || incoming.isEmpty) return;
+
+    final currentSlots = await ref.read(timeSlotsProvider.future);
+    final compare = TimeSlotsChecker.compare(
+      current: currentSlots,
+      incoming: incoming,
+    );
+    if (!compare.hasDifference || !mounted) return;
+
+    final shouldApply = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('发现作息时间不同'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '导入的课表作息与当前设置存在 ${compare.diffs.length} 处不同，是否切换为该校作息？',
+                ),
+                const SizedBox(height: 12),
+                for (final diff in compare.diffs.take(8))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      '第 ${diff.section} 节：${diff.currentRange} → ${diff.incomingRange}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                if (compare.diffs.length > 8)
+                  Text(
+                    '……等共 ${compare.diffs.length} 节',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('保持不变'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('切换为该校作息'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldApply != true) return;
+    // 只写有差异的节次（与 227 校准同一口径），走 provider 保持状态同步
+    final changedSections = compare.diffs.map((d) => d.section).toSet();
+    final notifier = ref.read(timeSlotsProvider.notifier);
+    var written = 0;
+    for (final slot in compare.mergedSlots) {
+      if (!changedSections.contains(slot.section)) continue;
+      await notifier.updateSlot(slot);
+      written++;
+    }
+    if (written > 0) _notifyDataChanged();
+    // 仅当推算出明显午间/晚间空档时同步更新带子；无明显空档时保持原样
+    if (compare.breakBands.hasLunch || compare.breakBands.hasDinner) {
+      await _applyBreakBands(compare.breakBands);
+    }
+  }
+
+  /// WB_SPEC_249 §8：把推算出的午间/晚间空档写进分段点与休息时段设置。
+  /// 只覆写推算出非 null 的那条；另一条保持原样。写库失败静默忽略。
+  Future<void> _applyBreakBands(BreakBandSuggestion suggestion) async {
+    try {
+      // 先写晚间分段点再写午间：setLunchAfterSection 会钳到晚间点 - 1，
+      // 先定晚间点可避免午间点被旧晚间点钳住。
+      if (suggestion.hasDinner) {
+        await ref
+            .read(segmentSettingsProvider.notifier)
+            .setDinnerAfterSection(suggestion.dinnerAfterSection!);
+        await ref
+            .read(bandSettingsProvider.notifier)
+            .setDinnerTime(suggestion.dinnerStart!, suggestion.dinnerEnd!);
+      }
+      if (suggestion.hasLunch) {
+        await ref
+            .read(segmentSettingsProvider.notifier)
+            .setLunchAfterSection(suggestion.lunchAfterSection!);
+        await ref
+            .read(bandSettingsProvider.notifier)
+            .setLunchTime(suggestion.lunchStart!, suggestion.lunchEnd!);
+      }
+    } catch (e) {
+      debugPrint('带子同步失败（已忽略）：$e');
+    }
+  }
+
+  /// WB_SPEC_249 §9：导入完成后比对教务页当前周数与用户确认的开学日期；
+  /// 不一致则弹窗请用户重定开学日期。
+  ///
+  /// 教务页读不到当前周数时，以用户确认的开学日期为准，不弹窗；
+  /// 用户没在选校器确认开学日期（其它导入来源）时直接返回。
+  Future<void> _checkAndPromptTermStartDate() async {
+    final confirmed = widget.confirmedStartDate;
+    final detectedWeek = widget.detectedCurrentWeek;
+
+    if (confirmed == null) return;
+    final target = widget.targetSemester;
+
+    // 教务页读不到当前周数时，以用户确认的开学日期为准，不弹窗
+    if (detectedWeek == null) {
+      await _saveStartDate(target, confirmed);
+      return;
+    }
+
+    final today = DateTime.now();
+    final calcWeek = TermStartDateHelper.calculateWeekNumber(
+      startDate: confirmed,
+      today: today,
+    );
+    if (calcWeek == detectedWeek) {
+      await _saveStartDate(target, confirmed);
+      return;
+    }
+    if (!mounted) return;
+
+    final suggested = TermStartDateHelper.suggestStartDateFromCurrentWeek(
+      detectedCurrentWeek: detectedWeek,
+      today: today,
+    );
+    DateTime pickedDate = suggested;
+
+    final finalDate = await showDialog<DateTime>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final fmt = (DateTime d) =>
+                '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+            return AlertDialog(
+              title: const Text('当前周数不一致'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '按你确认的开学日期（${fmt(confirmed)}），今天是第 $calcWeek 周；\n'
+                    '但教务系统显示当前为第 $detectedWeek 周。',
+                  ),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () async {
+                      final d = await showDatePicker(
+                        context: context,
+                        initialDate: pickedDate,
+                        firstDate: DateTime(today.year - 1, 1, 1),
+                        lastDate: DateTime(today.year + 1, 12, 31),
+                        helpText: '重新选择第 1 周开学日期',
+                      );
+                      if (d != null) {
+                        setDialogState(() {
+                          pickedDate = TermStartDateHelper.mondayOfWeek(d);
+                        });
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.calendar_today_outlined, size: 18),
+                          const SizedBox(width: 8),
+                          Text('建议开学日期：${fmt(pickedDate)}'),
+                          const Spacer(),
+                          Text(
+                            '修改',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(confirmed),
+                  child: const Text('仍用原日期'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(pickedDate),
+                  child: const Text('采用此开学日期'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    await _saveStartDate(target, finalDate ?? confirmed);
+  }
+
+  /// 把开学日期写进目标学期：走学期管理页「编辑学期」的同一个入口
+  /// （与总周数补齐同一写法），改库并同步当前学期状态。
+  Future<void> _saveStartDate(Semester target, DateTime date) async {
+    final iso =
+        '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    await ref
+        .read(semestersProvider.notifier)
+        .updateSemester(target.copyWith(startDate: iso));
   }
 
   /// WB_SPEC_246 §1：扫描目标学期全部课程，发现同名周数不一致时弹窗提醒。

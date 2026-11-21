@@ -161,9 +161,12 @@ void main() {
         ),
       );
 
-      // WB_SPEC_245：标题一行到底——学期名 + 「课表」+ 日期范围 +（共 N 周）。
-      expect(find.text('大三下学期 课表 2026.09.07 – 2027.01.10（共 18 周）'),
-          findsOneWidget);
+      // WB_SPEC_247：整学期导出图标题只留学期名，不要「课表」二字、
+      // 不要日期范围和（共 N 周）；本周导出图标题不动。
+      expect(find.text('大三下学期'), findsOneWidget);
+      // 负向断言：旧标题里的日期范围与（共 N 周）不得出现在图里。
+      expect(find.textContaining('2026.09.07'), findsNothing);
+      expect(find.textContaining('共 18 周'), findsNothing);
       // DeepSeek 复审 P2-2：负向断言，旧字样不得出现在图里。
       expect(find.textContaining('全学期'), findsNothing);
       expect(find.textContaining('按课表自动检测'), findsNothing);

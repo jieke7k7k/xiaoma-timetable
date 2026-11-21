@@ -817,22 +817,11 @@ class SemesterSingleImageSheet extends StatelessWidget {
 
   int _bandsBefore(int section) => bands.where((b) => section > b.after).length;
 
-  String _formatDateDot(DateTime dt) {
-    final m = dt.month.toString().padLeft(2, '0');
-    final d = dt.day.toString().padLeft(2, '0');
-    return '${dt.year}.$m.$d';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final maxWeek = SemesterExportHelper.calculateMaxWeek(courses);
-    final effectiveMaxWeek = maxWeek > 0 ? maxWeek : 1;
-    final start = semester.startDateParsed;
-    final end = start.add(Duration(days: effectiveMaxWeek * 7 - 1));
-    // WB_SPEC_245：标题一行到底——学期名 + 「课表」+ 日期范围 +（共 N 周）；
-    // 副标题整行与「· 全学期课表（1–N周）」都删掉。
-    final mainTitleText =
-        '${semester.name} 课表 ${_formatDateDot(start)} – ${_formatDateDot(end)}（共 $effectiveMaxWeek 周）';
+    // WB_SPEC_247：整学期导出图标题只留学期名（如「大三下」），
+    // 不要「课表」二字、不要日期范围和（共 N 周）；本周导出图标题不动。
+    final mainTitleText = semester.name.trim();
 
     final maxSection = slots.isEmpty ? 14 : slots.length;
     final colW = (width - kAxisWidth) / displayDays.length;

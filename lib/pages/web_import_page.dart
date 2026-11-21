@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 import '../ui/app_styles.dart';
 import '../utils/app_haptics.dart';
@@ -16,7 +17,18 @@ import '../widgets/app_dialog.dart';
 /// 注入脚本读取页面上的课表表格结构回传，本地解析成课程草稿。
 /// 账号密码只输入在学校网页里，App 不读取、不保存。
 class WebImportPage extends StatefulWidget {
-  const WebImportPage({super.key, required this.semesterId});
+  /// 选校器传入的该校教务登录页网址；为 null 时进入手动输入模式（不自动加载）
+  final String? initialUrl;
+
+  /// 可选的 WebViewController 工厂（仅用于 widget 测试注入，生产环境走默认创建）
+  final WebViewController Function()? controllerFactory;
+
+  const WebImportPage({
+    super.key,
+    required this.semesterId,
+    this.initialUrl,
+    this.controllerFactory,
+  });
 
   final int semesterId;
 
@@ -25,14 +37,20 @@ class WebImportPage extends StatefulWidget {
 }
 
 class _WebImportPageState extends State<WebImportPage> {
-  /// 默认入口：浙师大教务系统（可在地址栏改成自己学校的）
-  static const _defaultUrl = 'https://jwxt.zjnu.edu.cn/';
+  /// 标准桌面端 Chrome UA（去掉 Android ... Mobile，避免老教务系统重定向到残缺 H5 登录页）
+  static const String _desktopUserAgent =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+      'AppleWebKit/537.36 (KHTML, like Gecko) '
+      'Chrome/120.0.0.0 Safari/537.36';
 
   late final WebViewController _controller;
-  final _urlCtrl = TextEditingController(text: _defaultUrl);
+  final _urlCtrl = TextEditingController();
   final _urlFocus = FocusNode();
   var _loading = 0; // 0-100，100 或 0 表示不在加载
   var _extracting = false;
+
+  /// 是否已发起过页面加载；为 false 时显示引导占位并禁用「抓取本页课表」
+  bool _hasLoadedPage = false;
 
   /// 失败判定结果（null = 当前没有提示）；6 类之外的兜底走 [_fallbackHint]
   WebImportDiagnosis? _diagnosis;
@@ -111,12 +129,31 @@ class _WebImportPageState extends State<WebImportPage> {
   @override
   void initState() {
     super.initState();
-    _controller = WebViewController()
+
+    final initial = widget.initialUrl?.trim();
+    final hasInitialUrl = initial != null && initial.isNotEmpty;
+    if (hasInitialUrl) _urlCtrl.text = initial;
+
+    _controller = widget.controllerFactory?.call() ?? WebViewController();
+    _configureWebViewController(_controller);
+
+    if (hasInitialUrl) {
+      _hasLoadedPage = true;
+      _loadUrl(initial);
+    } else {
+      // 手动输入模式：不自动加载任何页面，首帧后自动聚焦地址栏并弹出键盘
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _urlFocus.requestFocus();
+      });
+    }
+  }
+
+  /// 配置 WebViewController：桌面 UA + Android 第三方 Cookie + Android Mixed Content
+  /// 必须在创建 controller 之后、调用 loadRequest 之前执行
+  void _configureWebViewController(WebViewController controller) {
+    controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setUserAgent(
-        'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 '
-        '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-      )
+      ..setUserAgent(_desktopUserAgent)
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (p) {
@@ -146,8 +183,24 @@ class _WebImportPageState extends State<WebImportPage> {
             setState(() => _mainFrameError = true);
           },
         ),
-      )
-      ..loadRequest(Uri.parse(_defaultUrl));
+      );
+
+    final platform = controller.platform;
+    if (platform is AndroidWebViewController) {
+      // 允许第三方 Cookie（解决 CAS iframe / 跨子域验证码与加密盐值带不上 JSESSIONID 的问题）
+      final cookieManager = WebViewCookieManager().platform;
+      if (cookieManager is AndroidWebViewCookieManager) {
+        cookieManager.setAcceptThirdPartyCookies(platform, true);
+      }
+      // 允许 HTTPS 页面加载 HTTP 子资源（解决老教务页 rsa.js / des.js / 验证码走 http 被静默拦截）
+      platform.setMixedContentMode(MixedContentMode.alwaysAllow);
+    }
+  }
+
+  void _loadUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    _controller.loadRequest(uri);
   }
 
   @override
@@ -163,7 +216,10 @@ class _WebImportPageState extends State<WebImportPage> {
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = 'https://$url';
     }
-    _controller.loadRequest(Uri.parse(url));
+    if (!_hasLoadedPage) {
+      setState(() => _hasLoadedPage = true);
+    }
+    _loadUrl(url);
     FocusScope.of(context).unfocus();
   }
 
@@ -423,14 +479,18 @@ class _WebImportPageState extends State<WebImportPage> {
           if (_loading > 0 && _loading < 100)
             LinearProgressIndicator(value: _loading / 100),
           if (_diagnosis != null || _fallbackHint != null) _hintBox(context),
-          Expanded(child: WebViewWidget(controller: _controller)),
+          Expanded(
+            child: _hasLoadedPage
+                ? WebViewWidget(controller: _controller)
+                : _buildEmptyGuide(context),
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         // WB_SPEC_235 跟进 §1-4：主按钮「抓取本页课表」= 轻点档
         // 复审 O1：补 enableFeedback: false 防双写
         enableFeedback: false,
-        onPressed: _extracting
+        onPressed: (!_hasLoadedPage || _extracting)
             ? null
             : () {
                 AppHaptics.tap();
@@ -444,6 +504,40 @@ class _WebImportPageState extends State<WebImportPage> {
               )
             : const Icon(Icons.download_for_offline_outlined),
         label: Text(_extracting ? '正在抓取…' : '抓取本页课表'),
+      ),
+    );
+  }
+
+  /// 未加载页面时的占位引导视图（initialUrl: null 手动输入模式）
+  Widget _buildEmptyGuide(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.language,
+              size: 48,
+              color: colorScheme.outline,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '请在上方地址栏输入学校教务系统网址',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '直接输入域名即可（例如 jwxt.xxx.edu.cn），登录并打开课表页后再点击「抓取本页课表」',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }

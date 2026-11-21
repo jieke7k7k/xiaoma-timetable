@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 
 import '../models/course.dart';
 import '../models/semester.dart';
+import '../models/time_slot.dart';
 import '../providers/providers.dart';
 import '../services/ocr_service.dart';
 import '../services/pdf_import.dart';
@@ -22,7 +23,7 @@ import '../widgets/semester_form_dialog.dart';
 import '../widgets/semester_start_dialog.dart';
 import '../utils/web_schedule_parser.dart';
 import 'import_review_page.dart';
-import 'web_import_page.dart';
+import 'school_picker_page.dart';
 
 /// 课程导入入口页
 ///
@@ -407,9 +408,9 @@ class _ImportPageState extends ConsumerState<ImportPage> {
     try {
       final picked = await ImagePicker().pickImage(source: source);
       if (picked == null) return;
-      final courses = await OcrService.recognizeAndParse(picked.path);
+      final ocrResult = await OcrService.recognizeAndParse(picked.path);
       if (!context.mounted) return;
-      if (courses.isEmpty) {
+      if (ocrResult.courses.isEmpty) {
         _showError(
           context,
           source: '图片 OCR 导入',
@@ -417,7 +418,13 @@ class _ImportPageState extends ConsumerState<ImportPage> {
         );
         return;
       }
-      _openReview(context, courses, const [], target: target);
+      _openReview(
+        context,
+        ocrResult.courses,
+        const [],
+        target: target,
+        ocrTimeSlots: ocrResult.timeSlots,
+      );
     } catch (e) {
       if (!context.mounted) return;
       _showError(context, source: '图片 OCR 导入', message: '$e');
@@ -452,17 +459,22 @@ class _ImportPageState extends ConsumerState<ImportPage> {
     }
   }
 
-  /// 教务网页导入（1.3.0）：打开内置浏览器页，抓到课程后进核对页
+  /// 教务网页导入：先进入选校器（WB_SPEC_249 方案 A 链式 push：
+  /// ImportPage → SchoolPickerPage → WebImportPage），抓到课程后进核对页。
+  /// 选校器回传的学校预设作息（§8 兜底）与确认的开学日期（§9）一并透传给复核页。
   Future<void> _importWeb(BuildContext context, Semester? target) async {
     if (target == null || target.id == null) {
       _showError(context, source: '教务官网导入', message: '学期数据尚未加载完成，请稍候重试');
       return;
     }
-    final result = await Navigator.push<WebScheduleResult>(
+    final picked = await Navigator.push<SchoolWebImportResult>(
       context,
-      MaterialPageRoute(builder: (_) => WebImportPage(semesterId: target.id!)),
+      MaterialPageRoute(
+        builder: (_) => SchoolPickerPage(semesterId: target.id!),
+      ),
     );
-    if (result == null || !context.mounted) return;
+    if (picked == null || !context.mounted) return;
+    final result = picked.scheduleResult;
     // WB_SPEC_231 第 5.4 节：抓取成功不再静默跳走，核对页顶部常驻汇总横幅
     // 「已从当前页面识别出 N 门课程（共 M 个排课节次）」；其它导入来源不传
     final sections = WebScheduleParser.countWeeklySections(result.courses);
@@ -473,6 +485,10 @@ class _ImportPageState extends ConsumerState<ImportPage> {
       target: target,
       summary: '已从当前页面识别出 ${result.courses.length} 门课程'
           '（共 $sections 个排课节次）',
+      webTimeSlots: result.extractedTimeSlots,
+      detectedCurrentWeek: result.detectedCurrentWeek,
+      schoolPresetTimeSlots: picked.school?.timeSlots,
+      confirmedStartDate: picked.confirmedStartDate,
     );
   }
 
@@ -483,6 +499,12 @@ class _ImportPageState extends ConsumerState<ImportPage> {
     required Semester target,
     List<IcsTimeBlock> timeBlocks = const [],
     String? summary,
+    // WB_SPEC_249 §8/§9：导入后作息与周数检查的输入，缺省为 null 表示该来源无数据
+    List<TimeSlot>? webTimeSlots,
+    List<TimeSlot>? schoolPresetTimeSlots,
+    List<TimeSlot>? ocrTimeSlots,
+    DateTime? confirmedStartDate,
+    int? detectedCurrentWeek,
   }) {
     // 先提示解析失败条目
     if (errors.isNotEmpty && context.mounted) {
@@ -501,6 +523,11 @@ class _ImportPageState extends ConsumerState<ImportPage> {
           targetSemester: target,
           timeBlocks: timeBlocks,
           webImportSummary: summary,
+          webTimeSlots: webTimeSlots,
+          schoolPresetTimeSlots: schoolPresetTimeSlots,
+          ocrTimeSlots: ocrTimeSlots,
+          confirmedStartDate: confirmedStartDate,
+          detectedCurrentWeek: detectedCurrentWeek,
         ),
       ),
     );
