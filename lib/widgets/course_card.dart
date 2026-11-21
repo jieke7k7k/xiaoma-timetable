@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../models/course.dart';
+import '../models/time_slot.dart';
 import '../ui/app_styles.dart';
 import '../utils/color_schemes.dart';
+import '../utils/course_display_formatter.dart';
 import '../utils/morandi_palette.dart';
 
 /// 周视图课程卡片（圆角卡片，展示 课程名、教室、老师、备注）
@@ -30,6 +32,12 @@ class CourseCard extends StatelessWidget {
     this.showClassroom = true,
     this.showTeacher = true,
     this.showNote = true,
+    // WB_SPEC_253 §2：导入后可编辑是否隐藏（默认与 UiSettings 一致）
+    this.hideNameMarks = true,
+    this.hideCampus = true,
+    this.showCellTime = false,
+    this.showLocationAt = false,
+    this.timeSlots = const [],
   });
 
   final Course course;
@@ -59,6 +67,21 @@ class CourseCard extends StatelessWidget {
   final bool showClassroom;
   final bool showTeacher;
   final bool showNote;
+
+  /// 隐藏课名里的标记（方括号前缀、尾部「N周」与尾部符号），默认开
+  final bool hideNameMarks;
+
+  /// 隐藏地点里的校区前缀，默认开
+  final bool hideCampus;
+
+  /// 在格子内显示上课时间，默认关
+  final bool showCellTime;
+
+  /// 上课地点前显示 @，默认关
+  final bool showLocationAt;
+
+  /// 目标学期作息（格子内时间取每节起止）；缺失时不显示时间
+  final List<TimeSlot> timeSlots;
 
   double get _nameSize => 12 * textScale;
   double get _subSize => 10 * textScale;
@@ -104,6 +127,26 @@ class CourseCard extends StatelessWidget {
           : BorderSide.none,
     );
     final noteText = course.note?.trim() ?? '';
+    // WB_SPEC_253 §2/§3：显示层格式化（只改显示文本，不改库值）；
+    // 时间行插在课名之后，进现有 maxLines 预算（矮格截断时课名优先）。
+    final displayName = CourseDisplayFormatter.formatCourseName(
+      course.name,
+      hideNameMarks: hideNameMarks,
+    );
+    final displayClassroom = showClassroom
+        ? CourseDisplayFormatter.formatClassroom(
+            course.classroom,
+            hideCampus: hideCampus,
+            showLocationAt: showLocationAt,
+          )
+        : '';
+    final displayCellTime = showCellTime
+        ? CourseDisplayFormatter.formatCellTime(
+            startSection: course.startSection,
+            endSection: course.endSection,
+            timeSlots: timeSlots,
+          )
+        : '';
     return Opacity(
       opacity: dimmed ? 0.35 : 1,
       child: Material(
@@ -125,7 +168,7 @@ class CourseCard extends StatelessWidget {
                   TextSpan(
                     children: [
                       TextSpan(
-                        text: course.name,
+                        text: displayName,
                         style: TextStyle(
                           color: titleColor,
                           fontSize: _nameSize,
@@ -133,11 +176,18 @@ class CourseCard extends StatelessWidget {
                           height: 1.15,
                         ),
                       ),
-                      if (showClassroom &&
-                          course.classroom != null &&
-                          course.classroom!.isNotEmpty)
+                      if (displayCellTime.isNotEmpty)
                         TextSpan(
-                          text: '\n${course.classroom!}',
+                          text: '\n$displayCellTime',
+                          style: TextStyle(
+                            color: subtitleColor,
+                            fontSize: _subSize,
+                            height: 1.1,
+                          ),
+                        ),
+                      if (displayClassroom.isNotEmpty)
+                        TextSpan(
+                          text: '\n$displayClassroom',
                           style: TextStyle(
                             color: subtitleColor,
                             fontSize: _subSize,

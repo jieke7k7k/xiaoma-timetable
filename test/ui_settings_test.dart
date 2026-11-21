@@ -87,6 +87,18 @@ void main() {
       expect(UiSettings.fromEncoded('{"showBottomBar": "yes"}').cellHeight, 46);
     });
 
+    test('WB_SPEC_253 四开关：部分缺键时只缺的键回默认，其余保留', () {
+      // DeepSeek 复审测试缺口 8：旧数据只有四个键里的几个，缺的回默认、
+      // 有的照常用，不能一缺全缺。
+      final back = UiSettings.fromEncoded(
+        '{"hideNameMarks": false, "showCellTime": true}',
+      );
+      expect(back.hideNameMarks, isFalse);
+      expect(back.showCellTime, isTrue);
+      expect(back.hideCampus, isTrue); // 缺键回默认 true
+      expect(back.showLocationAt, isFalse); // 缺键回默认 false
+    });
+
     test('shellTransitionStyle 反序列化容错：缺失/null/未知值一律回默认柔和', () {
       // 2026-11-05：三种切换动效做成开关，默认柔和（官方淡入）；旧数据没有这个字段、
       // 值为 null、或值被改坏时一律回默认，绝不崩。

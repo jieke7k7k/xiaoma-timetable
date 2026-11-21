@@ -916,8 +916,9 @@ void main() {
         overrides: overrides(),
       );
       final switches = tester.widgetList<Switch>(find.byType(Switch)).toList();
-      // 四个开关：显示教室 / 老师 / 备注 + 模糊（冲突组在最后）
-      expect(switches.length, 4);
+      // 八个开关：显示教室 / 老师 / 备注 + 隐藏课名里的标记 / 隐藏地点里的
+      // 校区 / 格子内显示上课时间 / 上课地点前显示 @ + 模糊（冲突组在最后）
+      expect(switches.length, 8);
       expect(switches.last.value, isFalse);
       await tester.tap(find.byType(Switch).last);
       await tester.pumpAndSettle();

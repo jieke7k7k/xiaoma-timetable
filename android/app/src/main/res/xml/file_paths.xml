@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- WB_SPEC_252 §3：仅开放 App 缓存目录下的 apk_updates 子目录给系统安装器 -->
+    <cache-path
+        name="apk_updates"
+        path="apk_updates/" />
+</paths>

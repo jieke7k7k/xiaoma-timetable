@@ -6,6 +6,7 @@ import '../services/channel_service.dart';
 import '../ui/app_styles.dart';
 import '../utils/app_haptics.dart';
 import '../widgets/app_dialog.dart';
+import '../widgets/update_download_dialog.dart';
 
 /// 关于页（1.2.4）：版本号、检查更新、公告入口、更新日志、开源许可、
 /// 使用帮助、问题反馈与联系作者——完整应用该有的收尾都在这一页。
@@ -89,46 +90,20 @@ class _AboutPageState extends State<AboutPage> {
   }
 
   Future<void> _showUpdateDialog(LatestInfo latest) async {
+    // WB_SPEC_252 §2：下载入口唯一——「去下载」改为 App 内直下，不跳浏览器；
+    // 下载中 barrierDismissible: false + 对话框内 PopScope 拦截返回键。
     await showDialog<void>(
       context: context,
-      // WB_SPEC_230 第 4.2 节第 4 类：展示弹窗嵌 AppDialog（Column 保持 min）
-      builder: (ctx) => AppDialog(
-        title: '新版本 ${latest.versionName}',
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (latest.notes.isNotEmpty) Text(latest.notes),
-            const SizedBox(height: 8),
-            Text(
-              '当前版本 ${_pkg?.version ?? ''}',
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(ctx).colorScheme.outline,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          // WB_SPEC_235 跟进 §1-5 / §4：更新对话框四键走标准 action 构造
-          AppDialogAction(label: '以后再说', onPressed: () => Navigator.pop(ctx)),
-          if (latest.releaseUrl.isNotEmpty)
-            AppDialogAction(
-              label: '更新说明',
-              onPressed: () {
-                Navigator.pop(ctx);
-                _launch(latest.releaseUrl);
-              },
-            ),
-          AppDialogAction(
-            label: '去下载',
-            primary: true,
-            onPressed: () {
-              Navigator.pop(ctx);
-              if (latest.downloadUrl.isNotEmpty) _launch(latest.downloadUrl);
-            },
-          ),
-        ],
+      barrierDismissible: false,
+      builder: (_) => UpdateDownloadDialog(
+        version: latest.versionName,
+        downloadUrl: latest.downloadUrl,
+        releaseUrl: latest.releaseUrl,
+        changelog: latest.notes,
+        // 「更新说明」不动：仍外跳 GitHub Release 页看文字说明
+        onOpenReleaseNotes: latest.releaseUrl.isNotEmpty
+            ? () => _launch(latest.releaseUrl)
+            : null,
       ),
     );
   }

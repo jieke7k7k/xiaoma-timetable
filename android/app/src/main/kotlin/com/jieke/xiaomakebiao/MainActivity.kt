@@ -8,9 +8,11 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 
 /**
  * 主 Activity：注册两个 MethodChannel——
@@ -77,6 +79,68 @@ class MainActivity : FlutterActivity() {
                         openAppDetails()
                         result.success(null)
                     }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // WB_SPEC_252 §3：App 内下载安装包——调系统安装器（FileProvider content URI）
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, INSTALLER_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    // 检查是否已授予「安装未知应用」权限（Android 8.0+）
+                    "canRequestPackageInstalls" -> {
+                        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            packageManager.canRequestPackageInstalls()
+                        } else {
+                            true
+                        }
+                        result.success(granted)
+                    }
+
+                    // 引导用户前往系统「安装未知应用」授权页
+                    "openUnknownSourcesSettings" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                Uri.parse("package:$packageName")
+                            ).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                        }
+                        result.success(null)
+                    }
+
+                    // 通过 FileProvider 调起系统安装器
+                    "installApk" -> {
+                        val filePath = call.argument<String>("filePath")
+                        if (filePath.isNullOrBlank()) {
+                            result.error("INVALID_ARGS", "安装包路径为空", null)
+                            return@setMethodCallHandler
+                        }
+                        val apkFile = File(filePath)
+                        if (!apkFile.exists()) {
+                            result.error("FILE_NOT_FOUND", "安装包文件不存在", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            val authority = "$packageName.fileprovider"
+                            val contentUri = FileProvider.getUriForFile(this, authority, apkFile)
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(
+                                    contentUri,
+                                    "application/vnd.android.package-archive"
+                                )
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            startActivity(intent)
+                            result.success(contentUri.toString())
+                        } catch (e: Exception) {
+                            result.error("INSTALL_FAILED", e.message ?: "无法调起系统安装器", null)
+                        }
+                    }
+
                     else -> result.notImplemented()
                 }
             }
@@ -163,5 +227,6 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL = "com.jieke.xiaomakebiao/ongoing_course"
         private const val DEVICE_CHANNEL = "com.jieke.xiaomakebiao/device"
+        private const val INSTALLER_CHANNEL = "com.jieke.xiaomakebiao/apk_installer"
     }
 }

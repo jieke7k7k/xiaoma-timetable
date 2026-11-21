@@ -11,6 +11,7 @@ import '../models/course.dart';
 import '../models/course_override.dart';
 import '../models/menu_config.dart';
 import '../models/semester.dart';
+import '../models/time_slot.dart';
 import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import 'share_image_page.dart';
@@ -1962,6 +1963,8 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
     final overrides = ref.watch(courseOverridesProvider).value ?? [];
     final showOther = ref.watch(showOtherWeeksProvider);
     final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
+    // WB_SPEC_253 §3：格子内时间取目标学期作息，透传给 _PositionedCourseCard。
+    final slots = ref.watch(timeSlotsProvider).value ?? [];
     // 应用单次调课（阶段五）：停课的本次不显示，调课的按新时间/教室显示。
     // 调课副本保留原 course id 与 weeks，三态布局与详情页无需感知差异。
     final effective = effectiveCoursesForWeek(
@@ -2207,6 +2210,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
                           _topOf(slot.startSection),
                   editMode: editMode,
                   ui: ui,
+                  timeSlots: slots,
                 ),
           // 空周占位提示（阶段五·视觉打磨）：网格全空时给中文引导。
           // WB_SPEC_231 第 3.3 节起分两种情况：
@@ -2455,6 +2459,7 @@ class _PositionedCourseCard extends StatelessWidget {
     required this.height,
     required this.editMode,
     required this.ui,
+    required this.timeSlots,
   });
 
   final DisplaySlot slot;
@@ -2463,6 +2468,9 @@ class _PositionedCourseCard extends StatelessWidget {
 
   /// 界面设置（配色方案/圆角/边框/字号/显示项），渲染卡片时用
   final UiSettings ui;
+
+  /// 目标学期作息（WB_SPEC_253 §3：格子内时间用）
+  final List<TimeSlot> timeSlots;
 
   /// 该周每门课的单次调课记录（按课程 id 索引；长按菜单 / 「调」角标 /
   /// 冲突块降级都按目标课程单独查，不再共用 slot 首课的那一条）。
@@ -2587,6 +2595,12 @@ class _PositionedCourseCard extends StatelessWidget {
         showClassroom: ui.showClassroom,
         showTeacher: ui.showTeacher,
         showNote: ui.showNote,
+        // WB_SPEC_253 §2/§3：导入后可编辑是否隐藏
+        hideNameMarks: ui.hideNameMarks,
+        hideCampus: ui.hideCampus,
+        showCellTime: ui.showCellTime,
+        showLocationAt: ui.showLocationAt,
+        timeSlots: timeSlots,
         // WB_SPEC_235 §7：点课程卡片 = 轻点档（多时段弹层 / 课程详情）
         onTap: () {
           AppHaptics.tap();

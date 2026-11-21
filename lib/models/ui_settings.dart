@@ -64,6 +64,12 @@ class UiSettings {
     this.showClassroom = true,
     this.showTeacher = true,
     this.showNote = true,
+    // WB_SPEC_253 §2：导入后可编辑是否隐藏——课名标记 / 地点校区 /
+    // 格子内时间 / 地点前 @；老库缺键时 fromEncoded 按同样默认兜底。
+    this.hideNameMarks = true,
+    this.hideCampus = true,
+    this.showCellTime = false,
+    this.showLocationAt = false,
     this.colorSchemeId = 'macaron',
     this.themePresetId = 'cocoa',
     this.themeCustomColor,
@@ -133,6 +139,18 @@ class UiSettings {
 
   /// 卡片上是否显示备注文字一行，默认显示
   final bool showNote;
+
+  /// 隐藏课名里的标记：开头的方括号前缀、尾部的「N周」（WB_SPEC_253 §2），默认开
+  final bool hideNameMarks;
+
+  /// 隐藏地点里的校区前缀（如「黑石礁校区獐314」→「獐314」），默认开
+  final bool hideCampus;
+
+  /// 在格子内显示上课时间（每节起止，如 09:50–10:35），默认关
+  final bool showCellTime;
+
+  /// 上课地点前显示 @（如「@獐314」），默认关
+  final bool showLocationAt;
 
   /// 课程配色方案 id（见 kCourseColorSchemes），默认 macaron 马卡龙·甜心（1.2.5）
   final String colorSchemeId;
@@ -225,6 +243,10 @@ class UiSettings {
     bool? showClassroom,
     bool? showTeacher,
     bool? showNote,
+    bool? hideNameMarks,
+    bool? hideCampus,
+    bool? showCellTime,
+    bool? showLocationAt,
     String? colorSchemeId,
     String? themePresetId,
     int? themeCustomColor,
@@ -252,6 +274,10 @@ class UiSettings {
       showClassroom: showClassroom ?? this.showClassroom,
       showTeacher: showTeacher ?? this.showTeacher,
       showNote: showNote ?? this.showNote,
+      hideNameMarks: hideNameMarks ?? this.hideNameMarks,
+      hideCampus: hideCampus ?? this.hideCampus,
+      showCellTime: showCellTime ?? this.showCellTime,
+      showLocationAt: showLocationAt ?? this.showLocationAt,
       colorSchemeId: colorSchemeId ?? this.colorSchemeId,
       themePresetId: themePresetId ?? this.themePresetId,
       themeCustomColor: clearThemeCustomColor
@@ -288,6 +314,10 @@ class UiSettings {
     'showClassroom': showClassroom,
     'showTeacher': showTeacher,
     'showNote': showNote,
+    'hideNameMarks': hideNameMarks,
+    'hideCampus': hideCampus,
+    'showCellTime': showCellTime,
+    'showLocationAt': showLocationAt,
     'colorSchemeId': colorSchemeId,
     'themePresetId': themePresetId,
     'themeCustomColor': themeCustomColor,
@@ -356,6 +386,11 @@ class UiSettings {
         showClassroom: bl('showClassroom', true),
         showTeacher: bl('showTeacher', true),
         showNote: bl('showNote', true),
+        // WB_SPEC_253 §2：老库缺键按默认兜底，不做一次性迁移
+        hideNameMarks: bl('hideNameMarks', true),
+        hideCampus: bl('hideCampus', true),
+        showCellTime: bl('showCellTime', false),
+        showLocationAt: bl('showLocationAt', false),
         colorSchemeId: st('colorSchemeId', 'macaron'),
         themePresetId: st('themePresetId', 'cocoa'),
         themeCustomColor: map['themeCustomColor'] is int

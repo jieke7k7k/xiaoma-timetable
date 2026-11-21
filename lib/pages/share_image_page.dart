@@ -17,6 +17,7 @@ import '../utils/app_haptics.dart';
 import '../ui/app_styles.dart';
 import '../ui/grid_metrics.dart';
 import '../utils/color_schemes.dart';
+import '../utils/course_display_formatter.dart';
 import '../utils/morandi_palette.dart';
 import '../utils/override_effect.dart';
 import '../utils/semester_export_helper.dart';
@@ -1126,11 +1127,21 @@ class SemesterSingleImageSheet extends StatelessWidget {
         return Column(
           children: [
             Expanded(
-              child: _SingleMasterCard(course: topC, ui: ui, height: halfH),
+              child: _SingleMasterCard(
+                course: topC,
+                ui: ui,
+                slots: slots,
+                height: halfH,
+              ),
             ),
             const SizedBox(height: 1.5),
             Expanded(
-              child: _SingleMasterCard(course: botC, ui: ui, height: halfH),
+              child: _SingleMasterCard(
+                course: botC,
+                ui: ui,
+                slots: slots,
+                height: halfH,
+              ),
             ),
           ],
         );
@@ -1146,6 +1157,7 @@ class SemesterSingleImageSheet extends StatelessWidget {
                 child: _SingleMasterCard(
                   course: mSlot.courses[k],
                   ui: ui,
+                  slots: slots,
                   height: rowH,
                 ),
               ),
@@ -1156,6 +1168,7 @@ class SemesterSingleImageSheet extends StatelessWidget {
         return _SingleMasterCard(
           course: mSlot.courses.first,
           ui: ui,
+          slots: slots,
           height: h,
         );
     }
@@ -1172,11 +1185,15 @@ class _SingleMasterCard extends StatelessWidget {
   const _SingleMasterCard({
     required this.course,
     required this.ui,
+    required this.slots,
     required this.height,
   });
 
   final Course course;
   final UiSettings ui;
+
+  /// 目标学期作息（WB_SPEC_253 §3：格子内时间用）
+  final List<TimeSlot> slots;
 
   /// 卡片可用高度（dp，父级按格高均分后传入）。
   final double height;
@@ -1228,12 +1245,29 @@ class _SingleMasterCard extends StatelessWidget {
         ? 4.0
         : (height >= 30 ? 3.0 : (height >= 14 ? 1.5 : 0.5));
 
-    final classroomText = (showMeta &&
-            ui.showClassroom &&
-            course.classroom != null &&
-            course.classroom!.trim().isNotEmpty)
-        ? course.classroom!.trim()
+    // WB_SPEC_253 §2/§3：显示层格式化（与 CourseCard 同口径，只改显示文本）。
+    final displayName = CourseDisplayFormatter.formatCourseName(
+      course.name,
+      hideNameMarks: ui.hideNameMarks,
+    );
+    final formattedClassroom = CourseDisplayFormatter.formatClassroom(
+      course.classroom,
+      hideCampus: ui.hideCampus,
+      showLocationAt: ui.showLocationAt,
+    );
+    final classroomText =
+        (showMeta && ui.showClassroom && formattedClassroom.isNotEmpty)
+        ? formattedClassroom
         : null;
+    final formattedCellTime = (showMeta && ui.showCellTime)
+        ? CourseDisplayFormatter.formatCellTime(
+            startSection: course.startSection,
+            endSection: course.endSection,
+            timeSlots: slots,
+          )
+        : '';
+    final cellTimeText =
+        formattedCellTime.isNotEmpty ? formattedCellTime : null;
     final teacherText = (showMeta &&
             ui.showTeacher &&
             course.teacher != null &&
@@ -1256,6 +1290,7 @@ class _SingleMasterCard extends StatelessWidget {
     } else {
       // 中低档（<70dp，含 52dp 单双周半格）：严守 243 P0-1 预算结构，保 52dp 3 行。
       var metaLines = 0;
+      if (cellTimeText != null) metaLines++;
       if (classroomText != null) metaLines++;
       if (teacherText != null) metaLines++;
       final fittedMetaLines =
@@ -1295,7 +1330,7 @@ class _SingleMasterCard extends StatelessWidget {
               TextSpan(
                 children: [
                   TextSpan(
-                    text: course.name,
+                    text: displayName,
                     style: TextStyle(
                       fontSize: nameSize,
                       fontWeight: nameWeight,
@@ -1303,6 +1338,11 @@ class _SingleMasterCard extends StatelessWidget {
                       height: nameHeightRatio,
                     ),
                   ),
+                  if (cellTimeText != null)
+                    TextSpan(
+                      text: '\n$cellTimeText',
+                      style: metaStyle,
+                    ),
                   if (classroomText != null)
                     TextSpan(
                       text: '\n$classroomText',

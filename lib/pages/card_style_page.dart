@@ -15,7 +15,9 @@ import 'settings_sections.dart' show AppearancePreviewCard;
 ///
 /// 子页内部控件顺序硬规则（Argon 第四轮补 2）：滑杆归拢置顶、开关集中沉底；
 /// 中间是圆角 / 内边距 / 阴影等分段项。v3 样品即此顺序，这里沿用现代码的
-/// 5 个控件（格子圆角半径 / 卡片文字大小 / 显示教室 / 显示老师 / 显示备注）。
+/// 5 个控件（格子圆角半径 / 卡片文字大小 / 显示教室 / 显示老师 / 显示备注）
+/// + WB_SPEC_253 §2 的 4 个开关（隐藏课名里的标记 / 隐藏地点里的校区 /
+/// 格子内显示上课时间 / 上课地点前显示 @）。
 /// WB_SPEC_237 §6：冲突课程块外观组另起一个线框在下方（预览 + 颜色三选 +
 /// 强度滑杆 + 模糊开关）。
 class CardStylePage extends ConsumerWidget {
@@ -93,6 +95,31 @@ class CardStylePage extends ConsumerWidget {
                 subtitle: '备注以小字显示在卡片上',
                 value: ui.showNote,
                 onChanged: (v) => apply(ui.copyWith(showNote: v)),
+              ),
+              // WB_SPEC_253 §2：导入后可编辑是否隐藏（与显示教室/老师/备注同组）
+              SettingsSwitchRow(
+                title: '隐藏课名里的标记',
+                subtitle: '隐藏开头的方括号前缀与尾部的「N周」',
+                value: ui.hideNameMarks,
+                onChanged: (v) => apply(ui.copyWith(hideNameMarks: v)),
+              ),
+              SettingsSwitchRow(
+                title: '隐藏地点里的校区',
+                subtitle: '去掉地点开头的「…校区」前缀',
+                value: ui.hideCampus,
+                onChanged: (v) => apply(ui.copyWith(hideCampus: v)),
+              ),
+              SettingsSwitchRow(
+                title: '格子内显示上课时间',
+                subtitle: '在课程格内显示起止时间（如 09:50–10:35）',
+                value: ui.showCellTime,
+                onChanged: (v) => apply(ui.copyWith(showCellTime: v)),
+              ),
+              SettingsSwitchRow(
+                title: '上课地点前显示 @',
+                subtitle: '例如「@獐314」',
+                value: ui.showLocationAt,
+                onChanged: (v) => apply(ui.copyWith(showLocationAt: v)),
               ),
             ],
           ),

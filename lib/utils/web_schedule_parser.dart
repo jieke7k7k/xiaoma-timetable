@@ -346,7 +346,7 @@ class WebScheduleParser {
 
     // 课名：清掉尾部符号与课程代码
     var name = b.name
-        .replaceAll(RegExp(r'[▲△☆★\s]+$'), '')
+        .replaceAll(RegExp(r'[▲△☆★⊙◎○●◆■□※\s]+$'), '')
         .replaceAll(RegExp(r'[-—]\d{4,}$'), '')
         .trim();
     if (name.isEmpty) {
@@ -354,7 +354,7 @@ class WebScheduleParser {
       final head = detailText.split(_weekRangeRe).first;
       name = head
           .replaceAll(_sectionRe, '')
-          .replaceAll(RegExp(r'[▲△☆★\s]+$'), '')
+          .replaceAll(RegExp(r'[▲△☆★⊙◎○●◆■□※\s]+$'), '')
           .trim();
     }
     if (name.isEmpty) return null;
