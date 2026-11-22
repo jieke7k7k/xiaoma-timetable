@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/school_entry.dart';
 import '../services/school_catalog_service.dart';
+import '../utils/school_sections.dart';
 import '../utils/term_start_date_helper.dart';
 import '../utils/web_schedule_parser.dart';
 import 'web_import_page.dart';
@@ -51,6 +52,7 @@ class SchoolPickerPage extends StatefulWidget {
 class _SchoolPickerPageState extends State<SchoolPickerPage> {
   late final SchoolCatalogService _catalogService;
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
 
   List<SchoolEntry> _schools = const [];
   SchoolEntry? _lastUsedSchool;
@@ -67,6 +69,7 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -243,7 +246,6 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
   @override
   Widget build(BuildContext context) {
     final filtered = _filteredSchools;
-    final showRecent = !_isSearching && _lastUsedSchool != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -277,11 +279,13 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
             ),
           ),
 
-          // 2 & 3. 主列表区
+          // 2 & 3. 主列表区：搜索态平面列表（不用 controller），非搜索态 A-Z 分组列表
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : _buildListBody(filtered: filtered, showRecent: showRecent),
+                : (_isSearching
+                    ? _buildSearchBody(filtered: filtered)
+                    : _buildGroupedBody()),
           ),
 
           // 4. 底部手动输入入口（始终保留）
@@ -300,12 +304,10 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
     );
   }
 
-  Widget _buildListBody({
-    required List<SchoolEntry> filtered,
-    required bool showRecent,
-  }) {
-    // 搜索无结果空态
-    if (_isSearching && filtered.isEmpty) {
+  /// 搜索态：平面过滤列表（不用 ScrollController，与分组列表隔离）
+  Widget _buildSearchBody({required List<SchoolEntry> filtered}) {
+    // 搜索无结果空态（原样保留）
+    if (filtered.isEmpty) {
       return ListView(
         children: [
           const SizedBox(height: 32),
@@ -321,40 +323,130 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
 
     return ListView(
       children: [
-        if (showRecent) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: Text(
-              '★ 最近使用',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-          ),
-          _buildSchoolTile(_lastUsedSchool!, keyPrefix: 'recent'),
-          const Divider(height: 16),
-        ],
-        if (!_isSearching && _schools.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-            child: Text(
-              '全部学校',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-          ),
         for (final school in filtered)
           _buildSchoolTile(school, keyPrefix: 'list'),
       ],
     );
   }
 
+  /// 非搜索态：A-Z 分组列表 + 右侧索引栏（WB_SPEC_254 §3.2）
+  Widget _buildGroupedBody() {
+    final sections = groupSchoolsByInitial(_schools);
+    final flatItems = flattenSchoolPickerItems(
+      sections: sections,
+      lastUsedSchool: _lastUsedSchool,
+    );
+    final offsets = indexOffsets(flatItems);
+    final letters = sections.map((s) => s.letter).toList(growable: false);
+    final isKeyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
+
+    return Row(
+      children: [
+        Expanded(
+          child: ListView.builder(
+            controller: _scrollController,
+            itemCount: flatItems.length,
+            itemExtentBuilder: (index, _) => flatItems[index].height,
+            itemBuilder: (context, index) {
+              final item = flatItems[index];
+              final Widget child;
+              switch (item.type) {
+                case SchoolPickerListItemType.recentHeader:
+                  child = _buildSectionHeader('★ 最近使用', recent: true);
+                case SchoolPickerListItemType.recentSchool:
+                  child = _buildSchoolTile(item.school!, keyPrefix: 'recent');
+                case SchoolPickerListItemType.recentDivider:
+                  child = const Divider(height: kRecentDividerHeight);
+                case SchoolPickerListItemType.letterHeader:
+                  child = _buildSectionHeader(item.letter!);
+                case SchoolPickerListItemType.school:
+                  child = _buildSchoolTile(item.school!, keyPrefix: 'list');
+              }
+              return SizedBox(height: item.height, child: child);
+            },
+          ),
+        ),
+        if (!isKeyboardVisible && letters.isNotEmpty)
+          _buildIndexBar(letters, offsets),
+      ],
+    );
+  }
+
+  /// 固定高度 28.0 的节头（文字左对齐，padding left 16）；
+  /// 最近使用沿用原样式（主色 + w600）
+  Widget _buildSectionHeader(String text, {bool recent = false}) {
+    return Container(
+      height: kLetterHeaderHeight,
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.only(left: 16),
+      child: Text(
+        text,
+        style: recent
+            ? Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                )
+            : Theme.of(context).textTheme.labelMedium,
+      ),
+    );
+  }
+
+  void _jumpToLetter(String letter, Map<String, double> offsets) {
+    final rawOffset = offsets[letter];
+    if (rawOffset == null || !_scrollController.hasClients) return;
+    final maxExtent = _scrollController.position.maxScrollExtent;
+    final target = rawOffset.clamp(0.0, maxExtent);
+    _scrollController.jumpTo(target);
+  }
+
+  /// 右侧索引栏：只显示有学校的字母；每字母高度按可用高度自适应（12.0–20.0）；
+  /// 可用高度不足时整栏纵向滚动；键盘弹出时不渲染（调用方已判断）
+  Widget _buildIndexBar(List<String> letters, Map<String, double> offsets) {
+    return SizedBox(
+      key: const ValueKey('school_index_bar'),
+      width: 24,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // 下限 12.0 保证字号 12 的字母不被压扁重叠；可用高度不足时整栏可滚动，
+          // 不在矮屏上报布局溢出。
+          final itemHeight = letters.isEmpty
+              ? 0.0
+              : (constraints.maxHeight / letters.length).clamp(12.0, 20.0);
+          return SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (final letter in letters)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _jumpToLetter(letter, offsets),
+                    child: SizedBox(
+                      height: itemHeight,
+                      width: 24,
+                      child: Center(
+                        child: Text(
+                          letter,
+                          style: const TextStyle(fontSize: 12, height: 1.0),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildSchoolTile(SchoolEntry school, {required String keyPrefix}) {
     return ListTile(
       key: ValueKey('${keyPrefix}_${school.url}'),
-      title: Text(school.displayName),
+      title: Text(
+        school.displayName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       trailing: school.system == null
           ? null
           : Container(

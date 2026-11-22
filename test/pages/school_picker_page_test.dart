@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xiaoma_timetable/models/school_entry.dart';
 import 'package:xiaoma_timetable/pages/school_picker_page.dart';
 import 'package:xiaoma_timetable/services/school_catalog_service.dart';
+import 'package:xiaoma_timetable/utils/school_sections.dart';
 import 'package:xiaoma_timetable/utils/web_schedule_parser.dart';
 
 class _FakeAssetBundle extends CachingAssetBundle {
@@ -16,6 +18,63 @@ class _FakeAssetBundle extends CachingAssetBundle {
 
   @override
   Future<ByteData> load(String key) => throw UnimplementedError();
+}
+
+/// 不走真实 assets 与磁盘的目录服务替身（供 254 分组测试用）。
+class _FakeSchoolCatalogService extends SchoolCatalogService {
+  _FakeSchoolCatalogService({
+    required this.schools,
+    this.lastUsedUrl,
+  });
+
+  final List<SchoolEntry> schools;
+  String? lastUsedUrl;
+
+  @override
+  Future<List<SchoolEntry>> loadSchools({
+    String assetPath = SchoolCatalogService.defaultAssetPath,
+  }) async =>
+      schools;
+
+  @override
+  Future<String?> loadLastUsedUrl() async => lastUsedUrl;
+
+  @override
+  Future<void> saveLastUsedUrl(String url) async {
+    lastUsedUrl = url;
+  }
+}
+
+List<SchoolEntry> _build30Schools() {
+  final list = <SchoolEntry>[];
+  for (var i = 1; i <= 15; i++) {
+    list.add(
+      SchoolEntry(
+        name: '安徽学校$i',
+        url: 'https://a$i.edu.cn/',
+        initial: 'A',
+      ),
+    );
+  }
+  for (var i = 1; i <= 10; i++) {
+    list.add(
+      SchoolEntry(
+        name: '浙江学校$i',
+        url: 'https://z$i.edu.cn/',
+        initial: 'Z',
+      ),
+    );
+  }
+  for (var i = 1; i <= 5; i++) {
+    list.add(
+      SchoolEntry(
+        name: '100学院$i',
+        url: 'https://h$i.edu.cn/',
+        initial: '#',
+      ),
+    );
+  }
+  return list;
 }
 
 void main() {
@@ -150,5 +209,103 @@ void main() {
     expect(poppedResult, isNotNull);
     expect(poppedResult!.school?.name, '浙江师范大学');
     expect(poppedResult!.scheduleResult, same(fakeSchedule));
+  });
+
+  testWidgets('254：30 所学校分组、索引栏跳转与搜索态隐藏索引栏/最近使用区',
+      (tester) async {
+    final schools = _build30Schools();
+    final service = _FakeSchoolCatalogService(
+      schools: schools,
+      lastUsedUrl: schools.first.url,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SchoolPickerPage(
+          semesterId: 1,
+          catalogService: service,
+          enableStartDateConfirm: false,
+          webImportPageBuilder: (initialUrl) =>
+              const Scaffold(body: Text('web')),
+        ),
+      ),
+    );
+    await drain(tester);
+
+    // 最近使用与分组内各有一处 (key 区分)
+    expect(
+      find.byKey(ValueKey('recent_${schools.first.url}')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(ValueKey('list_${schools.first.url}')),
+      findsOneWidget,
+    );
+
+    // 索引栏只显示有学校的字母 (A、Z、#)，不显示 B/C 等；
+    // 用 descendant 限定在索引栏内断言，避免列表节头干扰计数。
+    final indexBar = find.byKey(const ValueKey('school_index_bar'));
+    expect(indexBar, findsOneWidget);
+    expect(
+      find.descendant(of: indexBar, matching: find.text('A')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: indexBar, matching: find.text('Z')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: indexBar, matching: find.text('#')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: indexBar, matching: find.text('B')),
+      findsNothing,
+    );
+    // 初始 Z/# 节头在视口外，全局只剩索引栏里的那一处
+    expect(find.text('Z'), findsOneWidget);
+    expect(find.text('#'), findsOneWidget);
+    expect(find.text('B'), findsNothing);
+
+    // 计算预期的 Z 节头偏移：
+    // 最近使用区 28 + 56 + 16 = 100
+    // A 组：28 + 15 * 56 = 868
+    // Z 节头起始偏移 = 968.0
+    final expectedZOffset = kRecentHeaderHeight +
+        kSchoolRowHeight +
+        kRecentDividerHeight +
+        kLetterHeaderHeight +
+        15 * kSchoolRowHeight;
+
+    await tester.tap(find.text('Z'));
+    await drain(tester);
+
+    final listView = tester.widget<ListView>(find.byType(ListView));
+    final controller = listView.controller!;
+    final clampedExpected =
+        expectedZOffset.clamp(0.0, controller.position.maxScrollExtent);
+    expect(controller.offset, closeTo(clampedExpected, 1.0));
+    // Z 节头已滚入可见 (此时索引栏 + 列表节头共 2 处)
+    expect(find.text('Z'), findsNWidgets(2));
+    expect(find.text('浙江学校1'), findsOneWidget);
+
+    // 进入搜索态：隐藏索引栏与最近使用区
+    // 注意：搜索框里输入的查询文本本身也会被 find.text 命中，
+    // 所以断言列表里的那行时要限定在 ListView 内找。
+    await tester.enterText(find.byType(TextField), '浙江学校1');
+    await drain(tester);
+
+    expect(find.text('★ 最近使用'), findsNothing);
+    // 索引栏本身已不在树上：直接断言容器缺失，而非某个字母缺失——
+    // 后者在搜索态下恒真（过滤结果里本来就没有那个字母）。
+    expect(find.byKey(const ValueKey('school_index_bar')), findsNothing);
+    expect(find.text('Z'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(ListView),
+        matching: find.text('浙江学校1'),
+      ),
+      findsOneWidget,
+    );
   });
 }

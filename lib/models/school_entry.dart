@@ -8,6 +8,7 @@ class SchoolEntry {
   final String url;
   final String? note;
   final List<TimeSlot>? timeSlots;
+  final String? initial;
 
   const SchoolEntry({
     required this.name,
@@ -15,6 +16,7 @@ class SchoolEntry {
     this.system,
     this.note,
     this.timeSlots,
+    this.initial,
   });
 
   /// 从 JSON Map 解析；必填字段缺失或 url 无法解析时返回 null（调用方静默跳过）
@@ -55,6 +57,7 @@ class SchoolEntry {
       system: system,
       note: note,
       timeSlots: timeSlots,
+      initial: _parseInitial(raw['initial']),
     );
   }
 
@@ -84,6 +87,25 @@ class SchoolEntry {
       }
     }
     return result.isEmpty ? null : result;
+  }
+
+  /// 解析 initial：单字符 A-Z 或 "#" 保留，其余（非法/缺失）记 null，不丢整条。
+  static String? _parseInitial(dynamic raw) {
+    if (raw is! String) {
+      return null;
+    }
+    final normalized = raw.trim().toUpperCase();
+    if (normalized.length != 1) {
+      return null;
+    }
+    if (normalized == '#') {
+      return '#';
+    }
+    final code = normalized.codeUnitAt(0);
+    if (code >= 65 && code <= 90) {
+      return normalized;
+    }
+    return null;
   }
 
   /// 行内展示标题：有 note 时拼在括号里（如「浙江师范大学（研究生）」）
