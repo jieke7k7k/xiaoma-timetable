@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../main.dart';
 import '../models/course.dart';
 import '../models/time_slot.dart';
 import '../models/ui_settings.dart';
@@ -831,26 +832,8 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
 
     return Scaffold(
       appBar: AppBar(
+        // WB_SPEC_256 §6.2：移除顶栏右侧 TextButton「保存」，仅保留底部固定 48dp 主按钮
         title: Text(_editId == null ? '新建课程' : '编辑课程'),
-        actions: [
-          TextButton(
-            onPressed: _saving
-                ? null
-                : () {
-                    // WB_SPEC_235 §7：保存 = 中档（明确的确认动作）
-                    AppHaptics.medium();
-                    _save();
-                  },
-            child: _saving
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('保存'),
-          ),
-          const SizedBox(width: 8),
-        ],
       ),
       body: Form(
         key: _formKey,
@@ -909,9 +892,9 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                     _pickOnGrid();
                   },
                   style: TextButton.styleFrom(
+                    // WB_SPEC_256 §6.5：视觉高从 32dp 升至 36dp，移除 shrinkWrap 保证 48dp 命中区
                     padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: const Size(0, 32),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    minimumSize: const Size(0, 36),
                   ),
                   icon: const Icon(Icons.calendar_month_outlined, size: 18),
                   label: const Text('在课表上选'),
@@ -1155,9 +1138,29 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                 _pickExamDate();
               },
             ),
-            const SizedBox(height: 24),
-            // 保存按钮（底部大按钮）
-            FilledButton(
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+      // WB_SPEC_256 §6.2：底部操作栏固定可见，统一 48dp 主按钮
+      // WB_SPEC_256 复审优化（#81）：Scaffold.bottomNavigationBar 不随键盘
+      // 顶起，键盘弹出时会盖住保存按钮；包 AnimatedPadding 随
+      // MediaQuery.viewInsets.bottom 把按钮顶到键盘上方。
+      bottomNavigationBar: AnimatedPadding(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.l,
+              AppSpacing.s,
+              AppSpacing.l,
+              AppSpacing.l,
+            ),
+            child: FilledButton(
               onPressed: _saving
                   ? null
                   : () {
@@ -1165,12 +1168,16 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                       AppHaptics.medium();
                       _save();
                     },
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-              ),
-              child: Text(_editId == null ? '添加课程' : '保存修改'),
+              style: appBottomBarFilledButtonStyle(),
+              child: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(_editId == null ? '添加课程' : '保存修改'),
             ),
-          ],
+          ),
         ),
       ),
     );

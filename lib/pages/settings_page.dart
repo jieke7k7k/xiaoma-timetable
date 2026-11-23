@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
 import '../services/permission_service.dart';
 import '../utils/route_observer.dart';
-import '../ui/app_popup_menu.dart';
 import '../ui/app_styles.dart';
 import '../ui/bottom_bar_metrics.dart';
 import '../ui/settings_icon_box.dart';
@@ -21,10 +20,8 @@ import '../ui/settings_line_frame.dart';
 /// - 第一组「课表与学期」：当前学期与周次、课表工具箱（菜单管理并入课表工具页）；
 /// - 第二组「展示与桌面」：外观与底栏、桌面小组件、上课提醒（提醒开了但缺
 ///   权限时，行尾挂柔和琥珀色「待完善」徽标；提醒没开时不检查不显示）。
-/// - 第三组「数据与安全」：数据备份与换机。
-/// - AppBar 右上角 ⋮ 更多菜单：权限自检、关于小马课表（原路由不动，仅触发按钮
-///   从列表移到 PopupMenuButton）。「更多工具」分组与「菜单管理」「权限」「关于」
-///   三个独立入口行随之移除——功能分别并入课表工具箱 / ⋮ 菜单，砍掉约 22% 冗余行。
+/// - 第三组「数据与安全」：数据备份与换机、权限自检、关于小马课表（WB_SPEC_256 §3.2
+///   移除顶栏单项 ⋮ 菜单，下沉为设置页最底部的标准入口行）。
 /// 同版第 ③ 节把「云同步」整条线删除，首页不再有云同步行。
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key, this.isEmbeddedInShell = false});
@@ -63,11 +60,11 @@ class SettingsPage extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
+        // WB_SPEC_256 §3.2：移除顶栏单项 ⋮ 菜单，顶栏回归纯标题
         title: const Text('设置'),
         centerTitle: true,
         // 壳内（一级视图）不显示返回箭头；独立 Push 路由显示
         automaticallyImplyLeading: !isEmbeddedInShell,
-        actions: [_buildMoreMenu(context)],
       ),
       body: ListView(
         // 壳内一级视图底部留白：按栏高算（标签栏 64，再加底部安全区），
@@ -147,36 +144,19 @@ class SettingsPage extends ConsumerWidget {
                 subtitle: '通知、精确闹钟与电池优化授权状态',
                 route: '/settings-permissions',
               ),
+              // WB_SPEC_256 §3.2：「关于小马课表」从顶栏 ⋮ 下沉为设置页最底部的标准入口行
+              const _EntryTile(
+                icon: Icons.info_outline,
+                category: SettingsIconCategory.system,
+                title: '关于小马课表',
+                subtitle: '版本信息、检查更新、公告与使用帮助',
+                route: '/about',
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.group),
         ],
       ),
-    );
-  }
-
-  /// AppBar 右上角 ⋮ 更多菜单（WB_SPEC_218 第 ④ 节）：
-  /// WB_SPEC_228 §8：权限自检已移入首页「数据与安全」组，⋮ 只留「关于小马课表」。
-  ///
-  /// WB_SPEC_230 第 3.1 节：外壳（圆角 16、米白底、阴影）改由 `main.dart` 的
-  /// 全局 `popupMenuTheme` 统一给，这里只留 position 相关的 offset；菜单项
-  /// 走共用 [buildAppPopupMenuItem]，与主页、学期行三处长相一致。
-  Widget _buildMoreMenu(BuildContext context) {
-    return PopupMenuButton<String>(
-      tooltip: '更多',
-      icon: const Icon(Icons.more_vert),
-      // 复查 Bug 2 口径沿用：M3 下菜单顶 = ⋮ 按钮顶 + offset.dy；按钮贴顶栏顶，
-      // dy 取顶栏高 48，菜单顶正好落在顶栏底之下（与原设置页位置一致）。
-      offset: const Offset(-8, 48),
-      onSelected: (route) => Navigator.pushNamed(context, route),
-      itemBuilder: (ctx) => [
-        buildAppPopupMenuItem<String>(
-          value: '/about',
-          icon: Icons.info_outline,
-          category: SettingsIconCategory.system,
-          title: '关于小马课表',
-        ),
-      ],
     );
   }
 }

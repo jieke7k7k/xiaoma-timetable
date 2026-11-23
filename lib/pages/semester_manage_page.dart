@@ -111,11 +111,25 @@ class SemesterManagePage extends ConsumerWidget {
                     '${s.startDate} 开学 · 共 ${s.totalWeeks} 周',
                     style: const TextStyle(fontSize: 12),
                   ),
-                  // 当前学期只给「编辑学期」入口；切换与删除仍然不给（从源头杜绝误操作）
-                  // WB_SPEC_230 第 3.1/3.2 节：菜单项改走共用构造（彩色小底块），
-                  // 外壳吃全局 popupMenuTheme；列表行内嵌菜单用 under 紧贴 ⋮ 下方
-                  // 展开（距按钮底沿 8dp），并删掉 dense，行高与顶栏菜单拉齐（56dp）。
-                  trailing: PopupMenuButton<String>(
+                  // WB_SPEC_256 §3.2：当前学期行改用行尾直接编辑图标按钮，不再使用单项 ⋮ 菜单；
+                  // 非当前学期行保留 3 项 ⋮ 菜单（编辑 / 切换 / 删除）。
+                  trailing: isCurrent
+                      ? IconButton(
+                          tooltip: '编辑学期',
+                          enableFeedback: false,
+                          // WB_SPEC_256 §6.1：行尾图标按钮渲染尺寸与命中区一致为 48×48
+                          //（M3 默认只渲染 40×40，见第 3 部分课程详情删除按钮同款处理）
+                          style: IconButton.styleFrom(
+                            minimumSize: const Size(48, 48),
+                          ),
+                          icon: const Icon(Icons.edit_outlined),
+                          onPressed: () {
+                            AppHaptics.tap();
+                            _editSemester(context, ref, s);
+                          },
+                        )
+                      : PopupMenuButton<String>(
+                          tooltip: '更多',
                           offset: const Offset(-8, 8),
                           position: PopupMenuPosition.under,
                           onSelected: (action) {
@@ -134,20 +148,18 @@ class SemesterManagePage extends ConsumerWidget {
                               category: SettingsIconCategory.schedule,
                               title: '编辑学期',
                             ),
-                            if (!isCurrent) ...[
-                              buildAppPopupMenuItem<String>(
-                                value: 'switch',
-                                icon: Icons.swap_horiz,
-                                category: SettingsIconCategory.data,
-                                title: '切换到该学期',
-                              ),
-                              buildAppPopupMenuItem<String>(
-                                value: 'delete',
-                                icon: Icons.delete_outline,
-                                category: SettingsIconCategory.destructive,
-                                title: '删除该学期',
-                              ),
-                            ],
+                            buildAppPopupMenuItem<String>(
+                              value: 'switch',
+                              icon: Icons.swap_horiz,
+                              category: SettingsIconCategory.data,
+                              title: '切换到该学期',
+                            ),
+                            buildAppPopupMenuItem<String>(
+                              value: 'delete',
+                              icon: Icons.delete_outline,
+                              category: SettingsIconCategory.destructive,
+                              title: '删除该学期',
+                            ),
                           ],
                         ),
                   // WB_SPEC_235 跟进 §1-11 / §2：点学期行 = 选择档（select）；

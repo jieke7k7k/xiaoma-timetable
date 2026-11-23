@@ -8,14 +8,16 @@ import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/pages/import_page.dart';
 
-/// WB_SPEC_220 测试
+/// WB_SPEC_256 §7 测试（原 WB_SPEC_220 的底部弹层已废弃）
 ///
 /// 覆盖：
-/// 1. 目标选择弹层：新建卡片置顶默认勾选＋「推荐」徽标；当前学期行只标
-///    「当前使用中」、不再打勾；
+/// 1. 目标选择弹层改走 showAppSelectSheet：学期行只列校名，当前学期行标
+///    「当前使用中」并打勾；无新建卡片、无「推荐」徽标；底部 footer 是
+///    48dp 的「继续（新建学期）」按钮；
 /// 2. 点旧学期行：直接选中并关弹层，目标卡随之改变；
-/// 3. 点新建行：表单叠在弹层上方，表单取消后弹层仍在、可改选旧学期；
-/// 4. 表单建好：写入并切换为当前学期、设为本次目标、关弹层；
+/// 3. 点 footer「继续（新建学期）」：先关弹层再开新建表单，取消后回到
+///    导入页、目标不变；
+/// 4. 表单建好：写入并切换为当前学期、设为本次目标；
 /// 5. 日历中文：配中文 delegates 的 MaterialApp 下 showDatePicker
 ///    显示「取消 / 确定」与中文星期。
 void main() {
@@ -96,6 +98,17 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   }
 
+  /// WB_SPEC_256 §10 手动泵法（严禁使用 pumpAndSettle）：
+  /// 与 wb256 文件的 _drain 同口径——每轮先 runAsync 再 pump。
+  Future<void> _drain(WidgetTester tester) async {
+    for (var i = 0; i < 5; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 80)),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
+
   Future<void> openTargetSheet(WidgetTester tester) async {
     await tapAndSettle(
       tester,
@@ -105,38 +118,34 @@ void main() {
     expect(find.text('这次导入到哪个学期？'), findsOneWidget);
   }
 
-  double y(WidgetTester tester, String text) =>
-      tester.getTopLeft(find.text(text)).dy;
-
-  group('WB_SPEC_220：导入默认新建学期', () {
-    testWidgets('弹层形态：新建卡片置顶默认勾选＋推荐，旧学期无打勾', (tester) async {
+  group('WB_SPEC_256 §7：导入目标学期选择', () {
+    testWidgets('弹层形态：学期行 + 首次打开无默认勾选，无新建卡片/推荐；footer 按钮 48dp',
+        (tester) async {
       await pumpImportPage(tester);
       expect(find.text('导入到：大三上学期'), findsOneWidget);
 
       await openTargetSheet(tester);
 
-      // 新建卡片在已有学期之前，且带「推荐」徽标与勾选图标
-      expect(find.text('新建学期（新学期的课表选这个）'), findsOneWidget);
-      expect(find.text('推荐'), findsOneWidget);
-      expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
-      expect(
-        y(tester, '新建学期（新学期的课表选这个）'),
-        lessThan(y(tester, '大三上学期')),
-        reason: '新建卡片应置顶，在已有学期之前',
-      );
-      expect(
-        y(tester, '新建学期（新学期的课表选这个）'),
-        lessThan(y(tester, '大二下学期')),
-        reason: '新建卡片应置顶，在已有学期之前',
-      );
+      // 220 的新建卡片（置顶默认勾选＋推荐）已随 256 §7 废弃
+      expect(find.text('新建学期（新学期的课表选这个）'), findsNothing);
+      expect(find.text('推荐'), findsNothing);
+      expect(find.byIcon(Icons.check_circle_rounded), findsNothing);
+      expect(find.byIcon(Icons.radio_button_unchecked), findsNothing);
 
-      // 当前学期只标「当前使用中」，不再打勾
-      expect(find.textContaining('当前使用中'), findsOneWidget);
-      expect(find.byIcon(Icons.radio_button_checked), findsNothing);
-      expect(find.byIcon(Icons.radio_button_unchecked), findsNWidgets(2));
+      // 学期行：当前学期标「当前使用中」；首次打开无默认勾选
+      // （复审 #53，恢复 220「引导新建」语义；选过之后 _target 保持上次选择）
+      expect(find.text('大三上学期 · 当前使用中'), findsOneWidget);
+      expect(find.text('大二下学期'), findsOneWidget);
+      expect(find.byIcon(Icons.check), findsNothing);
 
-      // 底部主按钮
+      // 底部 footer「继续（新建学期）」是 48dp 底部操作栏按钮
       expect(find.text('继续（新建学期）'), findsOneWidget);
+      expect(
+        tester
+            .getSize(find.widgetWithText(FilledButton, '继续（新建学期）'))
+            .height,
+        48.0,
+      );
     });
 
     testWidgets('点旧学期行：直接选中并关弹层', (tester) async {
@@ -153,60 +162,35 @@ void main() {
       expect(find.text('导入到：大二下学期'), findsOneWidget);
     });
 
-    testWidgets('点新建行进表单，取消后弹层仍在、可改选旧学期', (tester) async {
-      await pumpImportPage(tester);
-      await openTargetSheet(tester);
-
-      await tapAndSettle(
-        tester,
-        find.text('新建学期（新学期的课表选这个）'),
-        waitFor: find.text('新建学期'),
-      );
-      expect(find.text('新建学期'), findsOneWidget);
-
-      // 取消后弹层仍在：不用 waitFor——弹层行在表单后面一直都在树里，
-      // waitFor 会立刻命中、循环提前退出，表单关闭动画还没跑完。
-      await tapAndSettle(tester, find.text('取消'));
-
-      // 表单关了，弹层还在：标题与旧学期行都在
-      expect(find.text('新建学期'), findsNothing);
-      expect(find.text('这次导入到哪个学期？'), findsOneWidget);
-      expect(find.text('大二下学期'), findsOneWidget);
-
-      // 改选旧学期仍能走通
-      await tapAndSettle(
-        tester,
-        find.text('大二下学期'),
-        waitFor: find.text('导入到：大二下学期'),
-      );
-      expect(find.text('导入到：大二下学期'), findsOneWidget);
-    });
-
-    testWidgets('底部「继续（新建学期）」按钮同样进新建表单（复审 L5）',
+    testWidgets('点 footer「继续（新建学期）」进表单，取消后回到导入页、目标不变',
         (tester) async {
       await pumpImportPage(tester);
       await openTargetSheet(tester);
 
+      // footer 点一下先关弹层再开表单：表单在，弹层标题已不在
       await tapAndSettle(
         tester,
         find.text('继续（新建学期）'),
         waitFor: find.text('新建学期'),
       );
       expect(find.text('新建学期'), findsOneWidget);
+      expect(find.text('这次导入到哪个学期？'), findsNothing);
 
-      // 取消后弹层仍在
       await tapAndSettle(tester, find.text('取消'));
+
+      // 表单关了，回到导入页，目标仍是原来的大三上学期
       expect(find.text('新建学期'), findsNothing);
-      expect(find.text('这次导入到哪个学期？'), findsOneWidget);
+      expect(find.text('这次导入到哪个学期？'), findsNothing);
+      expect(find.text('导入到：大三上学期'), findsOneWidget);
     });
 
-    testWidgets('表单建好：写入并切换当前学期、设为目标、关弹层', (tester) async {
+    testWidgets('表单建好：写入并切换当前学期、设为目标', (tester) async {
       await pumpImportPage(tester);
       await openTargetSheet(tester);
 
       await tapAndSettle(
         tester,
-        find.text('新建学期（新学期的课表选这个）'),
+        find.text('继续（新建学期）'),
         waitFor: find.text('新建学期'),
       );
       expect(find.text('新建学期'), findsOneWidget);
@@ -275,10 +259,10 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await _drain(tester);
 
       await tester.tap(find.text('打开日历'));
-      await tester.pumpAndSettle();
+      await _drain(tester);
 
       expect(find.text('选择开学日期'), findsOneWidget);
       expect(find.text('取消'), findsOneWidget);

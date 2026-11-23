@@ -218,9 +218,10 @@ void main() {
     final deco = tester.widget<Container>(ring).decoration as BoxDecoration;
     expect((deco.border as Border).top.width, 1.5);
     expect(deco.border!.top.color, Theme.of(tester.element(ring)).colorScheme.primary);
-    // 外圈画在盒子里，芯片整体尺寸仍是 38×34，整行不会被顶歪
+    // WB_SPEC_256 §6.5：外圈画在 40×40 视觉块里，芯片整体命中区仍是 48×48，整行不会被顶歪
     expect(tester.getSize(find.byKey(const ValueKey('week-chip-3'))), before);
-    expect(before, const Size(38, 34));
+    expect(before, const Size(48, 48));
+    expect(tester.getSize(ring), const Size(40, 40));
   });
 
   testWidgets('文本框仍在（§1.1 第 2 点：能手输简写）', (tester) async {

@@ -235,7 +235,7 @@ void main() {
     await tapColor(tester, 8);
     expect(choiceSelected(tester, 'color-sync-all'), isTrue);
 
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存修改'));
     await drain(tester);
 
     final list = await allCourses(tester);
@@ -257,7 +257,7 @@ void main() {
     expect(choiceSelected(tester, 'color-sync-current'), isTrue);
     expect(choiceSelected(tester, 'color-sync-all'), isFalse);
 
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存修改'));
     await drain(tester);
 
     final list = await allCourses(tester);
@@ -277,7 +277,7 @@ void main() {
 
     await tester.enterText(find.byType(TextFormField).at(1), '李老师');
     await tester.pumpAndSettle();
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存修改'));
     await drain(tester);
 
     final list = await allCourses(tester);
@@ -381,7 +381,7 @@ void main() {
     await tapColor(tester, 0);
     expect(colorRowVisible(), isFalse, reason: '颜色改回原值，等于没改过色');
 
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存修改'));
     await drain(tester);
 
     final list = await allCourses(tester);

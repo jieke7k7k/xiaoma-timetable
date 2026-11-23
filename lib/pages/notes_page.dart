@@ -77,7 +77,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                         title: Text(note.content),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline),
-                          tooltip: '删除',
+                          // WB_SPEC_256 §6.4 / §7：备注行尾删除图标改为 error 色并保留中文 tooltip
+                          color: Theme.of(context).colorScheme.error,
+                          tooltip: '删除备注',
                           // WB_SPEC_235 §7：删除按钮 = 轻点档
                           onPressed: () {
                             AppHaptics.tap();

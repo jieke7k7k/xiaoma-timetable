@@ -7,9 +7,9 @@ import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/models/course.dart';
 import 'package:xiaoma_timetable/widgets/course_detail_sheet.dart';
 
-/// WB_SPEC_232 第 2 节：详情页三个入口同级排列（删除 | 新增时段 | 编辑）
+/// WB_SPEC_232 第 2 节 + WB_SPEC_256 §6.1：详情页入口（删除右上角 + 底部双键）
 ///
-/// 覆盖规格第 9 节第 4 组验收：360dp 一行三个不溢出、
+/// 覆盖规格第 9 节第 4 组验收：360dp 底部双键不溢出、删除 48×48、
 /// 删除仍弹确认框且取消不删、新增/编辑的跳转与预填与改前一致。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -63,6 +63,12 @@ void main() {
   }
 
   Future<void> pumpSheet(WidgetTester tester, {double textScale = 1.0}) async {
+    // 测试面默认是 800×600 逻辑（DPR 3.0 → 物理 2400×1800）：modal 弹层只给
+    // 约一半屏高（约 305），装不下 314 高的详情内容，会溢出 8.5px。
+    // 真机屏都比这高，这里统一按手机屏（360×800）测。
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     final course = (await tester.runAsync(
       () => Dao.instance.getCoursesBySemester(1),
     ))!
@@ -77,7 +83,10 @@ void main() {
           ),
           home: Scaffold(
             body: Builder(
-              builder: (context) => CourseDetailSheet(course: course),
+              builder: (context) => ElevatedButton(
+                onPressed: () => CourseDetailSheet.show(context, course),
+                child: const Text('OPEN_SHEET'),
+              ),
             ),
           ),
           routes: {
@@ -91,49 +100,68 @@ void main() {
       ),
     );
     await drain(tester);
+    // WB_SPEC_256 §6.1：详情弹层按真实用法以 BottomSheet 形态打开（不再直接当
+    // 首页 body 拼），这样删除流程里的「先关弹层再弹确认」走的是真实 pop，
+    // parentContext 落在 Scaffold 内，确认后的 SnackBar 才有地方落。
+    await tester.tap(find.text('OPEN_SHEET'));
+    await drain(tester);
   }
 
-  testWidgets('360dp 一行装下三个按钮，文案与层级正确', (tester) async {
-    tester.view.physicalSize = const Size(360, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+  testWidgets('360dp 底部双键一行，删除在右上角', (tester) async {
     await pumpSheet(tester);
 
-    // 三个入口都在，旧的「新增本课其他时段」全宽按钮已删
-    expect(find.text('删除'), findsOneWidget);
+    // WB_SPEC_256 §6.1：删除移出底部行，改为标题行右上角 error 色 IconButton；
+    // 底部只剩双键（新增时段 | 编辑）
+    expect(find.byTooltip('删除课程'), findsOneWidget);
+    expect(find.text('删除'), findsNothing);
     expect(find.text('新增时段'), findsOneWidget);
     expect(find.text('编辑'), findsOneWidget);
     expect(find.text('新增本课其他时段'), findsNothing);
 
-    // 同级：三个按钮垂直中心一致（同一行）
-    final delY = tester.getCenter(find.widgetWithText(TextButton, '删除')).dy;
-    final addY = tester.getCenter(find.widgetWithText(TextButton, '新增时段')).dy;
-    final editY = tester.getCenter(find.widgetWithText(TextButton, '编辑')).dy;
-    expect(delY, addY);
+    // 删除按钮 48×48 命中区（IconButton 默认 padded，不写显式约束）
+    expect(
+      tester.getSize(find.byTooltip('删除课程')),
+      const Size(48, 48),
+      reason: '删除 IconButton 应为 48×48dp 命中区',
+    );
+
+    // 底部双键同级：两个按钮垂直中心一致（同一行），统一 48dp 高
+    final addY =
+        tester.getCenter(find.widgetWithText(OutlinedButton, '新增时段')).dy;
+    final editY =
+        tester.getCenter(find.widgetWithText(FilledButton, '编辑')).dy;
     expect(addY, editY);
+    expect(
+      tester.getSize(find.widgetWithText(OutlinedButton, '新增时段')).height,
+      48,
+      reason: '新增时段应为 48dp 高',
+    );
+    expect(
+      tester.getSize(find.widgetWithText(FilledButton, '编辑')).height,
+      48,
+      reason: '编辑应为 48dp 高',
+    );
 
-    // 统一 44dp 高
-    for (final label in ['删除', '新增时段', '编辑']) {
-      expect(tester.getSize(find.widgetWithText(TextButton, label)).height, 44,
-          reason: '$label 应统一 44dp 高');
-    }
-
-    // 顺序：删除在最左、编辑在最右（flex 3:4:4 的布局结果）
-    final delX = tester.getCenter(find.widgetWithText(TextButton, '删除')).dx;
-    final addX = tester.getCenter(find.widgetWithText(TextButton, '新增时段')).dx;
-    final editX = tester.getCenter(find.widgetWithText(TextButton, '编辑')).dx;
-    expect(delX, lessThan(addX));
+    // 顺序：新增时段在左、编辑在右（flex 4:5 的布局结果）
+    final addX =
+        tester.getCenter(find.widgetWithText(OutlinedButton, '新增时段')).dx;
+    final editX =
+        tester.getCenter(find.widgetWithText(FilledButton, '编辑')).dx;
     expect(addX, lessThan(editX));
 
-    // 360dp 下不溢出（改前中间四字会被挤出省略号/折行）
+    // 删除在标题行（高于底部双键）
+    final delY = tester.getCenter(find.byTooltip('删除课程')).dy;
+    expect(delY, lessThan(addY));
+
+    // 360dp 下不溢出
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('删除仍弹确认框；取消不删', (tester) async {
     await pumpSheet(tester);
-    await tester.tap(find.text('删除'));
-    await tester.pumpAndSettle();
-    // 230 定版的破坏性确认框
+    await tester.tap(find.byTooltip('删除课程'));
+    await drain(tester);
+    // 230 定版的破坏性确认框（256 起先关弹层再弹确认）
     expect(find.text('删除课程'), findsOneWidget);
 
     await tester.tap(find.text('取消'));
@@ -144,8 +172,8 @@ void main() {
 
   testWidgets('确认删除后课程真的被删掉', (tester) async {
     await pumpSheet(tester);
-    await tester.tap(find.text('删除'));
-    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('删除课程'));
+    await drain(tester);
     await tester.tap(find.widgetWithText(FilledButton, '删除'));
     await drain(tester, rounds: 8);
     final left = await tester.runAsync(() => Dao.instance.getCoursesBySemester(1));
@@ -178,22 +206,19 @@ void main() {
     expect(pushedArgs, courseId);
   });
 
-  testWidgets('1.15 倍系统字体下三个按钮仍在一行、不折行', (tester) async {
-    tester.view.physicalSize = const Size(360, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+  testWidgets('1.15 倍系统字体下底部双键仍在一行、不折行', (tester) async {
     await pumpSheet(tester, textScale: 1.15);
 
     expect(tester.takeException(), isNull);
-    final delY = tester.getCenter(find.widgetWithText(TextButton, '删除')).dy;
-    final addY = tester.getCenter(find.widgetWithText(TextButton, '新增时段')).dy;
-    final editY = tester.getCenter(find.widgetWithText(TextButton, '编辑')).dy;
-    expect(delY, addY);
+    final addY =
+        tester.getCenter(find.widgetWithText(OutlinedButton, '新增时段')).dy;
+    final editY =
+        tester.getCenter(find.widgetWithText(FilledButton, '编辑')).dy;
     expect(addY, editY);
-    // 中间四字仍是单行（maxLines 1 + 省略号兜底，不折行）
+    // 新增时段仍是单行（maxLines 1 + 省略号兜底，不折行）
     expect(
       tester.getSize(find.text('新增时段')).height,
-      lessThan(tester.getSize(find.widgetWithText(TextButton, '新增时段')).height),
+      lessThan(tester.getSize(find.widgetWithText(OutlinedButton, '新增时段')).height),
     );
   });
 }

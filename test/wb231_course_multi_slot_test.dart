@@ -156,7 +156,7 @@ void main() {
     // 只改老师，教室输入框一个字都没碰
     await tester.enterText(find.byType(TextFormField).at(1), '李老师');
     await tester.pump();
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存修改'));
     await drain(tester);
 
     final list = await allCourses(tester);
@@ -185,7 +185,7 @@ void main() {
 
     await tester.enterText(find.byType(TextFormField).at(2), '16-222');
     await tester.pump();
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存修改'));
     await drain(tester);
 
     final list = await allCourses(tester);
@@ -272,7 +272,7 @@ void main() {
 
     await tester.enterText(find.byType(TextFormField).at(0), '临床药理学');
     await tester.pump();
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存修改'));
     await drain(tester);
 
     expect(find.text('合并同名课程？'), findsOneWidget);
@@ -290,7 +290,7 @@ void main() {
 
     await tester.enterText(find.byType(TextFormField).at(0), '临床药理学');
     await tester.pump();
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存修改'));
     await drain(tester);
 
     final list = await allCourses(tester);
@@ -308,7 +308,7 @@ void main() {
     };
     await tester.enterText(find.byType(TextFormField).at(1), '李老师');
     await tester.pump();
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存修改'));
     await drain(tester);
 
     expect(find.text('保存失败，请重试'), findsOneWidget);
@@ -383,7 +383,7 @@ void main() {
     await tester.pump();
     await tester.enterText(find.byType(TextFormField).at(1), '李老师');
     await tester.pump();
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存修改'));
     await drain(tester);
 
     expect(find.text('检测到时间冲突'), findsOneWidget);
@@ -406,7 +406,7 @@ void main() {
 
     await tester.enterText(find.byType(TextFormField).at(1), '李老师');
     await tester.pump();
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存修改'));
     await drain(tester);
 
     expect(find.text('检测到时间冲突'), findsNothing);

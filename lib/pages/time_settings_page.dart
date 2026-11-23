@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/course.dart';
 import '../models/time_slot.dart';
 import '../providers/providers.dart';
+import '../ui/app_select_field.dart';
 import '../ui/app_styles.dart';
 import '../ui/grid_metrics.dart';
 import '../ui/settings_entry_row.dart';
@@ -141,48 +142,22 @@ class TimeSettingsPage extends ConsumerWidget {
   String _timeRange(List<TimeSlot> band) =>
       '${band.first.startTime} – ${band.last.endTime}';
 
-  /// 套用作息模板弹层：只列现代码已有的「常用大节时间（前 4 节）」，行为与原按钮一致。
-  void _openPresetSheet(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet<void>(
+  /// 套用作息模板弹层（WB_SPEC_256 §3.3 / §7）：统一复用 showAppSelectSheet。
+  Future<void> _openPresetSheet(BuildContext context, WidgetRef ref) async {
+    final picked = await showAppSelectSheet<String>(
       context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: Text('选择作息模板',
-                  style: Theme.of(context).textTheme.titleMedium),
-            ),
-            ListTile(
-              title: const Text('常用大节时间（前 4 节）'),
-              subtitle: const Text('两节连上：上午 09:40–12:00，下午 14:00–16:20'),
-              // WB_SPEC_235 跟进：套用预设 = 轻点档
-              onTap: () {
-                AppHaptics.tap();
-                Navigator.pop(ctx);
-                _applyPreset(context, ref);
-              },
-              enableFeedback: false,
-            ),
-            ListTile(
-              title: Text(
-                '取消',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              // WB_SPEC_235 跟进：抽屉内的取消行 = 轻点档
-              onTap: () {
-                AppHaptics.tap();
-                Navigator.pop(ctx);
-              },
-              enableFeedback: false,
-            ),
-          ],
+      title: '选择作息模板',
+      currentValue: null,
+      options: const [
+        AppSelectOption<String>(
+          value: 'big_sections',
+          shortLabel: '常用大节时间（前 4 节）',
         ),
-      ),
+      ],
     );
+    if (picked == 'big_sections' && context.mounted) {
+      await _applyPreset(context, ref);
+    }
   }
 
   Future<void> _applyPreset(BuildContext context, WidgetRef ref) async {

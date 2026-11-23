@@ -455,7 +455,7 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
                   subtitle: Text('加载中…'),
                 ),
                 error: (e, _) => ListTile(
-                  leading: SettingsIconBox(icon: Icons.pin_outlined, category: SettingsIconCategory.reminder),
+                  leading: const SettingsIconBox(icon: Icons.pin_outlined, category: SettingsIconCategory.reminder),
                   title: const Text('今日课程常驻通知'),
                   subtitle: Text('加载失败：$e'),
                 ),
@@ -639,44 +639,23 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
   }
 
   /// 提前分钟选择（5/10/15/30，默认 15）
+  /// WB_SPEC_256 §3.3 / §7：改用统一 showAppSelectSheet
   Future<void> _pickAdvanceMinutes(BuildContext context, WidgetRef ref) async {
     const options = [5, 10, 15, 30];
     final current =
         ref.read(reminderSettingsProvider).value?.advanceMinutes ?? 15;
-    final picked = await showModalBottomSheet<int>(
+    final picked = await showAppSelectSheet<int>(
       context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            const ListTile(
-              title: Text(
-                '提前提醒时间',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            for (final o in options)
-              ListTile(
-                title: Text('$o 分钟'),
-                trailing: o == current
-                    ? Icon(
-                        Icons.check,
-                        color: Theme.of(ctx).colorScheme.primary,
-                      )
-                    : null,
-                // WB_SPEC_235 跟进 §2：选分钟 = 选择档
-                onTap: () {
-                  AppHaptics.select();
-                  Navigator.pop(ctx, o);
-                },
-                enableFeedback: false,
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+      title: '提前提醒时间',
+      currentValue: current,
+      options: [
+        for (final o in options)
+          AppSelectOption<int>(value: o, shortLabel: '$o 分钟'),
+      ],
     );
+    // WB_SPEC_256 复审优化：await 弹层期间页面可能被销毁，ref.read 前先守卫，
+    // 否则 WidgetRef 已失效会抛异常（常见 async-gap 坑）。
+    if (!context.mounted) return;
     if (picked != null) {
       await ref
           .read(reminderSettingsProvider.notifier)
@@ -767,9 +746,11 @@ class DataSettingsPage extends ConsumerWidget {
           ),
           ListTile(
             leading: const SettingsIconBox(icon: Icons.restore_outlined, category: SettingsIconCategory.data),
-            title: const _InfoTitle(
+            // WB_SPEC_256 §7：「从备份恢复」入口行标题改为 error 色
+            title: _InfoTitle(
               title: '从备份恢复',
               message: '选择备份 JSON，恢复前会再次确认（覆盖现有数据）',
+              titleColor: scheme.error,
             ),
             trailing: const _Chevron(),
             // WB_SPEC_235 跟进：设置子页入口行 = 轻点档
@@ -1376,7 +1357,9 @@ class _AppearanceGroup extends ConsumerWidget {
                     selected: ui.themeCustomColor != null,
                     isCustom: true,
                     onTap: () async {
+                      // WB_SPEC_256 §3.5：先关闭底部弹层再弹 HSV AppDialog
                       Navigator.pop(ctx);
+                      if (!context.mounted) return;
                       final picked = await showDialog<Color>(
                         context: context,
                         builder: (_) => _HsvPickerDialog(
@@ -1606,8 +1589,9 @@ class _ThemeModeRow extends StatelessWidget {
               selected: {themeMode},
               showSelectedIcon: false,
               style: const ButtonStyle(
-                visualDensity: VisualDensity.compact,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                // WB_SPEC_256 复审优化：SegmentedButton 是按钮控件，按 §5/§10.6
+                // 不得用 compact + shrinkWrap（原两行会把段高压缩到 48dp 命中区以下）；
+                // 去掉后走默认 40dp 视觉高 + padded 48dp 命中区。
                 padding: WidgetStatePropertyAll(
                   EdgeInsets.symmetric(horizontal: 6),
                 ),
@@ -1655,12 +1639,19 @@ String fontLabelOf(String fontId) {
 /// 说明性副标题不再行内平铺，改成标题旁一个 ⓘ 小图标，点开 [showAppInfoDialog]
 /// 看原文。行本身只剩标题 + 控件，回到 QQ 式干净排版。
 class _InfoTitle extends StatelessWidget {
-  const _InfoTitle({required this.title, required this.message});
+  const _InfoTitle({
+    required this.title,
+    required this.message,
+    this.titleColor,
+  });
 
   final String title;
 
   /// 弹窗正文（原副标题说明文字，一字未改）
   final String message;
+
+  /// 可选标题前景色（如破坏性入口行传 error 色）
+  final Color? titleColor;
 
   @override
   Widget build(BuildContext context) {
@@ -1668,7 +1659,10 @@ class _InfoTitle extends StatelessWidget {
       children: [
         // 2.0.7 Taste 化：行标题字重 medium（颜色沿用 ListTile 标题主题色）
         Flexible(
-          child: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+          child: Text(
+            title,
+            style: TextStyle(fontWeight: FontWeight.w500, color: titleColor),
+          ),
         ),
         AppInfoIconButton(
           tooltip: title,
@@ -2338,6 +2332,68 @@ class FontSettingsSectionState extends State<FontSettingsSection> {
     if (mounted) setState(() {});
   }
 
+  /// WB_SPEC_256 §6.4 / §7：合并两处重复的字体操作区，并将「删除所选字体」改为 error 色
+  Widget _buildFontActionBar(
+    BuildContext context,
+    ImportedFont? selectedImported,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Row(
+            children: [
+              OutlinedButton.icon(
+                icon: _importing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.add_circle_outline, size: 18),
+                label: const Text('导入字体文件'),
+                // WB_SPEC_235 跟进 §1-16：导入字体 = 轻点档
+                // 复审 L2：补 enableFeedback: false 防双写
+                style: OutlinedButton.styleFrom(enableFeedback: false),
+                onPressed: _importing
+                    ? null
+                    : () {
+                        AppHaptics.tap();
+                        _importFont();
+                      },
+              ),
+              if (selectedImported != null) ...[
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('删除所选字体'),
+                  // WB_SPEC_256 §6.4：破坏性入口统一使用 error 色前景
+                  style: TextButton.styleFrom(
+                    foregroundColor: scheme.error,
+                    enableFeedback: false,
+                  ),
+                  onPressed: () {
+                    AppHaptics.medium();
+                    _removeFont(selectedImported);
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Text(
+            '从手机里选 TTF / OTF 字体，导入后立即全 App 生效',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      ],
+    );
+  }
+
   /// WB_SPEC_228 §4.3：第 3 层《显示字体》子页内全平铺——线框内字体网格，
   /// 框外只留导入/删除入口与说明。选项点击仍走原 `apply(copyWith(fontId:))`。
   Widget _inlineBody(BuildContext context) {
@@ -2373,53 +2429,7 @@ class FontSettingsSectionState extends State<FontSettingsSection> {
               ),
           ],
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Row(
-            children: [
-              OutlinedButton.icon(
-                icon: _importing
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.add_circle_outline, size: 18),
-                label: const Text('导入字体文件'),
-                // WB_SPEC_235 跟进 §1-16：导入字体 = 轻点档
-                // 复审 L2：补 enableFeedback: false 防双写
-                style: OutlinedButton.styleFrom(enableFeedback: false),
-                onPressed: _importing
-                    ? null
-                    : () {
-                        AppHaptics.tap();
-                        _importFont();
-                      },
-              ),
-              if (selectedImported != null) ...[
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  label: const Text('删除所选字体'),
-                  // WB_SPEC_235 跟进 §1-16 / §2：删除字体 = 中档
-                  // （没有二次确认，只能靠这一下提示份量）
-                  style: TextButton.styleFrom(enableFeedback: false),
-                  onPressed: () {
-                    AppHaptics.medium();
-                    _removeFont(selectedImported);
-                  },
-                ),
-              ],
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-          child: Text(
-            '从手机里选 TTF / OTF 字体，导入后立即全 App 生效',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ),
+        _buildFontActionBar(context, selectedImported),
       ],
     );
   }
@@ -2503,52 +2513,7 @@ class FontSettingsSectionState extends State<FontSettingsSection> {
           ),
           onChanged: (v) => widget.apply(ui.copyWith(fontId: v)),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Row(
-            children: [
-              OutlinedButton.icon(
-                icon: _importing
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.add_circle_outline, size: 18),
-                label: const Text('导入字体文件'),
-                // WB_SPEC_235 跟进 §1-16：导入字体 = 轻点档
-                // 复审 L2：补 enableFeedback: false 防双写
-                style: OutlinedButton.styleFrom(enableFeedback: false),
-                onPressed: _importing
-                    ? null
-                    : () {
-                        AppHaptics.tap();
-                        _importFont();
-                      },
-              ),
-              if (selectedImported != null) ...[
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  label: const Text('删除所选字体'),
-                  // WB_SPEC_235 跟进 §1-16 / §2：删除字体 = 中档
-                  style: TextButton.styleFrom(enableFeedback: false),
-                  onPressed: () {
-                    AppHaptics.medium();
-                    _removeFont(selectedImported);
-                  },
-                ),
-              ],
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-          child: Text(
-            '从手机里选 TTF / OTF 字体，导入后立即全 App 生效',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ),
+        _buildFontActionBar(context, selectedImported),
       ],
     );
   }

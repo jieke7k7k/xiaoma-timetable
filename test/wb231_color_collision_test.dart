@@ -250,7 +250,7 @@ void main() {
 
     await tapColor(tester, 8);
     expect(collisionHintVisible(), isTrue);
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存修改'));
     await drain(tester);
 
     final list = await tester.runAsync<List<Course>>(
@@ -304,7 +304,7 @@ void main() {
     expect(find.text('应用到本课全部 2 个时段'), findsOneWidget);
     expect(tester.takeException(), isNull, reason: '两行叠加不能溢出');
 
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存修改'));
     await drain(tester);
 
     final list = await tester.runAsync<List<Course>>(

@@ -380,16 +380,18 @@ void main() {
       await tester.tap(find.byIcon(Icons.add_outlined));
       await tester.pumpAndSettle();
 
+      // WB_SPEC_256 §3.1：＋ 不再是底部弹层，改为弹出菜单；三项只有标题，无副标题。
       // WB_SPEC_231 第 3.3 节起，空学期的周视图占位里也有一颗「导入课表」按钮，
-      // 所以这三行要限定在 ＋ 弹出的底部表单里断言
-      Finder inSheet(String text) => find.descendant(
-            of: find.byType(BottomSheet),
+      // 所以这三行要限定在 ＋ 弹出的菜单里断言
+      Finder inMenu(String text) => find.descendant(
+            of: find.byType(PopupMenuItem<String>),
             matching: find.text(text),
           );
-      expect(inSheet('手动新建课程'), findsOneWidget);
-      expect(inSheet('导入课表'), findsOneWidget);
-      expect(inSheet('新建课表'), findsOneWidget);
-      expect(inSheet('新建一个学期，建好直接切换'), findsOneWidget);
+      expect(inMenu('手动新建课程'), findsOneWidget);
+      expect(inMenu('导入课表'), findsOneWidget);
+      expect(inMenu('新建课表'), findsOneWidget);
+      expect(find.text('新建一个学期，建好直接切换'), findsNothing,
+          reason: '菜单化后副标题不迁移');
       await settlePendingDbTimers(tester);
     });
 

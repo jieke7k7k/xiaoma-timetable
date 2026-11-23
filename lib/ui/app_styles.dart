@@ -16,6 +16,10 @@ class AppRadii {
  /// 小元素圆角（周次跳转块、快捷按钮等 chip 级元素）
   static const double chip = 10;
 
+  /// 按钮圆角（WB_SPEC_256 §4：与 chip 同值 10dp，但语义分离——
+  /// chip 圆角以后调整时不波及按钮；按钮主题与底部栏样式统一引用它）
+  static const double button = 10;
+
   /// 菜单圆角（WB_SPEC_230 第 3.3 节：三处 ⋮ 菜单与全局 popupMenuTheme 共用）
   ///
   /// 完整梯度：chip=10、card=14、menu=16、sheet=20、dialog=24、logo=28。

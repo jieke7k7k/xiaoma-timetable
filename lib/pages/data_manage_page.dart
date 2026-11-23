@@ -156,12 +156,14 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
       destructive: true,
     );
     if (first != true || !mounted) return;
+    // WB_SPEC_256 §7 / §8：恢复出厂终极确认设为 barrierDismissible: false
     final second = await showAppConfirmDialog(
       context,
       title: '最后确认',
       message: '真的要清空全部数据吗？删除后只能通过备份文件恢复。',
       confirmLabel: '清空全部数据',
       destructive: true,
+      barrierDismissible: false,
     );
     if (second != true || !mounted) return;
     try {
@@ -238,7 +240,8 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
           ),
           ListTile(
             leading: const Icon(Icons.restore_outlined),
-            title: const Text('从备份恢复'),
+            // WB_SPEC_256 §7：「从备份恢复」入口行标题改为 error 色
+            title: Text('从备份恢复', style: TextStyle(color: scheme.error)),
             subtitle: const Text('选择备份 JSON，恢复前会再次确认（覆盖现有数据）'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {

@@ -189,10 +189,10 @@ class _WeekPickerState extends ConsumerState<WeekPicker> {
           ],
         ),
         const SizedBox(height: 12),
-        // 可视化周次点选网格（每行 7 个）
+        // 可视化周次点选网格（WB_SPEC_256 §6.5：spacing / runSpacing 统一 8dp，Wrap 自适应换行）
         Wrap(
-          spacing: 6,
-          runSpacing: 6,
+          spacing: 8,
+          runSpacing: 8,
           children: [
             for (var w = 1; w <= totalWeeks; w++)
               _WeekButton(
@@ -239,10 +239,11 @@ class _QuickButton extends StatelessWidget {
     return OutlinedButton(
       onPressed: onTap,
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size(0, 34),
+        // WB_SPEC_256 §6.5：视觉高由 34dp 升至 36dp，命中区沿用全局 padded 48dp
+        minimumSize: const Size(0, 36),
         padding: const EdgeInsets.symmetric(horizontal: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(17)),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(18)),
         ),
       ),
       child: Text(label, style: const TextStyle(fontSize: 13)),
@@ -268,6 +269,7 @@ class _WeekButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final visualRadius = BorderRadius.circular(AppRadii.chip);
     // 已选/未选外观完全沿用改前（231 定版的 chip 外观，不改成实心主色）
     final chip = Container(
       alignment: Alignment.center,
@@ -276,7 +278,7 @@ class _WeekButton extends StatelessWidget {
             ? colorScheme.primaryContainer
             : colorScheme.surfaceContainerHighest,
         // 周次方块是 chip 级小元素，圆角统一取全局常量
-        borderRadius: BorderRadius.circular(AppRadii.chip),
+        borderRadius: visualRadius,
         border: Border.all(
           color: selected
               ? colorScheme.primary
@@ -293,30 +295,41 @@ class _WeekButton extends StatelessWidget {
         ),
       ),
     );
-    return GestureDetector(
+    // WB_SPEC_256 §6.5：外层 48×48dp Material 命中容器 + 内层 40×40dp 视觉块
+    return SizedBox(
       key: ValueKey('week-chip-$week'),
-      onTap: onTap,
-      // 外层尺寸恒为 38×34、Wrap 间距恒为 6：锚点外圈画在盒子内部（内缩 1.5dp），
-      // 不用 padding/margin 撑大，整行布局不会被顶歪
-      child: SizedBox(
-        width: 38,
-        height: 34,
-        child: anchor
-            ? Container(
-                key: ValueKey('week-anchor-$week'),
-                padding: const EdgeInsets.all(1.5),
-                decoration: BoxDecoration(
-                  // 外圈半径比内芯大 1.5，两圈同心
-                  borderRadius:
-                      BorderRadius.circular(AppRadii.chip + 1.5),
-                  border: Border.all(
-                    color: colorScheme.primary,
-                    width: 1.5,
-                  ),
-                ),
-                child: chip,
-              )
-            : chip,
+      width: 48,
+      height: 48,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          // WB_SPEC_256 复审优化：水波纹铺满 48×48 命中区，圆角按命中区一半
+          // 取 24dp（原 visualRadius 只按 40 视觉块算，波纹会超出视觉块）。
+          borderRadius: BorderRadius.circular(24),
+          onTap: onTap,
+          child: Center(
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: anchor
+                  ? Container(
+                      key: ValueKey('week-anchor-$week'),
+                      padding: const EdgeInsets.all(1.5),
+                      decoration: BoxDecoration(
+                        // 外圈半径比内芯大 1.5，两圈同心
+                        borderRadius:
+                            BorderRadius.circular(AppRadii.chip + 1.5),
+                        border: Border.all(
+                          color: colorScheme.primary,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: chip,
+                    )
+                  : chip,
+            ),
+          ),
+        ),
       ),
     );
   }

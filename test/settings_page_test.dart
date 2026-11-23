@@ -11,14 +11,17 @@ import 'package:xiaoma_timetable/utils/route_observer.dart';
 /// 设置首页测试（2.1.7，WB_SPEC_218 第 ④ 节重组为三大分组）。
 ///
 /// 2.1.7 起设置首页按 Argon 方案从「9 个分类行 + 更多工具平铺」收拢为
-/// 「3 大分组 + AppBar ⋮ 更多菜单」，断言：
+/// 「3 大分组」，WB_SPEC_256 §3.2 起顶栏单项 ⋮ 菜单移除，
+/// 「关于小马课表」下沉为「数据与安全」组最底部的标准入口行，断言：
 /// 1. 三个分组标题齐全（课表与学期 / 展示与桌面 / 数据与安全）；
-/// 2. 七个入口行齐全（当前学期与周次、课表工具箱、节次时间设置、外观与底栏、
-///    桌面小组件、上课提醒、数据备份与换机）；
+/// 2. 九个入口行齐全（当前学期与周次、课表工具箱、节次时间设置、外观与底栏、
+///    桌面小组件、上课提醒、数据备份与换机、权限自检、关于小马课表）；
 /// 3. 首页**不存在** Switch / Slider（开关只在子页，首页不放开关）；
 /// 4. 入口集合：WB_SPEC_219 前为 6 行，现于「课表与学期」组追加节次时间设置
-///    共 7 行；不再有「菜单管理」「权限」「关于」独立入口行，
-///    也没有「更多工具」平铺——它们分别并入课表工具箱 / ⋮ 更多菜单。
+///    共 7 行；WB_SPEC_228 §8 再把权限自检移入，共 8 行；
+///    WB_SPEC_256 §3.2 再把关于下沉为底部入口行，共 9 行。
+///    不再有「菜单管理」独立入口行，也没有「更多工具」平铺——它们分别并入
+///    课表工具箱；顶栏不再有 ⋮ 更多菜单。
 void main() {
   setUpAll(() {
     sqfliteFfiInit();
@@ -58,7 +61,7 @@ void main() {
     }
   }
 
-  testWidgets('设置首页：三大分组 + 六入口齐全 + 无 Switch/Slider', (tester) async {
+  testWidgets('设置首页：三大分组 + 九入口齐全 + 无 Switch/Slider', (tester) async {
     await pumpPage(tester);
 
     // 三个分组标题（2.1.7 定版）
@@ -67,7 +70,8 @@ void main() {
       expect(find.text(g), findsOneWidget, reason: '分组「$g」应出现在设置首页');
     }
 
-    // 八个入口行标题（WB_SPEC_228 §8 追加权限自检）
+    // 九个入口行标题（WB_SPEC_228 §8 追加权限自检；
+    // WB_SPEC_256 §3.2 再把关于下沉为「数据与安全」组底部入口行）
     const entries = [
       '当前学期与周次',
       '课表工具箱',
@@ -77,14 +81,16 @@ void main() {
       '上课提醒',
       '数据备份与换机',
       '权限自检',
+      '关于小马课表',
     ];
     for (final e in entries) {
       expect(find.text(e), findsOneWidget, reason: '入口「$e」应出现在设置首页');
     }
 
     // 2.1.7 三大分组与入口行不动；WB_SPEC_219 在「课表与学期」组追加
-    // 「节次时间设置」一行；WB_SPEC_228 §8 再把权限自检移入，共 8 行。
-    expect(find.byType(ListTile), findsNWidgets(8));
+    // 「节次时间设置」一行；WB_SPEC_228 §8 再把权限自检移入，共 8 行；
+    // WB_SPEC_256 §3.2 再把关于下沉为底部入口行，共 9 行。
+    expect(find.byType(ListTile), findsNWidgets(9));
 
     // 首页不出现任何开关 / 滑杆（开关只在子页）
     expect(find.byType(Switch), findsNothing);
@@ -95,6 +101,7 @@ void main() {
     expect(find.text('搜索、空闲时段、考试倒计时'), findsOneWidget);
     expect(find.text('今日课程小组件的添加说明'), findsOneWidget);
     expect(find.text('本地导出、恢复与换机迁移（纯本地存储）'), findsOneWidget);
+    expect(find.text('版本信息、检查更新、公告与使用帮助'), findsOneWidget);
   });
 
   testWidgets('节次时间设置入口从外观页移入设置首页「课表与学期」组（WB_SPEC_219）', (tester) async {
@@ -118,71 +125,27 @@ void main() {
     expect(find.text('课表工具箱'), findsOneWidget);
   });
 
-  testWidgets('设置首页：权限自检移入「数据与安全」组，⋮ 只留关于（WB_SPEC_228 §8）',
+  testWidgets('设置首页：权限自检移入「数据与安全」组，关于下沉为底部入口行（WB_SPEC_256 §3.2）',
       (tester) async {
     await pumpPage(tester);
 
-    // 权限自检现在是首页第 8 行入口，菜单里不再有它
+    // 权限自检仍是首页入口行；「关于小马课表」不再藏在 ⋮ 菜单里，
+    // 而是「数据与安全」组最底部的标准入口行
     expect(find.text('权限自检'), findsOneWidget);
-    expect(find.text('关于小马课表'), findsNothing);
+    expect(find.text('关于小马课表'), findsOneWidget);
+    expect(find.byIcon(Icons.more_vert), findsNothing,
+        reason: '顶栏单项 ⋮ 菜单已移除，不应再有 more_vert');
 
-    await tester.tap(find.byIcon(Icons.more_vert));
-    await tester.pumpAndSettle();
-    expect(find.byType(PopupMenuItem<String>), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byType(PopupMenuItem<String>),
-        matching: find.text('关于小马课表'),
-      ),
-      findsOneWidget,
-    );
+    // 位置：关于在权限自检下方，是本组最后一行
+    final yPerm = tester.getTopLeft(find.text('权限自检')).dy;
+    final yAbout = tester.getTopLeft(find.text('关于小马课表')).dy;
+    expect(yAbout, greaterThan(yPerm), reason: '关于应在权限自检下方');
+    expect(find.text('版本信息、检查更新、公告与使用帮助'), findsOneWidget);
   });
 
-  testWidgets('⋮ 菜单：打开后不盖住顶栏（复查 Bug 2）', (tester) async {
-    // 用生产同款顶栏高度 48 泵设置页（裸 MaterialApp 默认是 56，会掩盖问题）
-    tester.view.physicalSize = const Size(800, 1600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.runAsync(() async {
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            theme: ThemeData(
-              appBarTheme: const AppBarTheme(toolbarHeight: 48),
-            ),
-            home: const SettingsPage(),
-          ),
-        ),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 600));
-    });
-    for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-
-    await tester.tap(find.byIcon(Icons.more_vert));
-    await tester.pumpAndSettle();
-
-    // 菜单第一项顶部：菜单有 8dp 上内边距，第一项顶 ≥ 56 即菜单顶 ≥ 顶栏底 48
-    final firstItemTop =
-        tester.getTopLeft(find.byType(PopupMenuItem<String>).first).dy;
-    expect(firstItemTop, greaterThanOrEqualTo(56),
-        reason: '菜单顶应落在顶栏底（48）之下，不能盖住顶栏');
-    // 也不能离顶栏太远：菜单顶 ≤ 64（第一项顶 ≤ 72）
-    expect(firstItemTop, lessThan(72), reason: '菜单应紧贴顶栏下方，不要留大空隙');
-
-    // WB_SPEC_230 第 3.1 节：圆角 16、米白底、阴影已收进 main.dart 的全局
-    // popupMenuTheme，顶栏菜单不再自带外壳参数，只留 offset 负责定位；
-    // 三处 ⋮ 菜单因此长得一模一样（这里锁住「不自带外壳」这个架构约束）。
-    final menu = tester.widget<PopupMenuButton<String>>(
-      find.byType(PopupMenuButton<String>),
-    );
-    expect(menu.shape, isNull, reason: '外壳应由全局 popupMenuTheme 提供');
-    expect(menu.color, isNull, reason: '底色应由全局 popupMenuTheme 提供');
-    expect(menu.elevation, isNull, reason: '阴影应由全局 popupMenuTheme 提供');
-    expect(menu.offset.dx, -8);
-    expect(menu.offset.dy, 48);
-  });
+  // WB_SPEC_256 §3.2：设置页顶栏单项 ⋮ 菜单已移除，「⋮ 菜单：打开后不盖住顶栏
+  // （复查 Bug 2）」测试随之删除——菜单不存在了，定位约束无从谈起。
+  // popupMenuTheme 全局外壳约束仍由主页与学期行菜单的测试覆盖。
 
   group('上课提醒徽标三态（复查 Bug 3/7）', () {
     late _FakeReminderNotifier fake;

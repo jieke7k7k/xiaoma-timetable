@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../services/apk_download_service.dart';
+import 'app_dialog.dart';
 
 enum _DownloadPhase { idle, downloading, needPermission, readyToInstall, failed }
 
@@ -164,10 +165,11 @@ class _UpdateDownloadDialogState extends State<UpdateDownloadDialog>
 
     // WB_SPEC_252 §2：下载中拦截返回键，防误触把下载变成孤儿任务；
     // 外层 showDialog 已 barrierDismissible: false，点弹窗外同样关不掉。
+    // WB_SPEC_256 §7：外壳改用 AppDialog，底部按钮全部改用 AppDialogAction。
     return PopScope(
       canPop: _phase != _DownloadPhase.downloading,
-      child: AlertDialog(
-        title: Text('发现新版本 ${widget.version}'),
+      child: AppDialog(
+        title: '发现新版本 ${widget.version}',
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,68 +244,72 @@ class _UpdateDownloadDialogState extends State<UpdateDownloadDialog>
     switch (_phase) {
       case _DownloadPhase.idle:
         return [
-          TextButton(
+          AppDialogAction(
+            label: '稍后再说',
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('稍后再说'),
           ),
           if (widget.releaseUrl != null && widget.onOpenReleaseNotes != null)
-            TextButton(
+            AppDialogAction(
+              label: '更新说明',
               onPressed: widget.onOpenReleaseNotes,
-              child: const Text('更新说明'),
             ),
-          FilledButton(
+          AppDialogAction(
+            label: '去下载',
+            primary: true,
             onPressed: _startDownload,
-            child: const Text('去下载'),
           ),
         ];
 
       case _DownloadPhase.downloading:
         return [
-          TextButton(
+          AppDialogAction(
+            label: '取消下载',
             onPressed: _cancelDownload,
-            child: const Text('取消下载'),
           ),
         ];
 
       case _DownloadPhase.needPermission:
         return [
-          TextButton(
+          AppDialogAction(
+            label: '关闭',
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
           ),
-          TextButton(
+          AppDialogAction(
+            label: '去授权',
             onPressed: () async {
               await _service.openUnknownSourcesSettings();
             },
-            child: const Text('去授权'),
           ),
-          FilledButton(
+          AppDialogAction(
+            label: '立即安装',
+            primary: true,
             onPressed: _triggerInstall,
-            child: const Text('立即安装'),
           ),
         ];
 
       case _DownloadPhase.readyToInstall:
         return [
-          TextButton(
+          AppDialogAction(
+            label: '关闭',
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
           ),
-          FilledButton(
+          AppDialogAction(
+            label: '重新调起安装',
+            primary: true,
             onPressed: _triggerInstall,
-            child: const Text('重新调起安装'),
           ),
         ];
 
       case _DownloadPhase.failed:
         return [
-          TextButton(
+          AppDialogAction(
+            label: '关闭',
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
           ),
-          FilledButton(
+          AppDialogAction(
+            label: '重试',
+            primary: true,
             onPressed: _startDownload,
-            child: const Text('重试'),
           ),
         ];
     }

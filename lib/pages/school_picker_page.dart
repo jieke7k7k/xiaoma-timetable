@@ -5,6 +5,7 @@ import '../services/school_catalog_service.dart';
 import '../utils/school_sections.dart';
 import '../utils/term_start_date_helper.dart';
 import '../utils/web_schedule_parser.dart';
+import '../widgets/app_dialog.dart';
 import 'web_import_page.dart';
 
 /// 选校器 → WebImportPage 链式回传给 ImportPage 的聚合结果
@@ -159,6 +160,7 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
   }
 
   /// §9：选学校后先确认开学日期（默认秋季取 9 月 1 日所在周周一，春季取 3 月 1 日所在周周一）
+  /// WB_SPEC_256 §3.4 / §7：迁移至 AppDialog + AppDialogAction
   Future<DateTime?> _showConfirmStartDateDialog() async {
     DateTime selected = TermStartDateHelper.defaultStartDateFor(DateTime.now());
 
@@ -170,8 +172,8 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
             final dateText =
                 '${selected.year}-${selected.month.toString().padLeft(2, '0')}-${selected.day.toString().padLeft(2, '0')}';
 
-            return AlertDialog(
-              title: const Text('确认本学期开学日期'),
+            return AppDialog(
+              title: '确认本学期开学日期',
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -227,13 +229,14 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
                 ],
               ),
               actions: [
-                TextButton(
+                AppDialogAction(
+                  label: '取消',
                   onPressed: () => Navigator.of(dialogContext).pop(null),
-                  child: const Text('取消'),
                 ),
-                FilledButton(
+                AppDialogAction(
+                  label: '下一步',
+                  primary: true,
                   onPressed: () => Navigator.of(dialogContext).pop(selected),
-                  child: const Text('下一步'),
                 ),
               ],
             );

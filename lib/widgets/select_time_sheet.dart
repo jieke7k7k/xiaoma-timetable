@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../main.dart';
 import '../models/course.dart';
 import '../models/time_slot.dart';
 import '../providers/providers.dart';
@@ -208,7 +209,6 @@ class _SelectTimeSheetState extends ConsumerState<_SelectTimeSheet> {
                 ),
                 // 轻量周次切换器：只翻「看哪一周」，不影响回填
                 IconButton(
-                  visualDensity: VisualDensity.compact,
                   // WB_SPEC_235 §7：翻周 = 轻点档
                   onPressed: _week > 1
                       ? () {
@@ -221,7 +221,6 @@ class _SelectTimeSheetState extends ConsumerState<_SelectTimeSheet> {
                 ),
                 Text('第 $_week 周', style: const TextStyle(fontSize: 13)),
                 IconButton(
-                  visualDensity: VisualDensity.compact,
                   onPressed: _week < totalWeeks
                       ? () {
                           AppHaptics.tap();
@@ -410,6 +409,12 @@ class _SelectTimeSheetState extends ConsumerState<_SelectTimeSheet> {
                   ),
                   const SizedBox(width: AppSpacing.s),
                   FilledButton(
+                    // WB_SPEC_256 §6.3：底部操作栏确认按钮升至 48dp 高
+                    style: appBottomBarFilledButtonStyle().copyWith(
+                      minimumSize: const WidgetStatePropertyAll(
+                        Size(0, kBottomBarButtonHeight),
+                      ),
+                    ),
                     // WB_SPEC_235 §7：确认选定 = 轻点档
                     onPressed: () {
                       AppHaptics.tap();

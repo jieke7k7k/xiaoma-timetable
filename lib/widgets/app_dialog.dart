@@ -276,7 +276,6 @@ class AppInfoIconButton extends StatelessWidget {
       tooltip: tooltip,
       icon: const Icon(Icons.info_outline),
       iconSize: 18,
-      visualDensity: VisualDensity.compact,
       color: Theme.of(context).colorScheme.outline,
     );
   }

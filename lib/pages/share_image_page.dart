@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../main.dart';
 import '../models/course.dart';
 import '../models/semester.dart';
 import '../models/time_slot.dart';
@@ -353,13 +354,15 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
         child: Padding(
           padding: const EdgeInsets.all(12),
           // WB_SPEC_243 §2：保存到本地 + 分享图片双按钮，共用同一份渲染字节。
-          // WB_SPEC_235 跟进 §1-16：主按钮 = 轻点档。
+          // WB_SPEC_256 §6.3 / §7：底部操作栏双按钮统一升至 48dp 高。
           child: Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
                   key: const ValueKey<String>('btn_save_week_png'),
-                  style: OutlinedButton.styleFrom(enableFeedback: false),
+                  style: appBottomBarOutlinedButtonStyle().copyWith(
+                    enableFeedback: false,
+                  ),
                   onPressed: (_saving || _sharing)
                       ? null
                       : () {
@@ -380,7 +383,9 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
               Expanded(
                 child: FilledButton.icon(
                   key: const ValueKey<String>('btn_share_week_png'),
-                  style: FilledButton.styleFrom(enableFeedback: false),
+                  style: appBottomBarFilledButtonStyle().copyWith(
+                    enableFeedback: false,
+                  ),
                   onPressed: (_sharing || _saving)
                       ? null
                       : () {

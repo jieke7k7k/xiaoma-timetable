@@ -329,14 +329,13 @@ void main() {
       }
     });
 
-    testWidgets('权限自检移入首页数据与安全组（data），⋮ 只留关于（system）',
+    testWidgets('权限自检移入首页数据与安全组（data），关于下沉为底部入口行（system）',
         (tester) async {
       await pumpPage(tester, const SettingsPage());
       expect(categoryOfRow(tester, '权限自检'), SettingsIconCategory.data);
-      await tester.tap(find.byIcon(Icons.more_vert));
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(find.byType(PopupMenuItem<String>), findsOneWidget);
+      // WB_SPEC_256 §3.2：顶栏 ⋮ 菜单已移除，「关于小马课表」是首页底部入口行
+      expect(find.byIcon(Icons.more_vert), findsNothing,
+          reason: '顶栏单项 ⋮ 菜单已移除');
       expect(categoryOfRow(tester, '关于小马课表'),
           SettingsIconCategory.system);
     });

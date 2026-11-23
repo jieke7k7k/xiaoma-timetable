@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../main.dart';
 import '../models/course.dart';
 import '../utils/app_haptics.dart';
 import '../utils/conflict_detector.dart';
@@ -67,10 +68,9 @@ class _ImportConflictsPageState extends State<ImportConflictsPage> {
                   child: Wrap(
                     spacing: 8,
                     children: [
-                      // WB_SPEC_235 跟进 §1-12 / §2：三个「全部设为」是批量
-                      // **选择**，不是导航 → select 档
-                      OutlinedButton(
-                        style: OutlinedButton.styleFrom(
+                      // WB_SPEC_256 §6.5 / §7：顶部 3 个批量按钮降级为 TextButton
+                      TextButton(
+                        style: TextButton.styleFrom(
                           enableFeedback: false,
                         ),
                         onPressed: () {
@@ -79,8 +79,8 @@ class _ImportConflictsPageState extends State<ImportConflictsPage> {
                         },
                         child: const Text('全部跳过'),
                       ),
-                      OutlinedButton(
-                        style: OutlinedButton.styleFrom(
+                      TextButton(
+                        style: TextButton.styleFrom(
                           enableFeedback: false,
                         ),
                         onPressed: () {
@@ -89,8 +89,8 @@ class _ImportConflictsPageState extends State<ImportConflictsPage> {
                         },
                         child: const Text('全部覆盖'),
                       ),
-                      OutlinedButton(
-                        style: OutlinedButton.styleFrom(
+                      TextButton(
+                        style: TextButton.styleFrom(
                           enableFeedback: false,
                         ),
                         onPressed: () {
@@ -123,10 +123,11 @@ class _ImportConflictsPageState extends State<ImportConflictsPage> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(12),
-          // WB_SPEC_235 跟进 §1-12 / §2：主按钮「按此处理并导入」= 落库类
-          // 动作（保存语义）→ medium 档
+          // WB_SPEC_256 §6.3 / §7：底部主按钮「按此处理并导入」升至 48dp 高
           child: FilledButton.icon(
-            style: FilledButton.styleFrom(enableFeedback: false),
+            style: appBottomBarFilledButtonStyle().copyWith(
+              enableFeedback: false,
+            ),
             onPressed: () {
               AppHaptics.medium();
               Navigator.pop(context, _choices);
@@ -228,3 +229,4 @@ class _ImportConflictsPageState extends State<ImportConflictsPage> {
     );
   }
 }
+

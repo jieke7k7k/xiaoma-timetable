@@ -54,6 +54,62 @@ import 'ui/page_transitions.dart';
 /// 只保留最近一条，值为「时间 + 摘要」，供用户反馈/自查时查看。
 const String kLastErrorLogKey = 'last_error_log';
 
+/// WB_SPEC_256 §4 / §5：页面与底部弹层底部操作栏按钮统一高度（48dp）。
+const double kBottomBarButtonHeight = 48.0;
+
+/// WB_SPEC_256 §4 / §5：底部操作栏主按钮统一样式（48dp 高、统一圆角与 48dp 命中区）。
+ButtonStyle appBottomBarFilledButtonStyle({EdgeInsetsGeometry? padding}) =>
+    FilledButton.styleFrom(
+      minimumSize: const Size.fromHeight(kBottomBarButtonHeight),
+      tapTargetSize: MaterialTapTargetSize.padded,
+      padding: padding,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadii.button),
+      ),
+    );
+
+/// WB_SPEC_256 §4 / §5：底部操作栏次按钮统一样式（48dp 高、统一圆角与 48dp 命中区）。
+ButtonStyle appBottomBarOutlinedButtonStyle({EdgeInsetsGeometry? padding}) =>
+    OutlinedButton.styleFrom(
+      minimumSize: const Size.fromHeight(kBottomBarButtonHeight),
+      tapTargetSize: MaterialTapTargetSize.padded,
+      padding: padding,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadii.button),
+      ),
+    );
+
+/// WB_SPEC_256 §4：全局按钮默认主题（视觉高 40dp、命中区 padded 48dp、统一圆角）。
+FilledButtonThemeData _appFilledButtonTheme() => FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(64, 40),
+        tapTargetSize: MaterialTapTargetSize.padded,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadii.button),
+        ),
+      ),
+    );
+
+OutlinedButtonThemeData _appOutlinedButtonTheme() => OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(64, 40),
+        tapTargetSize: MaterialTapTargetSize.padded,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadii.button),
+        ),
+      ),
+    );
+
+TextButtonThemeData _appTextButtonTheme() => TextButtonThemeData(
+      style: TextButton.styleFrom(
+        minimumSize: const Size(64, 40),
+        tapTargetSize: MaterialTapTargetSize.padded,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadii.button),
+        ),
+      ),
+    );
+
 void main() {
   // 全局异常兜底（1.3.1）：整个启动流程包进 zone——框架层错误（构建/布局/绘制）
   // 由 FlutterError.onError 接住，zone 内未捕获的异步异常由第二个回调接住，
@@ -362,6 +418,10 @@ class SimpleTimetableApp extends ConsumerWidget {
         // WB_SPEC_231 第 11 节：边框换成 CleanGapOutlineInputBorder——
         // 标签浮起时缺口处补双色衬底，横线不再从字中间穿过（详见该类注释）。
         inputDecorationTheme: _gapInputDecorationTheme(colorScheme),
+        // WB_SPEC_256 §4：全局按钮主题（默认高 40dp、padded 48dp 命中区、统一圆角）
+        filledButtonTheme: _appFilledButtonTheme(),
+        outlinedButtonTheme: _appOutlinedButtonTheme(),
+        textButtonTheme: _appTextButtonTheme(),
         bottomSheetTheme: const BottomSheetThemeData(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(
@@ -414,6 +474,10 @@ class SimpleTimetableApp extends ConsumerWidget {
         // WB_SPEC_231 第 11 节：深色同样换 CleanGapOutlineInputBorder，
         // 衬底两色取深色方案（留空段不画线，字仍可读）。
         inputDecorationTheme: _gapInputDecorationTheme(darkColorScheme),
+        // WB_SPEC_256 §4：全局按钮主题（深色同口径）
+        filledButtonTheme: _appFilledButtonTheme(),
+        outlinedButtonTheme: _appOutlinedButtonTheme(),
+        textButtonTheme: _appTextButtonTheme(),
         bottomSheetTheme: const BottomSheetThemeData(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(

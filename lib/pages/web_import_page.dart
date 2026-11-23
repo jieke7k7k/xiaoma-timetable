@@ -379,9 +379,9 @@ class _WebImportPageState extends State<WebImportPage> {
                       _runAction(action);
                     },
                     style: TextButton.styleFrom(
+                      // WB_SPEC_256 §6.5 / §7：移除 visualDensity.compact，视觉高由 32dp 升至 36dp
                       enableFeedback: false,
-                      visualDensity: VisualDensity.compact,
-                      minimumSize: const Size(0, 32),
+                      minimumSize: const Size(0, 36),
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                     ),
                     child: Text(

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../database/dao.dart';
+import '../main.dart';
 import '../models/course.dart';
 import '../models/semester.dart';
 import '../models/time_slot.dart';
@@ -481,11 +482,12 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
     );
     if (!compare.hasDifference || !mounted) return;
 
+    // WB_SPEC_256 §3.4 / §7：迁移至 AppDialog + AppDialogAction
     final shouldApply = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('发现作息时间不同'),
+        return AppDialog(
+          title: '发现作息时间不同',
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -512,13 +514,14 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
             ),
           ),
           actions: [
-            TextButton(
+            AppDialogAction(
+              label: '保持不变',
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('保持不变'),
             ),
-            FilledButton(
+            AppDialogAction(
+              label: '切换为该校作息',
+              primary: true,
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('切换为该校作息'),
             ),
           ],
         );
@@ -604,6 +607,7 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
     );
     DateTime pickedDate = suggested;
 
+    // WB_SPEC_256 §3.4 / §7：迁移至 AppDialog + AppDialogAction
     final finalDate = await showDialog<DateTime>(
       context: context,
       builder: (dialogContext) {
@@ -612,8 +616,8 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
             final fmt = (DateTime d) =>
                 '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-            return AlertDialog(
-              title: const Text('当前周数不一致'),
+            return AppDialog(
+              title: '当前周数不一致',
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -669,13 +673,14 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
                 ],
               ),
               actions: [
-                TextButton(
+                AppDialogAction(
+                  label: '仍用原日期',
                   onPressed: () => Navigator.of(dialogContext).pop(confirmed),
-                  child: const Text('仍用原日期'),
                 ),
-                FilledButton(
+                AppDialogAction(
+                  label: '采用此开学日期',
+                  primary: true,
                   onPressed: () => Navigator.of(dialogContext).pop(pickedDate),
-                  child: const Text('采用此开学日期'),
                 ),
               ],
             );
@@ -1078,8 +1083,10 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    // WB_SPEC_235 跟进：手动补录 = 轻点档
-                    style: OutlinedButton.styleFrom(enableFeedback: false),
+                    // WB_SPEC_256 §6.3 / §7：底部操作栏「手动补录」升至 48dp 高
+                    style: appBottomBarOutlinedButtonStyle().copyWith(
+                      enableFeedback: false,
+                    ),
                     onPressed: _importing
                         ? null
                         : () {
@@ -1094,8 +1101,10 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
                 Expanded(
                   flex: 2,
                   child: FilledButton.icon(
-                    // WB_SPEC_235 跟进 §2：一键导入 = 落库类动作 → 中档
-                    style: FilledButton.styleFrom(enableFeedback: false),
+                    // WB_SPEC_256 §6.3 / §7：底部操作栏「确认导入」升至 48dp 高
+                    style: appBottomBarFilledButtonStyle().copyWith(
+                      enableFeedback: false,
+                    ),
                     onPressed: _importing
                         ? null
                         : () {
@@ -1159,6 +1168,8 @@ class _DraftCard extends StatelessWidget {
         ),
         trailing: IconButton(
           icon: const Icon(Icons.close, size: 20),
+          // WB_SPEC_256 §6.4 / §7：行尾删除图标改为 error 色并保留中文 tooltip
+          color: Theme.of(context).colorScheme.error,
           tooltip: '删除此条',
           // WB_SPEC_235 §7：删除待导入条目 = 轻点档
           onPressed: () {
@@ -1176,3 +1187,4 @@ class _DraftCard extends StatelessWidget {
     );
   }
 }
+

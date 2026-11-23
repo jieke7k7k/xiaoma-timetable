@@ -194,7 +194,7 @@ void main() {
       await tester.pump();
       expect(find.byKey(const ValueKey('weeks-sync-all')), findsOneWidget);
 
-      await tester.tap(find.text('保存'));
+      await tester.tap(find.text('保存修改'));
       await drain(tester);
 
       final list = await allCourses(tester);
@@ -220,7 +220,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('weeks-sync-current')));
       await tester.pump();
-      await tester.tap(find.text('保存'));
+      await tester.tap(find.text('保存修改'));
       await drain(tester);
 
       final list = await allCourses(tester);

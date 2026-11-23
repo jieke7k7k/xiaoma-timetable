@@ -331,69 +331,50 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
     _jumpToWeek(WeekCalc.clampForPage(todayWeek, totalWeeks));
   }
 
-  /// 新建方式选择：手动新建课程 / 导入课表（ICS / 图片 OCR / PDF）
-  ///
-  /// 2.0.0：原先是底栏中间的「新建」页签，底栏改成「AI / 主页 / 设置」三键后
-  /// 挪到主页右上角（+ 按钮），内容与原来逐字一致。
-  void _showCreateSheet() {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            ListTile(
-              // WB_SPEC_230 第 7 节 b：leading 换语义色底块，行高/副标题/去向不动
-              leading: const SettingsIconBox(
-                icon: Icons.edit_outlined,
-                category: SettingsIconCategory.schedule,
-              ),
-              title: const Text('手动新建课程'),
-              subtitle: const Text('逐项填写课程信息'),
-              // WB_SPEC_235 跟进：长按菜单行 = 轻点档
-              onTap: () {
-                AppHaptics.tap();
-                Navigator.pop(ctx);
-                Navigator.pushNamed(context, '/course-edit');
-              },
-              enableFeedback: false,
-            ),
-            ListTile(
-              leading: const SettingsIconBox(
-                icon: Icons.upload_file_outlined,
-                category: SettingsIconCategory.data,
-              ),
-              title: const Text('导入课表'),
-              subtitle: const Text('ICS / 图片 OCR / PDF，支持冲突检测'),
-              // WB_SPEC_235 跟进：长按菜单行 = 轻点档
-              onTap: () {
-                AppHaptics.tap();
-                Navigator.pop(ctx);
-                Navigator.pushNamed(context, '/import');
-              },
-              enableFeedback: false,
-            ),
-            // WB_SPEC_224：不用再绕到学期管理里新建——这里直接建一个学期并切过去
-            ListTile(
-              leading: const SettingsIconBox(
-                icon: Icons.event_available_outlined,
-                category: SettingsIconCategory.appearance,
-              ),
-              title: const Text('新建课表'),
-              subtitle: const Text('新建一个学期，建好直接切换'),
-              // WB_SPEC_235 跟进：长按菜单行 = 轻点档
-              onTap: () {
-                AppHaptics.tap();
-                Navigator.pop(ctx);
-                _createSemesterFromMenu();
-              },
-              enableFeedback: false,
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
+  /// 右上角「新建或导入」弹出菜单（WB_SPEC_256 §3.1）：
+  /// 与相邻 ⋮ 菜单统一形态（PopupMenuButton + buildAppPopupMenuItem），
+  /// 仅保留标题与图标（不迁移旧弹层三行副标题）。
+  Widget _buildCreateMenu(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: '新建或导入',
+      icon: const Icon(Icons.add_outlined),
+      offset: const Offset(-8, 48),
+      onOpened: AppHaptics.tap,
+      enableFeedback: false,
+      popUpAnimationStyle: const AnimationStyle(
+        duration: Duration(milliseconds: 180),
       ),
+      onSelected: (action) {
+        // WB_SPEC_256 复审优化：选中项补触感（原只有 onOpened 有，选中无）。
+        AppHaptics.tap();
+        if (action == 'course-edit') {
+          Navigator.pushNamed(context, '/course-edit');
+        } else if (action == 'import') {
+          Navigator.pushNamed(context, '/import');
+        } else if (action == 'new-semester') {
+          _createSemesterFromMenu();
+        }
+      },
+      itemBuilder: (ctx) => [
+        buildAppPopupMenuItem<String>(
+          value: 'course-edit',
+          icon: Icons.edit_outlined,
+          category: SettingsIconCategory.schedule,
+          title: '手动新建课程',
+        ),
+        buildAppPopupMenuItem<String>(
+          value: 'import',
+          icon: Icons.upload_file_outlined,
+          category: SettingsIconCategory.data,
+          title: '导入课表',
+        ),
+        buildAppPopupMenuItem<String>(
+          value: 'new-semester',
+          icon: Icons.event_available_outlined,
+          category: SettingsIconCategory.appearance,
+          title: '新建课表',
+        ),
+      ],
     );
   }
 
@@ -866,19 +847,21 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
                 });
               },
             ),
-          // 「新建」入口（2.0.0）：底栏三键改版后，原来的「新建」页签挪到这里。
-          // 点开就是原来那套新建方式选择（手动填 / 导入课表），与编辑模式无关——
-          // 这两条都是完整的表单页流程，不需要先开编辑模式。
-          // WB_SPEC_223：跳转条展开时这一下只收起，不弹新建表。
-          IconButton(
-            icon: const Icon(Icons.add_outlined),
-            onPressed: () {
-              if (_guardJumper()) return;
-              // WB_SPEC_235 §7：新建入口（+）= 轻点档
-              AppHaptics.tap();
-              _showCreateSheet();
-            },
-          ),
+          // 「新建」入口（WB_SPEC_256 §3.1）：改为 PopupMenuButton + tooltip，
+          // 与相邻 ⋮ 菜单统一形态；跳转条展开时仍只负责收起。
+          if (jumperOpen)
+            IconButton(
+              // WB_SPEC_256 复审优化：跳转条展开时 + 号只收起跳转条，
+              // tooltip 改为「收起」，避免误导（原「新建或导入」名不副实）。
+              tooltip: '收起',
+              icon: const Icon(Icons.add_outlined),
+              onPressed: () {
+                AppHaptics.tap();
+                _closeJumper();
+              },
+            )
+          else
+            _buildCreateMenu(context),
           // 「更多」菜单（2.1.0 WB_SPEC_212 第 2/4 节；2.1.2 WB_SPEC_213 第 4 节）：
           // 按菜单配置动态生成，可见项在前、固定「设置」殿后但永远被过滤；
           // 六项工具全关时去重后为空，触发「更多工具」兜底——弹菜单列全部六项
@@ -2958,7 +2941,11 @@ class _ExportBottomSheetContentState
       courses = await ref.read(coursesProvider.future);
     } catch (e) {
       if (!mounted) return;
-      showAppInfoDialog(context, title: '导出失败', message: '$e');
+      // WB_SPEC_256 §3.5：先关闭底部弹层再弹出错误 AppDialog
+      Navigator.pop(context);
+      if (widget.parentContext.mounted) {
+        showAppInfoDialog(widget.parentContext, title: '导出失败', message: '$e');
+      }
       return;
     }
     if (courses.isEmpty) {
@@ -2998,13 +2985,17 @@ class _ExportBottomSheetContentState
     } catch (e) {
       if (popped) {
         // 分享阶段失败：sheet 已收起，用外层 context 弹失败弹窗。
-        showAppInfoDialog(widget.parentContext, title: '导出失败', message: '$e');
+        if (widget.parentContext.mounted) {
+          showAppInfoDialog(widget.parentContext, title: '导出失败', message: '$e');
+        }
         return;
       }
       if (!mounted) return;
-      setState(() => _exportingSemester = false);
-      // 生成阶段失败：sheet 还开着，就地弹失败弹窗（可重试）。
-      showAppInfoDialog(context, title: '导出失败', message: '$e');
+      // WB_SPEC_256 §3.5：生成阶段失败同样先关闭底部弹层再弹出错误 AppDialog
+      Navigator.pop(context);
+      if (widget.parentContext.mounted) {
+        showAppInfoDialog(widget.parentContext, title: '导出失败', message: '$e');
+      }
     }
   }
 
@@ -3017,7 +3008,11 @@ class _ExportBottomSheetContentState
       courses = await ref.read(coursesProvider.future);
     } catch (e) {
       if (!mounted) return;
-      showAppInfoDialog(context, title: '保存失败', message: '$e');
+      // WB_SPEC_256 §3.5：先关闭底部弹层再弹出错误 AppDialog
+      Navigator.pop(context);
+      if (widget.parentContext.mounted) {
+        showAppInfoDialog(widget.parentContext, title: '保存失败', message: '$e');
+      }
       return;
     }
     if (courses.isEmpty) {
@@ -3044,13 +3039,17 @@ class _ExportBottomSheetContentState
     } catch (e) {
       if (popped) {
         // 保存阶段失败：sheet 已收起，用外层 context 弹失败弹窗。
-        showAppInfoDialog(widget.parentContext, title: '保存失败', message: '$e');
+        if (widget.parentContext.mounted) {
+          showAppInfoDialog(widget.parentContext, title: '保存失败', message: '$e');
+        }
         return;
       }
       if (!mounted) return;
-      setState(() => _savingSemester = false);
-      // 生成阶段失败：sheet 还开着，就地弹失败弹窗（可重试）。
-      showAppInfoDialog(context, title: '保存失败', message: '$e');
+      // WB_SPEC_256 §3.5：生成阶段失败同样先关闭底部弹层再弹出错误 AppDialog
+      Navigator.pop(context);
+      if (widget.parentContext.mounted) {
+        showAppInfoDialog(widget.parentContext, title: '保存失败', message: '$e');
+      }
     }
   }
 
