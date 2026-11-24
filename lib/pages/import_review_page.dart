@@ -438,9 +438,11 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
           }
         }
         if (mounted) {
-          // WB_SPEC_249 §8：同位置再检查作息时间，不同则弹窗问是否切换。
+          // WB_SPEC_249 §8：同位置再检查作息时间，读到或没读到都要弹窗确认；
+          // 用户点了「去修改作息」时，流程走完后打开作息时间页。
+          var goToTimeSettings = false;
           try {
-            await _checkAndPromptTimeSlots();
+            goToTimeSettings = await _checkAndPromptTimeSlots();
           } catch (e) {
             debugPrint('作息时间检查外抛异常（已忽略）：$e');
           }
@@ -450,8 +452,14 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
           } catch (e) {
             debugPrint('周数检查外抛异常（已忽略）：$e');
           }
+          if (mounted) {
+            if (goToTimeSettings) {
+              Navigator.pushReplacementNamed(context, '/time-settings');
+            } else {
+              Navigator.pop(context);
+            }
+          }
         }
-        if (mounted) Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
@@ -462,28 +470,91 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
     }
   }
 
-  /// WB_SPEC_249 §8：导入完成后比对作息时间，不同则弹窗询问是否切换为该校作息。
+  /// WB_SPEC_249 §8：导入完成后作息时间确认弹窗（2026-11-24 他定：不准默认沿用
+  /// 旧作息，读到或没读到都要弹窗请用户确认是否正确）。
   ///
-  /// 三个来源都没读到时间就不弹窗；用户点「保持不变」则不动；点「切换」只写
-  /// 有差异的节次（与 227 校准同一口径），再按推算出的明显空档同步午间/晚间带子。
-  Future<void> _checkAndPromptTimeSlots() async {
+  /// 返回 true 表示用户点了「去修改作息」，调用方在流程走完后打开作息时间页。
+  /// ICS 导入不走这里（timeBlocks 已在作息选择卡片里让用户选过）。
+  /// 点「切换」只写有差异的节次（与 227 校准同一口径），再按推算出的明显空档
+  /// 同步午间/晚间带子。
+  Future<bool> _checkAndPromptTimeSlots() async {
+    // ICS：时间块已在选择卡片里处理过，不再重复问
+    if (widget.timeBlocks.isNotEmpty) return false;
+
     final incoming = TimeSlotsChecker.pickPreferredSlots(
       fromWebPage: widget.webTimeSlots,
       fromSchoolPreset: widget.schoolPresetTimeSlots,
       fromOcr: widget.ocrTimeSlots,
     );
-    // 三个来源都没读到时间就不弹窗
-    if (incoming == null || incoming.isEmpty) return;
+
+    // 三个来源都没读到时间：弹窗说明当前沿用的是旧作息，请用户确认
+    if (incoming == null || incoming.isEmpty) {
+      if (!mounted) return false;
+      final goEdit = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AppDialog(
+            title: '未读到该校作息时间',
+            content: const Text(
+              '本次导入没有读到该校的作息时间，当前沿用的是之前设置的作息'
+              '（默认是浙师大时间），请确认是否正确。',
+            ),
+            actions: [
+              AppDialogAction(
+                label: '去修改作息',
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+              ),
+              AppDialogAction(
+                label: '时间是对的',
+                primary: true,
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+              ),
+            ],
+          );
+        },
+      );
+      return goEdit ?? false;
+    }
 
     final currentSlots = await ref.read(timeSlotsProvider.future);
     final compare = TimeSlotsChecker.compare(
       current: currentSlots,
       incoming: incoming,
     );
-    if (!compare.hasDifference || !mounted) return;
+
+    // 读到了且与当前一致：也要弹窗确认一次
+    if (!compare.hasDifference) {
+      if (!mounted) return false;
+      final goEdit = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AppDialog(
+            title: '作息时间一致',
+            content: Text(
+              '本次导入读到该校作息（${incoming.length} 节），与当前设置一致，'
+              '请确认是否正确。',
+            ),
+            actions: [
+              AppDialogAction(
+                label: '去修改作息',
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+              ),
+              AppDialogAction(
+                label: '确认无误',
+                primary: true,
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+              ),
+            ],
+          );
+        },
+      );
+      return goEdit ?? false;
+    }
+
+    if (!mounted) return false;
 
     // WB_SPEC_256 §3.4 / §7：迁移至 AppDialog + AppDialogAction
-    final shouldApply = await showDialog<bool>(
+    final choice = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
         return AppDialog(
@@ -516,19 +587,24 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
           actions: [
             AppDialogAction(
               label: '保持不变',
-              onPressed: () => Navigator.of(dialogContext).pop(false),
+              onPressed: () => Navigator.of(dialogContext).pop('keep'),
+            ),
+            AppDialogAction(
+              label: '去修改作息',
+              onPressed: () => Navigator.of(dialogContext).pop('edit'),
             ),
             AppDialogAction(
               label: '切换为该校作息',
               primary: true,
-              onPressed: () => Navigator.of(dialogContext).pop(true),
+              onPressed: () => Navigator.of(dialogContext).pop('switch'),
             ),
           ],
         );
       },
     );
 
-    if (shouldApply != true) return;
+    if (choice == 'edit') return true;
+    if (choice != 'switch') return false;
     // 只写有差异的节次（与 227 校准同一口径），走 provider 保持状态同步
     final changedSections = compare.diffs.map((d) => d.section).toSet();
     final notifier = ref.read(timeSlotsProvider.notifier);
@@ -543,6 +619,7 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
     if (compare.breakBands.hasLunch || compare.breakBands.hasDinner) {
       await _applyBreakBands(compare.breakBands);
     }
+    return false;
   }
 
   /// WB_SPEC_249 §8：把推算出的午间/晚间空档写进分段点与休息时段设置。
