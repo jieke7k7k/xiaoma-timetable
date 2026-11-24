@@ -148,6 +148,40 @@ class TimeSlotsChecker {
     return result;
   }
 
+  /// 松散文本里的节次时间行：行首就是节次标记（第 X 节 / X / X-Y），其后跟时间段。
+  /// 节次标记与时间段之间允许没有空格（单元格 innerText 常丢空格）。
+  static final RegExp _looseSectionTimeReg = RegExp(
+    r'^\s*第?\s*(\d{1,2})\s*(?:[-~–—]\s*(\d{1,2})\s*)?节?\s*'
+    r'(\d{1,2})\s*[:：]\s*(\d{2})\s*[-~～–—至]\s*(\d{1,2})\s*[:：]\s*(\d{2})',
+  );
+
+  /// 松散文本里整行只有一个时间段的行。
+  static final RegExp _looseBareTimeReg = RegExp(
+    r'^\s*(\d{1,2})\s*[:：]\s*(\d{2})\s*[-~～–—至]\s*(\d{1,2})\s*[:：]\s*(\d{2})\s*$',
+  );
+
+  /// 从松散文本（独立节次时间表、页面全文）里抽节次时间。
+  ///
+  /// 只认两种行：(1) 行首就是节次标记（第 X 节 / X / X-Y）其后跟时间段；
+  /// (2) 整行只有一个时间段。其余含时间的行一律不要，如「办公时间
+  /// 08:00-12:00」、课程条目「高等数学 1-2节 08:00-09:35 周一」——行首
+  /// 不是节次标记的含时间行很可能是课程或通知，把它的时间段当成某节
+  /// 作息会认错。
+  ///
+  /// 「X-Y 时间段」只按现有口径记到 X 节（与主表节次栏同一口径，不展开）。
+  static List<TimeSlot> extractFromLooseTexts(List<String> rawTexts) {
+    final kept = <String>[];
+    for (final raw in rawTexts) {
+      final text = raw.trim();
+      if (text.isEmpty) continue;
+      if (_looseSectionTimeReg.hasMatch(text) ||
+          _looseBareTimeReg.hasMatch(text)) {
+        kept.add(text);
+      }
+    }
+    return extractFromSectionTexts(kept);
+  }
+
   /// 比对读到的学校作息与目标学期现有作息
   /// - [incoming] 不完整时（如只有 1–8 节），只比对已有的节次，其余节次保持原样
   static TimeSlotCompareResult compare({

@@ -1693,12 +1693,12 @@ class _TimeAxis extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    // WB_SPEC_221 附带修：行高太矮时起止时间放不下会溢出——跳转条展开＋
-    // 横幅同现时 autoFit 行高能压到 40 以下（实测 39.3 时三行仍溢约 1.9px）。
-    // 文字行高跟随主题 bodyMedium 的 height（当前 1.4），三行约 39px＋
-    // 上下边距 2px；按行高逐级降级，阈值从当前行高因子算，不写死数字。
+    // 2.14.1 修：时间轴三行（节次号＋起＋止）之前跟随主题 bodyMedium 行高
+    // （1.4），13 节时 autoFit 行高约 39.3dp，止时间阈值 41.2dp 够不着，左侧
+    // 只显示开始时间。时间轴三行改固定紧行高 1.15（数字与冒号无下行字母，
+    // 挤一点不糊），三行共 34.2dp，39.3dp 的行也放得下；行高再矮时逐级降级。
     // 节次号单行约 17px，行高下限 24 恒放得下。
-    final lineFactor = DefaultTextStyle.of(context).style.height ?? 1.2;
+    const lineFactor = 1.15;
     final showStart = showTime && rowHeight >= (12 + 8) * lineFactor + 2;
     final showEnd = showTime && rowHeight >= (12 + 8 + 8) * lineFactor + 2;
     return SizedBox(
@@ -1728,6 +1728,7 @@ class _TimeAxis extends StatelessWidget {
                       '${slots[i].section}',
                       style: TextStyle(
                         fontSize: 12,
+                        height: 1.15,
                         fontWeight: FontWeight.w600,
                         color: colorScheme.onSurfaceVariant,
                       ),
@@ -1737,6 +1738,7 @@ class _TimeAxis extends StatelessWidget {
                         slots[i].startTime,
                         style: TextStyle(
                           fontSize: 8,
+                          height: 1.15,
                           color: colorScheme.outline,
                         ),
                       ),
@@ -1745,6 +1747,7 @@ class _TimeAxis extends StatelessWidget {
                           slots[i].endTime,
                           style: TextStyle(
                             fontSize: 8,
+                            height: 1.15,
                             color: colorScheme.outline,
                           ),
                         ),

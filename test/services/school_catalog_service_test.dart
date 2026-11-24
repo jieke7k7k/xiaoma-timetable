@@ -146,9 +146,28 @@ void main() {
       expect(zjnu.initial, 'Z');
 
       final dlou = schools.firstWhere(
-        (s) => s.url == 'https://jwxt.dlou.edu.cn/',
+        (s) =>
+            s.url ==
+            'https://portal.dlou.edu.cn/auth/cas/login?service=https%3A%2F%2Fjwxt.dlou.edu.cn%2Fsso%2Fddlogin',
       );
       expect(dlou.initial, 'D');
+    });
+
+    test('大连海洋大学 timeSlots 预设为 12 节且第 3 节 09:50-10:35', () async {
+      final service = SchoolCatalogService();
+      final schools = await service.loadSchools();
+      final dlou = schools.firstWhere(
+        (s) => s.url.contains('portal.dlou.edu.cn'),
+      );
+      final slots = dlou.timeSlots;
+      expect(slots, isNotNull);
+      expect(slots!.length, 12);
+      expect(slots[2].section, 3);
+      expect(slots[2].startTime, '09:50');
+      expect(slots[2].endTime, '10:35');
+      expect(slots[11].section, 12);
+      expect(slots[11].startTime, '19:45');
+      expect(slots[11].endTime, '20:30');
     });
   });
 }

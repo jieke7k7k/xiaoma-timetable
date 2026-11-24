@@ -63,7 +63,8 @@ class _WebImportPageState extends State<WebImportPage> {
   var _mainFrameError = false;
 
   /// 抓取脚本：遍历主文档与同源 iframe 里的所有表格，
-  /// 逐行回传单元格文本与跨行/跨列，回传 JSON 字符串
+  /// 逐行回传单元格文本与跨行/跨列，同时回传页面全文供节次时间兜底扫描，
+  /// 回传 JSON 字符串
   static const _extractJs = r'''
 (function () {
   function cellText(el) {
@@ -113,6 +114,10 @@ class _WebImportPageState extends State<WebImportPage> {
   return JSON.stringify({
     title: document.title,
     tables: out,
+    // §10：页面全文（主文档 + 同源 iframe）供节次时间兜底扫描；
+    // 解析器只认行首是节次标记或整行只有一个时间段的行，其余含时间的
+    // 文本一律不要。
+    allText: allText,
     diag: {
       readyState: document.readyState,
       url: location.href,

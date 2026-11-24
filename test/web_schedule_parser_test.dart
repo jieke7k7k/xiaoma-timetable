@@ -112,4 +112,168 @@ void main() {
     expect(result.courses, isEmpty);
     expect(result.tablesFound, 1);
   });
+
+  group('节次时间兜底（§10）', () {
+    test('主表行首只有节次号时，独立节次时间表补上时间', () {
+      final result = WebScheduleParser.parse({
+        'tables': [
+          {
+            'rows': [
+              [
+                cell('时间'),
+                cell('星期一'),
+                cell('星期二'),
+                cell('星期三'),
+                cell('星期四'),
+                cell('星期五'),
+              ],
+              [
+                cell('1'),
+                cell('水文学\n(1-2节)1-16周\n教学楼101\n张三'),
+                cell(''),
+                cell(''),
+                cell(''),
+                cell(''),
+              ],
+              [cell('2'), cell(''), cell(''), cell(''), cell(''), cell('')],
+              [cell('3'), cell(''), cell(''), cell(''), cell(''), cell('')],
+            ],
+          },
+          {
+            'rows': [
+              [cell('第1节'), cell('08:00-08:45')],
+              [cell('第2节'), cell('08:50-09:35')],
+              [cell('第3节'), cell('09:50-10:35')],
+            ],
+          },
+        ],
+      }, semesterId: 1);
+      expect(result.courses.length, 1);
+      expect(result.extractedTimeSlots.length, 3);
+      expect(result.extractedTimeSlots[0].section, 1);
+      expect(result.extractedTimeSlots[0].startTime, '08:00');
+      expect(result.extractedTimeSlots[0].endTime, '08:45');
+      expect(result.extractedTimeSlots[2].section, 3);
+      expect(result.extractedTimeSlots[2].startTime, '09:50');
+    });
+
+    test('主表没时间时，页面全文里的节次时间行补上，无关时间不要', () {
+      final result = WebScheduleParser.parse({
+        'tables': [
+          {
+            'rows': [
+              [
+                cell('时间'),
+                cell('星期一'),
+                cell('星期二'),
+                cell('星期三'),
+                cell('星期四'),
+                cell('星期五'),
+              ],
+              [
+                cell('1'),
+                cell('水文学\n(1-2节)1-16周\n教学楼101\n张三'),
+                cell(''),
+                cell(''),
+                cell(''),
+                cell(''),
+              ],
+              [cell('2'), cell(''), cell(''), cell(''), cell(''), cell('')],
+              [cell('3'), cell(''), cell(''), cell(''), cell(''), cell('')],
+            ],
+          },
+        ],
+        'allText': '学生课表\n第1节 08:00-08:45\n第2节 08:50-09:35\n办公时间 08:00-12:00',
+      }, semesterId: 1);
+      expect(result.extractedTimeSlots.length, 2);
+      expect(result.extractedTimeSlots[0].section, 1);
+      expect(result.extractedTimeSlots[1].section, 2);
+      expect(result.extractedTimeSlots[1].endTime, '09:35');
+    });
+
+    test('主表已有时间时松散来源不覆盖', () {
+      final result = WebScheduleParser.parse({
+        'tables': [
+          {
+            'rows': [
+              [
+                cell('时间'),
+                cell('星期一'),
+                cell('星期二'),
+                cell('星期三'),
+                cell('星期四'),
+                cell('星期五'),
+              ],
+              [
+                cell('第1节 08:00-08:40'),
+                cell('水文学\n(1-2节)1-16周\n教学楼101\n张三'),
+                cell(''),
+                cell(''),
+                cell(''),
+                cell(''),
+              ],
+              [
+                cell('第2节 08:50-09:30'),
+                cell(''),
+                cell(''),
+                cell(''),
+                cell(''),
+                cell(''),
+              ],
+              [cell('3'), cell(''), cell(''), cell(''), cell(''), cell('')],
+            ],
+          },
+          {
+            'rows': [
+              [cell('第1节'), cell('08:00-08:45')],
+              [cell('第2节'), cell('08:50-09:35')],
+              [cell('第3节'), cell('09:50-10:35')],
+            ],
+          },
+        ],
+      }, semesterId: 1);
+      expect(result.extractedTimeSlots.length, 3);
+      expect(result.extractedTimeSlots[0].endTime, '08:40');
+      expect(result.extractedTimeSlots[1].endTime, '09:30');
+      expect(result.extractedTimeSlots[2].startTime, '09:50');
+    });
+
+    test('独立表里只有无关时间时读不到', () {
+      final result = WebScheduleParser.parse({
+        'tables': [
+          {
+            'rows': [
+              [
+                cell('时间'),
+                cell('星期一'),
+                cell('星期二'),
+                cell('星期三'),
+                cell('星期四'),
+                cell('星期五'),
+              ],
+              [
+                cell('1'),
+                cell('水文学\n(1-2节)1-16周\n教学楼101\n张三'),
+                cell(''),
+                cell(''),
+                cell(''),
+                cell(''),
+              ],
+              [cell('2'), cell(''), cell(''), cell(''), cell(''), cell('')],
+              [cell('3'), cell(''), cell(''), cell(''), cell(''), cell('')],
+            ],
+          },
+          {
+            'rows': [
+              [cell('办公时间'), cell('08:00-12:00')],
+              [cell('考试安排'), cell('09:00-11:00')],
+              [cell('注意事项'), cell('请按时上课')],
+            ],
+          },
+        ],
+      }, semesterId: 1);
+      expect(result.courses.length, 1);
+      expect(result.extractedTimeSlots, isEmpty);
+    });
+  });
 }

@@ -1046,6 +1046,46 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
                 style: const TextStyle(fontSize: 13),
               ),
             ),
+            // 未读到作息提示：三个来源都没读到时间且不是 ICS（ICS 自带时间块），
+            // 导入后将保留当前作息——当场告诉用户，别等他发现时间不对才知道
+            if (widget.timeBlocks.isEmpty &&
+                TimeSlotsChecker.pickPreferredSlots(
+                      fromWebPage: widget.webTimeSlots,
+                      fromSchoolPreset: widget.schoolPresetTimeSlots,
+                      fromOcr: widget.ocrTimeSlots,
+                    ) ==
+                    null)
+              Container(
+                width: double.infinity,
+                color: Theme.of(context).colorScheme.tertiaryContainer,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.l,
+                  vertical: AppSpacing.s,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.schedule_outlined,
+                      size: 18,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onTertiaryContainer,
+                    ),
+                    const SizedBox(width: AppSpacing.s),
+                    Expanded(
+                      child: Text(
+                        '本次导入未读到该校作息时间，导入后将保留当前作息；如时间不对，可在设置-作息时间里手动修改。',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onTertiaryContainer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             // 周次溢出提示：不改动任何数据，只在用户勾选时随保存一起生效
             if (inferred != null) _weekOverflowBanner(context, inferred),
             // 作息选择卡片：仅 ICS（timeBlocks 非空）且预演 diff 非空时渲染

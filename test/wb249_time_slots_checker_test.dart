@@ -85,6 +85,49 @@ void main() {
     });
   });
 
+  group('extractFromLooseTexts', () {
+    test('行首节次标记 + 时间段认出', () {
+      final result = TimeSlotsChecker.extractFromLooseTexts([
+        '第1节 08:00-08:45',
+        '第2节 08:50-09:35',
+        '3 09:50-10:35',
+      ]);
+      expect(result.length, 3);
+      expect(result[0].section, 1);
+      expect(result[0].startTime, '08:00');
+      expect(result[0].endTime, '08:45');
+      expect(result[2].section, 3);
+      expect(result[2].startTime, '09:50');
+    });
+
+    test('整行只有一个时间段时按行序顺延', () {
+      final result = TimeSlotsChecker.extractFromLooseTexts([
+        '08:00-08:45',
+        '08:50-09:35',
+      ]);
+      expect(result.length, 2);
+      expect(result[0].section, 1);
+      expect(result[1].section, 2);
+    });
+
+    test('办公时间与课程条目行不要', () {
+      final result = TimeSlotsChecker.extractFromLooseTexts([
+        '办公时间 08:00-12:00',
+        '高等数学 1-2节 08:00-09:35 周一',
+        '考试 09:00-11:00',
+      ]);
+      expect(result, isEmpty);
+    });
+
+    test('X-Y 时间段行只记到 X 节（与主表口径一致）', () {
+      final result = TimeSlotsChecker.extractFromLooseTexts([
+        '1-2 08:00-09:35',
+      ]);
+      expect(result.length, 1);
+      expect(result[0].section, 1);
+    });
+  });
+
   group('pickPreferredSlots', () {
     test('优先级：网页 > 预设 > OCR；全空返回 null', () {
       const web = [TimeSlot(section: 1, startTime: '08:00', endTime: '08:45')];

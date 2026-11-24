@@ -519,10 +519,11 @@ final showOtherWeeksProvider = NotifierProvider<ShowOtherWeeksNotifier, bool>(
   ShowOtherWeeksNotifier.new,
 );
 
-/// 设置开关：周末无课时自动收起周六日（5 列宽屏显示），默认开启
+/// 设置开关：周末无课时自动收起周六日（5 列宽屏显示），默认关闭：
+/// 默认显示全部 7 天，周末没课也不收起；想收起再手动打开
 class AutoCollapseWeekendNotifier extends Notifier<bool> {
   @override
-  bool build() => true;
+  bool build() => false;
   void toggle(bool value) => state = value;
 }
 
