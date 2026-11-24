@@ -419,7 +419,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
   /// 右上角「更多」菜单（2.1.0 起抽为方法，2.1.2 菜单去重复用）。
   ///
   /// 弹出动画 180ms（2.1.0 返修定版）；[items] 为空时由调用方先兜底为
-  /// 全部六项工具，绝不渲染空菜单。
+  /// 全部五项工具，绝不渲染空菜单。
   ///
   /// WB_SPEC_230 第 3.1/3.4 节：菜单项改走共用 [buildAppPopupMenuItem]（彩色
   /// 小底块 + 文字），外壳统一吃 `main.dart` 的 `popupMenuTheme`；offset 与
@@ -864,7 +864,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
             _buildCreateMenu(context),
           // 「更多」菜单（2.1.0 WB_SPEC_212 第 2/4 节；2.1.2 WB_SPEC_213 第 4 节）：
           // 按菜单配置动态生成，可见项在前、固定「设置」殿后但永远被过滤；
-          // 六项工具全关时去重后为空，触发「更多工具」兜底——弹菜单列全部六项
+          // 五项工具全关时去重后为空，触发「更多工具」兜底——弹菜单列全部五项
           // 工具，不出现空菜单（WB_SPEC_234 起底栏恒在，已无齿轮直进设置的分支）。
           // WB_SPEC_223：PopupMenuButton 没有 onPressed 可守卫，展开时改渲染
           // 一个同图标的普通按钮（只收起）；收起时照常渲染菜单。

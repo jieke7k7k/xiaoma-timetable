@@ -8,6 +8,10 @@ import '../utils/app_haptics.dart';
 /// 导出课表图片 / 日期备注这五样从设置页一级页面收进这里，一级页只留
 /// 一行入口。路由全部复用原有页面（一个都没丢），本页只做归拢。
 /// 2.1.7（WB_SPEC_218 第 ④ 节）：菜单管理从设置首页移入本页底部（路由不变）。
+/// WB_SPEC_257 §8（追问跟进）：本页 6 个入口按高频优先重排，与新 ⋮ 菜单前四项
+/// 1:1 一致：导出课表图片 / 考试倒计时 / 空闲时段 / 课程搜索 / 日期备注 /
+/// 菜单管理（菜单管理仍在最底部，见 2.1.7）。注意口径：上面 2.0.2 说的「五样」
+/// 是当初从设置页收进来的 5 个（不含菜单管理），与本页现有的 6 个入口是两回事。
 class CourseToolsPage extends StatelessWidget {
   const CourseToolsPage({super.key});
 
@@ -19,25 +23,13 @@ class CourseToolsPage extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 24),
         children: [
           ListTile(
-            leading: const Icon(Icons.search_outlined),
-            title: const Text('课程搜索'),
-            subtitle: const Text('按课名 / 老师 / 教室搜当前学期的课，点结果跳到那一周'),
-            trailing: const Icon(Icons.chevron_right),
-            // WB_SPEC_235 跟进 §1-7：六个工具入口 = 轻点档
-            onTap: () {
-              AppHaptics.tap();
-              Navigator.pushNamed(context, '/course-search');
-            },
-            enableFeedback: false,
-          ),
-          ListTile(
-            leading: const Icon(Icons.free_breakfast_outlined),
-            title: const Text('空闲时段'),
-            subtitle: const Text('按周列出每天没课的时段，找空档排事情'),
+            leading: const Icon(Icons.image_outlined),
+            title: const Text('导出课表图片'),
+            subtitle: const Text('把当前浏览的那一周渲染成图片，走系统分享'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               AppHaptics.tap();
-              Navigator.pushNamed(context, '/free-time');
+              Navigator.pushNamed(context, '/share-image');
             },
             enableFeedback: false,
           ),
@@ -53,13 +45,25 @@ class CourseToolsPage extends StatelessWidget {
             enableFeedback: false,
           ),
           ListTile(
-            leading: const Icon(Icons.image_outlined),
-            title: const Text('导出课表图片'),
-            subtitle: const Text('把当前浏览的那一周渲染成图片，走系统分享'),
+            leading: const Icon(Icons.free_breakfast_outlined),
+            title: const Text('空闲时段'),
+            subtitle: const Text('按周列出每天没课的时段，找空档排事情'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               AppHaptics.tap();
-              Navigator.pushNamed(context, '/share-image');
+              Navigator.pushNamed(context, '/free-time');
+            },
+            enableFeedback: false,
+          ),
+          ListTile(
+            leading: const Icon(Icons.search_outlined),
+            title: const Text('课程搜索'),
+            subtitle: const Text('按课名 / 老师 / 教室搜当前学期的课，点结果跳到那一周'),
+            trailing: const Icon(Icons.chevron_right),
+            // WB_SPEC_235 跟进 §1-7：六个工具入口 = 轻点档
+            onTap: () {
+              AppHaptics.tap();
+              Navigator.pushNamed(context, '/course-search');
             },
             enableFeedback: false,
           ),

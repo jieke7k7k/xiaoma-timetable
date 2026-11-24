@@ -675,10 +675,10 @@ void main() {
       await pumpPage(tester, const ImportPage());
 
       const entries = [
-        '导入 ICS 日历文件',
-        '拍照 / 相册识别课表',
-        '导入 PDF 课表文件',
         '从教务官网导入',
+        '拍照 / 相册识别课表',
+        '导入 ICS 日历文件',
+        '导入 PDF 课表文件',
       ];
       for (final title in entries) {
         // 每次都会先弹「确认开学日期」，tapRow 里的 popUntil 顺手收掉

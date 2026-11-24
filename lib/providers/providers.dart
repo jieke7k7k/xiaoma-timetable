@@ -840,7 +840,7 @@ final onboardingDoneProvider = FutureProvider<bool>((ref) async {
   return await Dao.instance.getSetting('onboarding_done') == '1';
 });
 
-/// 主页「更多」菜单配置（WB_SPEC_212 第 4 节）：六个功能项的显隐 + 顺序，
+/// 主页「更多」菜单配置（WB_SPEC_212 第 4 节）：五个功能项的显隐 + 顺序，
 /// 持久化到 app_settings 的 `home_menu_config` 键（JSON 数组，见 MenuConfig）。
 ///
 /// 「设置」不在配置里：固定显示、不可关闭、不可排序移出（兜底入口）。
@@ -915,7 +915,7 @@ class MenuConfigNotifier extends AsyncNotifier<MenuConfig> {
   Future<void> reorder(int oldIndex, int newIndex) =>
       _runLocked((cur) => cur.reorder(oldIndex, newIndex));
 
-  /// 恢复默认：六项全显示、顺序回到第 4 节定版顺序。
+  /// 恢复默认：五项全显示、顺序回到第 4 节定版顺序。
   Future<void> reset() => _runLocked((_) => MenuConfig.defaults());
 }
 

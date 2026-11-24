@@ -6,44 +6,43 @@ import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/models/menu_config.dart';
 import 'package:xiaoma_timetable/providers/providers.dart';
 
-/// 菜单配置测试（WB_SPEC_212 第 2 / 4 节）
+/// 菜单配置测试（WB_SPEC_212 第 2 / 4 节；WB_SPEC_257 菜单顺序与五项收口）
 ///
 /// 覆盖：
-/// 1. [MenuConfig.defaults]：六项全显示、顺序与第 4 节定版一致；
-/// 2. 纯函数 [visibleMenuItems]：默认六项 + 设置殿后；六项全关仍恒含设置；
+/// 1. [MenuConfig.defaults]：五项全显示、顺序与 WB_SPEC_257 定版一致；
+/// 2. 纯函数 [visibleMenuItems]：默认五项 + 设置殿后；五项全关仍恒含设置；
 /// 3. 纯函数 [MenuConfig.reorder]：拖拽排序语义、order 重新连续赋值；
-/// 4. [MenuConfig.fromEncoded]：损坏/空/缺项兜底；
+/// 4. [MenuConfig.fromEncoded]：损坏/空/缺项兜底、旧配置含已下线 import 静默丢弃；
 /// 5. [MenuConfigNotifier] 持久化（FFI 内存库）：默认值、开关落库、
 ///    拖拽排序重进 App 仍一致、恢复默认。
 void main() {
   group('MenuConfig 默认值与纯函数', () {
-    test('默认配置：六项全显示，顺序与第 4 节定版一致', () {
+    test('默认配置：五项全显示，顺序与 WB_SPEC_257 定版一致', () {
       final cfg = MenuConfig.defaults();
-      expect(cfg.items.length, 6);
+      expect(cfg.items.length, 5);
       expect(cfg.items.every((e) => e.visible), isTrue);
       expect(
         cfg.items.map((e) => e.id).toList(),
         [
-          'course-search',
-          'free-time',
           'share-image',
-          'semester-manage',
           'exam-countdown',
-          'import',
+          'free-time',
+          'course-search',
+          'semester-manage',
         ],
       );
-      expect(cfg.items.map((e) => e.order).toList(), [0, 1, 2, 3, 4, 5]);
+      expect(cfg.items.map((e) => e.order).toList(), [0, 1, 2, 3, 4]);
     });
 
-    test('visibleMenuItems：默认返回六项 + 固定设置殿后', () {
+    test('visibleMenuItems：默认返回五项 + 固定设置殿后', () {
       final items = visibleMenuItems(MenuConfig.defaults());
-      expect(items.length, 7);
-      expect(items.first.id, 'course-search');
+      expect(items.length, 6);
+      expect(items.first.id, 'share-image');
       expect(items.last.id, 'settings');
       expect(items.last.title, '设置');
     });
 
-    test('visibleMenuItems：六项全关仍恒含设置（无设置入口死局）', () {
+    test('visibleMenuItems：五项全关仍恒含设置（无设置入口死局）', () {
       var cfg = MenuConfig.defaults();
       for (final e in cfg.items) {
         cfg = cfg.copyWithVisible(e.id, false);
@@ -60,21 +59,21 @@ void main() {
 
       // 底栏恒在（WB_SPEC_234 起开关字段已删），设置只从底部栏进，永远过滤
       final deduped = homeMenuItems(cfg);
-      expect(deduped.length, 6);
+      expect(deduped.length, 5);
       expect(deduped.any((e) => e.id == 'settings'), isFalse);
-      expect(deduped.first.id, 'course-search');
+      expect(deduped.first.id, 'share-image');
 
       // 去重只发生在运行时过滤，绝不修改持久化配置
-      expect(visibleMenuItems(cfg).length, 7);
+      expect(visibleMenuItems(cfg).length, 6);
       expect(cfg.items.every((e) => e.visible), isTrue);
     });
 
-    test('homeMenuItems：六项全关 → 去重后为空（由调用方触发更多工具兜底）', () {
+    test('homeMenuItems：五项全关 → 去重后为空（由调用方触发更多工具兜底）', () {
       var cfg = MenuConfig.defaults();
       for (final e in cfg.items) {
         cfg = cfg.copyWithVisible(e.id, false);
       }
-      // 去重前仍恒含设置（六项全关判定依据）
+      // 去重前仍恒含设置（五项全关判定依据）
       expect(visibleMenuItems(cfg).length, 1);
       expect(visibleMenuItems(cfg).single.id, 'settings');
       // 去重后为空
@@ -85,30 +84,29 @@ void main() {
       final cfg = MenuConfig.defaults().copyWithVisible('free-time', false);
       expect(cfg.byId('free-time').visible, isFalse);
       expect(cfg.byId('course-search').visible, isTrue);
-      expect(cfg.byId('import').visible, isTrue);
+      expect(cfg.byId('semester-manage').visible, isTrue);
     });
 
     test('reorder：按 ReorderableListView 回调语义移动并重新连续赋值 order', () {
-      // 把最后一项（import）拖到最前：oldIndex 5 -> newIndex 0
-      final cfg = MenuConfig.defaults().reorder(5, 0);
+      // 把最后一项（semester-manage）拖到最前：oldIndex 4 -> newIndex 0
+      final cfg = MenuConfig.defaults().reorder(4, 0);
       expect(
         cfg.items.map((e) => e.id).toList(),
         [
-          'import',
-          'course-search',
-          'free-time',
-          'share-image',
           'semester-manage',
+          'share-image',
           'exam-countdown',
+          'free-time',
+          'course-search',
         ],
       );
-      expect(cfg.items.map((e) => e.order).toList(), [0, 1, 2, 3, 4, 5]);
+      expect(cfg.items.map((e) => e.order).toList(), [0, 1, 2, 3, 4]);
     });
 
     test('encode → fromEncoded 往返一致', () {
       final cfg = MenuConfig.defaults()
-          .copyWithVisible('import', false)
-          .reorder(5, 0);
+          .copyWithVisible('exam-countdown', false)
+          .reorder(4, 0);
       final restored = MenuConfig.fromEncoded(cfg.encode());
       expect(
         restored.items.map((e) => e.id).toList(),
@@ -121,17 +119,46 @@ void main() {
     });
 
     test('fromEncoded：null/空/损坏回退全默认，缺项补齐', () {
-      expect(MenuConfig.fromEncoded(null).items.length, 6);
-      expect(MenuConfig.fromEncoded('').items.length, 6);
-      expect(MenuConfig.fromEncoded('not json').items.length, 6);
-      expect(MenuConfig.fromEncoded('[]').items.length, 6);
-      expect(MenuConfig.fromEncoded('{"a":1}').items.length, 6);
+      expect(MenuConfig.fromEncoded(null).items.length, 5);
+      expect(MenuConfig.fromEncoded('').items.length, 5);
+      expect(MenuConfig.fromEncoded('not json').items.length, 5);
+      expect(MenuConfig.fromEncoded('[]').items.length, 5);
+      expect(MenuConfig.fromEncoded('{"a":1}').items.length, 5);
       // 只给一项：该项按存储值，其余回默认
       final partial = MenuConfig.fromEncoded(
         '[{"id":"course-search","visible":false,"order":0}]',
       );
       expect(partial.byId('course-search').visible, isFalse);
       expect(partial.byId('free-time').visible, isTrue);
+    });
+
+    test('fromEncoded：旧配置含已下线 import 静默丢弃', () {
+      const legacyJson = '['
+          '{"id":"import","visible":true,"order":0},'
+          '{"id":"semester-manage","visible":true,"order":1},'
+          '{"id":"course-search","visible":false,"order":2},'
+          '{"id":"share-image","visible":true,"order":3},'
+          '{"id":"free-time","visible":false,"order":4},'
+          '{"id":"exam-countdown","visible":true,"order":5}'
+          ']';
+      final cfg = MenuConfig.fromEncoded(legacyJson);
+      expect(cfg.items.length, 5);
+      expect(cfg.items.any((e) => e.id == 'import'), isFalse);
+      expect(
+        cfg.items.map((e) => e.id).toList(),
+        [
+          'semester-manage',
+          'course-search',
+          'share-image',
+          'free-time',
+          'exam-countdown',
+        ],
+      );
+      expect(cfg.byId('semester-manage').visible, isTrue);
+      expect(cfg.byId('course-search').visible, isFalse);
+      expect(cfg.byId('share-image').visible, isTrue);
+      expect(cfg.byId('free-time').visible, isFalse);
+      expect(cfg.byId('exam-countdown').visible, isTrue);
     });
   });
 
@@ -162,9 +189,9 @@ void main() {
       final container = ProviderContainer();
       addTearDown(container.dispose);
       final cfg = await container.read(menuConfigProvider.future);
-      expect(cfg.items.length, 6);
+      expect(cfg.items.length, 5);
       expect(cfg.items.every((e) => e.visible), isTrue);
-      expect(cfg.items.first.id, 'course-search');
+      expect(cfg.items.first.id, 'share-image');
     });
 
     test('setVisible 落库并更新状态', () async {
@@ -186,7 +213,7 @@ void main() {
       addTearDown(container.dispose);
       final notifier = container.read(menuConfigProvider.notifier);
       await container.read(menuConfigProvider.future);
-      await notifier.reorder(5, 0);
+      await notifier.reorder(4, 0);
 
       // 模拟重进 App：新建容器重新读库
       final container2 = ProviderContainer();
@@ -204,13 +231,13 @@ void main() {
       final notifier = container.read(menuConfigProvider.notifier);
       await container.read(menuConfigProvider.future);
       await notifier.setVisible('free-time', false);
-      await notifier.reorder(5, 0);
+      await notifier.reorder(4, 0);
       await notifier.reset();
 
       final cfg = container.read(menuConfigProvider).value!;
       expect(cfg.items.every((e) => e.visible), isTrue);
-      expect(cfg.items.first.id, 'course-search');
-      expect(cfg.items.last.id, 'import');
+      expect(cfg.items.first.id, 'share-image');
+      expect(cfg.items.last.id, 'semester-manage');
     });
 
     test('并发写串行化：同时开关 + 排序，两项改动都不丢（2.1.0 返修 P1）', () async {
@@ -221,18 +248,18 @@ void main() {
 
       await Future.wait([
         notifier.setVisible('free-time', false),
-        notifier.reorder(5, 0),
+        notifier.reorder(4, 0),
       ]);
 
       final cfg = container.read(menuConfigProvider).value!;
       expect(cfg.byId('free-time').visible, isFalse);
-      expect(cfg.items.first.id, 'import');
+      expect(cfg.items.first.id, 'semester-manage');
       // 落库与内存一致
       final container2 = ProviderContainer();
       addTearDown(container2.dispose);
       final cfg2 = await container2.read(menuConfigProvider.future);
       expect(cfg2.byId('free-time').visible, isFalse);
-      expect(cfg2.items.first.id, 'import');
+      expect(cfg2.items.first.id, 'semester-manage');
     });
 
     test('加载未完成时操作：先读已存配置再写，不拿默认值覆盖（2.1.0 返修 P1）',
@@ -246,11 +273,11 @@ void main() {
       addTearDown(container.dispose);
       final notifier = container.read(menuConfigProvider.notifier);
       // 故意不等 future：操作应在内部等加载完成后再基于已存配置改
-      await notifier.setVisible('import', false);
+      await notifier.setVisible('semester-manage', false);
 
       final cfg = container.read(menuConfigProvider).value!;
       expect(cfg.byId('free-time').visible, isFalse);
-      expect(cfg.byId('import').visible, isFalse);
+      expect(cfg.byId('semester-manage').visible, isFalse);
     });
   });
 }

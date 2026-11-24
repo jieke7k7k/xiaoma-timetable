@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 /// 主页右上角「更多」菜单的配置模型（WB_SPEC_212 第 4 节）。
 ///
-/// 菜单里可自定义的只有六个功能项；「设置」不在本模型里——它固定显示、
+/// 菜单里可自定义的只有五个功能项；「设置」不在本模型里——它固定显示、
 /// 不可关闭、不可排序移出，由主页菜单逻辑单独追加在末尾（见第 2/4 节）。
 /// 配置整体以 JSON 数组存 app_settings 的 `home_menu_config` 键，
 /// 每项 `{id, visible, order}`；损坏/缺失时回退默认，绝不拖垮启动。
@@ -24,31 +24,13 @@ class MenuItemSpec {
   final IconData icon;
 }
 
-/// 六个可自定义菜单项，顺序即默认顺序（第 4 节定版，与改版前现状一致）。
+/// 五个可自定义菜单项，顺序即默认顺序（WB_SPEC_257 §2/§3 定版）。
 const List<MenuItemSpec> kCustomMenuItems = [
-  MenuItemSpec(
-    id: 'course-search',
-    title: '课程搜索',
-    route: '/course-search',
-    icon: Icons.search,
-  ),
-  MenuItemSpec(
-    id: 'free-time',
-    title: '空闲时段',
-    route: '/free-time',
-    icon: Icons.free_breakfast_outlined,
-  ),
   MenuItemSpec(
     id: 'share-image',
     title: '导出课表图片',
     route: '/share-image',
     icon: Icons.image_outlined,
-  ),
-  MenuItemSpec(
-    id: 'semester-manage',
-    title: '学期管理',
-    route: '/semester-manage',
-    icon: Icons.school_outlined,
   ),
   MenuItemSpec(
     id: 'exam-countdown',
@@ -57,10 +39,22 @@ const List<MenuItemSpec> kCustomMenuItems = [
     icon: Icons.event_note_outlined,
   ),
   MenuItemSpec(
-    id: 'import',
-    title: '导入课表',
-    route: '/import',
-    icon: Icons.upload_file_outlined,
+    id: 'free-time',
+    title: '空闲时段',
+    route: '/free-time',
+    icon: Icons.free_breakfast_outlined,
+  ),
+  MenuItemSpec(
+    id: 'course-search',
+    title: '课程搜索',
+    route: '/course-search',
+    icon: Icons.search,
+  ),
+  MenuItemSpec(
+    id: 'semester-manage',
+    title: '学期管理',
+    route: '/semester-manage',
+    icon: Icons.school_outlined,
   ),
 ];
 
@@ -120,17 +114,17 @@ class MenuItemConfig {
   }
 }
 
-/// 主页「更多」菜单的完整配置：六个可自定义项的显隐与顺序。
+/// 主页「更多」菜单的完整配置：五个可自定义项的显隐与顺序。
 ///
-/// [items] 恒为 6 项（对应 [kCustomMenuItems] 六个 id），内部保持按
+/// [items] 恒为 5 项（对应 [kCustomMenuItems] 五个 id），内部保持按
 /// [MenuItemConfig.order] 升序的显示顺序；`byId` 按 id 精确取单条。
 class MenuConfig {
   const MenuConfig(this.items);
 
-  /// 按显示顺序排列的六项配置（已按 order 升序）。
+  /// 按显示顺序排列的五项配置（已按 order 升序）。
   final List<MenuItemConfig> items;
 
-  /// 默认配置：六项全显示，顺序即 [kCustomMenuItems] 的声明顺序。
+  /// 默认配置：五项全显示，顺序即 [kCustomMenuItems] 的声明顺序。
   factory MenuConfig.defaults() => MenuConfig([
     for (var i = 0; i < kCustomMenuItems.length; i++)
       MenuItemConfig(id: kCustomMenuItems[i].id, visible: true, order: i),
@@ -161,7 +155,7 @@ class MenuConfig {
   /// 这里的下标是「显示顺序」的下标（同 [ordered]）；`newIndex` 已经是框架
   /// 移除 oldIndex 项之后的插入位置（Flutter 3.41+ 的 onReorderItem 回调已
   /// 代做 `newIndex > oldIndex → newIndex - 1` 调整），直接 removeAt + insert
-  /// 即可。移动后 order 重新按 0..5 连续赋值。纯函数、单测覆盖。
+  /// 即可。移动后 order 重新按 0..4 连续赋值。纯函数、单测覆盖。
   MenuConfig reorder(int oldIndex, int newIndex) {
     final list = ordered;
     final moved = list.removeAt(oldIndex);
@@ -176,6 +170,8 @@ class MenuConfig {
 
   /// 从 JSON 字符串解析。null/空/损坏/类型不对一律回退全默认；缺项用默认
   /// 补齐，未知 id 丢弃，order 相同按默认顺序兜底（保证稳定）。
+  /// 合并后 order 可能不连续（如旧配置丢弃 import 后剩 1..5），仅保证排序语义；
+  /// reorder() 时才重赋 0..n-1。
   factory MenuConfig.fromEncoded(String? raw) {
     final defaults = MenuConfig.defaults().items;
     if (raw == null || raw.isEmpty) return MenuConfig(defaults);
@@ -213,7 +209,7 @@ class MenuConfig {
 
 /// 由配置算出主页「更多」菜单的完整显示项（按显示顺序）。
 ///
-/// 可见的六项在前（按 order），固定的「设置」恒在末尾——即使六项全关，
+/// 可见的五项在前（按 order），固定的「设置」恒在末尾——即使五项全关，
 /// 列表也至少剩「设置」一项，从源头保证任何情况下都有进设置的兜底入口。
 List<MenuItemSpec> visibleMenuItems(MenuConfig config) {
   return [

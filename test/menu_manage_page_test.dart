@@ -5,10 +5,10 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/pages/menu_manage_page.dart';
 
-/// 菜单管理子页测试（WB_SPEC_212 第 4 节）
+/// 菜单管理子页测试（WB_SPEC_212 第 4 节；WB_SPEC_257 五项收口与新默认顺序）
 ///
 /// 覆盖：
-/// 1. 页面结构：六个可自定义项 + 六枚拖拽手柄 + 六枚显隐开关 + 「恢复默认」；
+/// 1. 页面结构：五个可自定义项 + 五枚拖拽手柄 + 五枚显隐开关 + 「恢复默认」；
 /// 2. 显隐开关接线：点开关后该项显隐状态更新；
 /// 3. 拖拽排序接线：拖第一行手柄后顺序改变。
 void main() {
@@ -48,22 +48,22 @@ void main() {
     }
   }
 
-  testWidgets('渲染：六个可自定义项 + 六枚手柄/开关 + 恢复默认', (tester) async {
+  testWidgets('渲染：五个可自定义项 + 五枚手柄/开关 + 恢复默认', (tester) async {
     await pumpPage(tester);
 
     const titles = [
-      '课程搜索',
-      '空闲时段',
       '导出课表图片',
-      '学期管理',
       '考试倒计时',
-      '导入课表',
+      '空闲时段',
+      '课程搜索',
+      '学期管理',
     ];
     for (final t in titles) {
       expect(find.text(t), findsOneWidget, reason: '菜单管理应显示「$t」');
     }
-    expect(find.byIcon(Icons.drag_handle), findsNWidgets(6));
-    expect(find.byType(Switch), findsNWidgets(6));
+    expect(find.text('导入课表'), findsNothing);
+    expect(find.byIcon(Icons.drag_handle), findsNWidgets(5));
+    expect(find.byType(Switch), findsNWidgets(5));
     expect(find.text('恢复默认'), findsOneWidget);
     // 「设置」不在这里（固定显示、不可自定义）
     expect(find.text('设置'), findsNothing);
@@ -72,7 +72,7 @@ void main() {
   testWidgets('显隐开关接线：点第一项开关后该项变为隐藏', (tester) async {
     await pumpPage(tester);
 
-    // 初始全显示：第一枚开关（课程搜索）为开
+    // 初始全显示：第一枚开关（导出课表图片）为开
     expect(tester.widget<Switch>(find.byType(Switch).first).value, isTrue);
 
     await tester.tap(find.byType(Switch).first);
@@ -101,9 +101,9 @@ void main() {
     });
     await tester.pumpAndSettle();
 
-    // 课程搜索被拖下去：空闲时段应排到它上面
-    final freeY = tester.getTopLeft(find.text('空闲时段')).dy;
-    final courseY = tester.getTopLeft(find.text('课程搜索')).dy;
-    expect(freeY, lessThan(courseY));
+    // 导出课表图片被拖下去：考试倒计时应排到它上面
+    final examY = tester.getTopLeft(find.text('考试倒计时')).dy;
+    final shareY = tester.getTopLeft(find.text('导出课表图片')).dy;
+    expect(examY, lessThan(shareY));
   });
 }

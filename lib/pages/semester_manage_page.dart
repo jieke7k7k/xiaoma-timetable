@@ -112,7 +112,7 @@ class SemesterManagePage extends ConsumerWidget {
                     style: const TextStyle(fontSize: 12),
                   ),
                   // WB_SPEC_256 §3.2：当前学期行改用行尾直接编辑图标按钮，不再使用单项 ⋮ 菜单；
-                  // 非当前学期行保留 3 项 ⋮ 菜单（编辑 / 切换 / 删除）。
+                  // 非当前学期行保留 3 项 ⋮ 菜单（切换 / 编辑 / 删除）。
                   trailing: isCurrent
                       ? IconButton(
                           tooltip: '编辑学期',
@@ -143,16 +143,16 @@ class SemesterManagePage extends ConsumerWidget {
                           },
                           itemBuilder: (ctx) => [
                             buildAppPopupMenuItem<String>(
-                              value: 'edit',
-                              icon: Icons.edit_outlined,
-                              category: SettingsIconCategory.schedule,
-                              title: '编辑学期',
-                            ),
-                            buildAppPopupMenuItem<String>(
                               value: 'switch',
                               icon: Icons.swap_horiz,
                               category: SettingsIconCategory.data,
                               title: '切换到该学期',
+                            ),
+                            buildAppPopupMenuItem<String>(
+                              value: 'edit',
+                              icon: Icons.edit_outlined,
+                              category: SettingsIconCategory.schedule,
+                              title: '编辑学期',
                             ),
                             buildAppPopupMenuItem<String>(
                               value: 'delete',
