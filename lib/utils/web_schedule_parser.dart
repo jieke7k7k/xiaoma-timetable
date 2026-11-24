@@ -57,6 +57,8 @@ class WebScheduleParser {
   }
 
   /// 合并两份作息：主表节次栏优先，松散来源只补主表没有的节次。
+  /// 取舍规则：主表 > 松散；松散来源内部，显式行同一节次以后出现的为准，
+  /// 裸行按出现顺序填最低空闲节次；松散来源顺序为先无表头表、后页面全文。
   static List<TimeSlot> _mergeSlots(
     List<TimeSlot> main,
     List<TimeSlot> loose,
@@ -140,8 +142,11 @@ class WebScheduleParser {
         // 的节次时间栏常是单独的表或在表格之外），把每行单元格拼成一行
         // 收进松散来源再筛（整行拼起来筛，才能把「办公时间 08:00-12:00」
         // 这类行挡在外面）；课程仍不从这类表里认。
-        for (final row in grid) {
-          looseTexts.add(row.join(' '));
+        // 2.14.2：先验——只有整表能读出 ≥2 节作息时才收；单行「编号 时间」
+        // （如通知表里的一行）不收，避免把任意无表头表的编号+时间误认成作息。
+        final rowTexts = [for (final row in grid) row.join(' ')];
+        if (TimeSlotsChecker.extractFromLooseTexts(rowTexts).length >= 2) {
+          looseTexts.addAll(rowTexts);
         }
         continue;
       }

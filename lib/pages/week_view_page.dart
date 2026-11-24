@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show DeviceGestureSettings;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1673,6 +1673,20 @@ class _FullBand extends StatelessWidget {
 }
 
 /// 左侧时间轴：节次号 + 起止时间（固定高度，与右侧网格严格对齐）
+/// 时间轴三行（节次号 12sp + 起 8sp + 止 8sp，行高 lineFactor）的显示阈值。
+/// 每行文字高 = 字号 × 行高，另加磁贴上下各 1px 边距（共 2px）；阈值 = 文字
+/// 总高 + 2，与三处 TextStyle 的 height 一致——公式里乘的是字号之和，等于
+/// 逐项相乘之和，不是漏乘（2.14.2 复审 Bug 8 核实：公式本身没错，抽出来供
+/// 测试直接断言边界）。
+@visibleForTesting
+bool timeAxisShowsStart(double rowHeight, {double lineFactor = 1.15}) =>
+    rowHeight >= (12 + 8) * lineFactor + 2;
+
+/// 同上，三行全显的阈值。
+@visibleForTesting
+bool timeAxisShowsEnd(double rowHeight, {double lineFactor = 1.15}) =>
+    rowHeight >= (12 + 8 + 8) * lineFactor + 2;
+
 class _TimeAxis extends StatelessWidget {
   const _TimeAxis({
     required this.slots,
@@ -1699,8 +1713,14 @@ class _TimeAxis extends StatelessWidget {
     // 挤一点不糊），三行共 34.2dp，39.3dp 的行也放得下；行高再矮时逐级降级。
     // 节次号单行约 17px，行高下限 24 恒放得下。
     const lineFactor = 1.15;
-    final showStart = showTime && rowHeight >= (12 + 8) * lineFactor + 2;
-    final showEnd = showTime && rowHeight >= (12 + 8 + 8) * lineFactor + 2;
+    final showStart = showTime && timeAxisShowsStart(
+      rowHeight,
+      lineFactor: lineFactor,
+    );
+    final showEnd = showTime && timeAxisShowsEnd(
+      rowHeight,
+      lineFactor: lineFactor,
+    );
     return SizedBox(
       width: width,
       child: Column(

@@ -470,13 +470,40 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
     }
   }
 
+  /// 三档作息确认弹窗的公共外壳：未挂载时返回 null（调用方按「否」处理）。
+  Future<T?> _showTimeSlotDialog<T>(
+    Widget Function(BuildContext dialogContext) builder,
+  ) {
+    if (!mounted) return Future.value(null);
+    return showDialog<T>(context: context, builder: builder);
+  }
+
+  /// 把比对出的作息差异写库（只写有差异的节次，与 227 校准同一口径，
+  /// 走 provider 保持状态同步），再按推算出的明显空档同步午间/晚间带子。
+  /// 无明显空档时带子保持原样。
+  Future<void> _applyTimeSlotDiff(TimeSlotCompareResult compare) async {
+    final changedSections = compare.diffs.map((d) => d.section).toSet();
+    final notifier = ref.read(timeSlotsProvider.notifier);
+    var written = 0;
+    for (final slot in compare.mergedSlots) {
+      if (!changedSections.contains(slot.section)) continue;
+      await notifier.updateSlot(slot);
+      written++;
+    }
+    if (written > 0) _notifyDataChanged();
+    // 仅当推算出明显午间/晚间空档时同步更新带子；无明显空档时保持原样
+    if (compare.breakBands.hasLunch || compare.breakBands.hasDinner) {
+      await _applyBreakBands(compare.breakBands);
+    }
+  }
+
   /// WB_SPEC_249 §8：导入完成后作息时间确认弹窗（2026-11-24 他定：不准默认沿用
   /// 旧作息，读到或没读到都要弹窗请用户确认是否正确）。
   ///
   /// 返回 true 表示用户点了「去修改作息」，调用方在流程走完后打开作息时间页。
   /// ICS 导入不走这里（timeBlocks 已在作息选择卡片里让用户选过）。
-  /// 点「切换」只写有差异的节次（与 227 校准同一口径），再按推算出的明显空档
-  /// 同步午间/晚间带子。
+  /// 2.14.2：点「去修改作息」时先应用读到的作息差异，再跳转去微调（他定）；
+  /// 点「切换」同样先写库，只是不跳转。
   Future<bool> _checkAndPromptTimeSlots() async {
     // ICS：时间块已在选择卡片里处理过，不再重复问
     if (widget.timeBlocks.isNotEmpty) return false;
@@ -489,10 +516,8 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
 
     // 三个来源都没读到时间：弹窗说明当前沿用的是旧作息，请用户确认
     if (incoming == null || incoming.isEmpty) {
-      if (!mounted) return false;
-      final goEdit = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) {
+      final goEdit = await _showTimeSlotDialog<bool>(
+        (dialogContext) {
           return AppDialog(
             title: '未读到该校作息时间',
             content: const Text(
@@ -524,10 +549,8 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
 
     // 读到了且与当前一致：也要弹窗确认一次
     if (!compare.hasDifference) {
-      if (!mounted) return false;
-      final goEdit = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) {
+      final goEdit = await _showTimeSlotDialog<bool>(
+        (dialogContext) {
           return AppDialog(
             title: '作息时间一致',
             content: Text(
@@ -551,12 +574,9 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
       return goEdit ?? false;
     }
 
-    if (!mounted) return false;
-
     // WB_SPEC_256 §3.4 / §7：迁移至 AppDialog + AppDialogAction
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) {
+    final choice = await _showTimeSlotDialog<String>(
+      (dialogContext) {
         return AppDialog(
           title: '发现作息时间不同',
           content: SingleChildScrollView(
@@ -603,22 +623,13 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
       },
     );
 
-    if (choice == 'edit') return true;
+    if (choice == 'edit') {
+      // 2.14.2：去修改 = 先应用读到的作息，再跳转到作息时间页微调（他定）。
+      await _applyTimeSlotDiff(compare);
+      return true;
+    }
     if (choice != 'switch') return false;
-    // 只写有差异的节次（与 227 校准同一口径），走 provider 保持状态同步
-    final changedSections = compare.diffs.map((d) => d.section).toSet();
-    final notifier = ref.read(timeSlotsProvider.notifier);
-    var written = 0;
-    for (final slot in compare.mergedSlots) {
-      if (!changedSections.contains(slot.section)) continue;
-      await notifier.updateSlot(slot);
-      written++;
-    }
-    if (written > 0) _notifyDataChanged();
-    // 仅当推算出明显午间/晚间空档时同步更新带子；无明显空档时保持原样
-    if (compare.breakBands.hasLunch || compare.breakBands.hasDinner) {
-      await _applyBreakBands(compare.breakBands);
-    }
+    await _applyTimeSlotDiff(compare);
     return false;
   }
 
@@ -1056,6 +1067,13 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
   Widget build(BuildContext context) {
     // 防误触返回：草稿非空时先弹窗确认，避免辛苦核对的成果被一次滑动丢掉
     final inferred = _inferredTotalWeeks;
+    // 未读到作息提示的口径与 _checkAndPromptTimeSlots 一致：pickPreferredSlots
+    // 返回 null 或空列表都表示没读到（它永不返回空列表，isEmpty 是防御性判断）。
+    final preferredTimeSlots = TimeSlotsChecker.pickPreferredSlots(
+      fromWebPage: widget.webTimeSlots,
+      fromSchoolPreset: widget.schoolPresetTimeSlots,
+      fromOcr: widget.ocrTimeSlots,
+    );
     return PopScope(
       canPop: _drafts.isEmpty || _done,
       onPopInvokedWithResult: (didPop, _) async {
@@ -1126,12 +1144,7 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
             // 未读到作息提示：三个来源都没读到时间且不是 ICS（ICS 自带时间块），
             // 导入后将保留当前作息——当场告诉用户，别等他发现时间不对才知道
             if (widget.timeBlocks.isEmpty &&
-                TimeSlotsChecker.pickPreferredSlots(
-                      fromWebPage: widget.webTimeSlots,
-                      fromSchoolPreset: widget.schoolPresetTimeSlots,
-                      fromOcr: widget.ocrTimeSlots,
-                    ) ==
-                    null)
+                (preferredTimeSlots == null || preferredTimeSlots.isEmpty))
               Container(
                 width: double.infinity,
                 color: Theme.of(context).colorScheme.tertiaryContainer,
@@ -1151,7 +1164,8 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
                     const SizedBox(width: AppSpacing.s),
                     Expanded(
                       child: Text(
-                        '本次导入未读到该校作息时间，导入后将保留当前作息；如时间不对，可在设置-作息时间里手动修改。',
+                        '本次导入没有读到该校的作息时间，当前沿用的是之前设置的作息'
+                        '（默认是浙师大时间）；如时间不对，可在设置-作息时间里手动修改。',
                         style: TextStyle(
                           fontSize: 13,
                           color: Theme.of(

@@ -119,12 +119,50 @@ void main() {
       expect(result, isEmpty);
     });
 
-    test('X-Y 时间段行只记到 X 节（与主表口径一致）', () {
-      final result = TimeSlotsChecker.extractFromLooseTexts([
+    test('无「节」字的 X-Y 时间段行不要（周次范围行），带节才记到 X 节', () {
+      // 2.14.2 复审 Bug 3：松散文本里「1-2 08:00-09:35」很可能是周次范围，
+      // 不是节次区间；只有带「节」字的「1-2节 08:00-09:35」才按主表口径记到 1 节。
+      final rejected = TimeSlotsChecker.extractFromLooseTexts([
         '1-2 08:00-09:35',
       ]);
-      expect(result.length, 1);
+      expect(rejected, isEmpty);
+      final kept = TimeSlotsChecker.extractFromLooseTexts([
+        '1-2节 08:00-09:35',
+      ]);
+      expect(kept.length, 1);
+      expect(kept[0].section, 1);
+      expect(kept[0].startTime, '08:00');
+    });
+
+    test('年份开头的行不要', () {
+      final result = TimeSlotsChecker.extractFromLooseTexts([
+        '2024 08:00-09:00',
+      ]);
+      expect(result, isEmpty);
+    });
+
+    test('显式行与裸时间段行混排时，裸行填最低空闲节次（不被显式行推偏）', () {
+      // 2.14.2 复审 Bug 4：以前裸行与显式行共用顺延计数器，第 3 节之后
+      // 的裸行会被推到第 4 节；现在裸行单独按出现顺序填最低空闲节次。
+      final result = TimeSlotsChecker.extractFromLooseTexts([
+        '第3节 09:50-10:35',
+        '08:00-08:45',
+      ]);
+      expect(result.length, 2);
       expect(result[0].section, 1);
+      expect(result[0].startTime, '08:00');
+      expect(result[1].section, 3);
+      expect(result[1].startTime, '09:50');
+    });
+
+    test('显式行之后接续的裸行补到下一空闲节次', () {
+      final result = TimeSlotsChecker.extractFromLooseTexts([
+        '第1节 08:00-08:45',
+        '第2节 08:50-09:35',
+        '09:50-10:35',
+      ]);
+      expect(result.map((s) => s.section).toList(), [1, 2, 3]);
+      expect(result[2].startTime, '09:50');
     });
   });
 

@@ -75,6 +75,8 @@ class TimeSlotsChecker {
   /// 1. 教务网页节次栏直接读到的时间
   /// 2. schools.json 预设 timeSlots（兜底）
   /// 3. OCR 图片识别出的节次栏时间
+  /// 返回 null 表示全空；永不返回空列表（调用方用 `== null` 判断即可，
+  /// 再加 `isEmpty` 只是防御性判断）。
   static List<TimeSlot>? pickPreferredSlots({
     List<TimeSlot>? fromWebPage,
     List<TimeSlot>? fromSchoolPreset,
@@ -148,10 +150,14 @@ class TimeSlotsChecker {
     return result;
   }
 
-  /// 松散文本里的节次时间行：行首就是节次标记（第 X 节 / X / X-Y），其后跟时间段。
-  /// 节次标记与时间段之间允许没有空格（单元格 innerText 常丢空格）。
+  /// 松散文本里的节次时间行：行首就是节次标记，其后跟时间段。
+  /// 区间形式必须带「节」字（第1节 / 1节 / 1-2节）：裸「1-2 08:00-09:35」
+  /// 很可能是周次范围行，误认成第 1 节；裸数字（1 08:00-08:45）是独立
+  /// 节次表常见的「编号 时间」行，保留，且数字与时间之间必须有空白分隔——
+  /// 否则「08:00-08:45」会被拆成「0 号 + 8:00」误认成显式行。
+  /// 带「节」字的标记与时间段之间允许没有空格（单元格 innerText 常丢空格）。
   static final RegExp _looseSectionTimeReg = RegExp(
-    r'^\s*第?\s*(\d{1,2})\s*(?:[-~–—]\s*(\d{1,2})\s*)?节?\s*'
+    r'^\s*(?:第?\s*(\d{1,2})\s*(?:[-~–—]\s*(\d{1,2})\s*)?节\s*|(\d{1,2})\s+)'
     r'(\d{1,2})\s*[:：]\s*(\d{2})\s*[-~～–—至]\s*(\d{1,2})\s*[:：]\s*(\d{2})',
   );
 
@@ -162,24 +168,51 @@ class TimeSlotsChecker {
 
   /// 从松散文本（独立节次时间表、页面全文）里抽节次时间。
   ///
-  /// 只认两种行：(1) 行首就是节次标记（第 X 节 / X / X-Y）其后跟时间段；
+  /// 只认两种行：(1) 行首就是节次标记（第 X 节 / X / X-Y节）其后跟时间段；
   /// (2) 整行只有一个时间段。其余含时间的行一律不要，如「办公时间
   /// 08:00-12:00」、课程条目「高等数学 1-2节 08:00-09:35 周一」——行首
   /// 不是节次标记的含时间行很可能是课程或通知，把它的时间段当成某节
-  /// 作息会认错。
+  /// 作息会认错。无「节」字的周次范围行「1-2 08:00-09:35」也不要。
   ///
-  /// 「X-Y 时间段」只按现有口径记到 X 节（与主表节次栏同一口径，不展开）。
+  /// 「X-Y节 时间段」只按现有口径记到 X 节（与主表节次栏同一口径，不展开）。
+  ///
+  /// 显式行与裸时间段行分开处理：裸行按出现顺序填入显式行未占用的最小
+  /// 节次，两类行不再共用顺延计数器——否则跨表/跨段落混排时，裸行会被
+  /// 显式行推到错误节次。取舍规则：显式行同一节次以后出现的为准；裸行
+  /// 先到先得（填最低空闲节次）。
   static List<TimeSlot> extractFromLooseTexts(List<String> rawTexts) {
-    final kept = <String>[];
+    final explicit = <String>[];
+    final bare = <String>[];
     for (final raw in rawTexts) {
-      final text = raw.trim();
-      if (text.isEmpty) continue;
-      if (_looseSectionTimeReg.hasMatch(text) ||
-          _looseBareTimeReg.hasMatch(text)) {
-        kept.add(text);
+      if (raw.trim().isEmpty) continue;
+      if (_looseSectionTimeReg.hasMatch(raw)) {
+        explicit.add(raw);
+      } else if (_looseBareTimeReg.hasMatch(raw)) {
+        bare.add(raw);
       }
     }
-    return extractFromSectionTexts(kept);
+    final bySection = <int, TimeSlot>{
+      for (final s in extractFromSectionTexts(explicit)) s.section: s,
+    };
+    // 裸时间段行：按出现顺序填入显式行未占用的最小节次。
+    final bareSlots = extractFromSectionTexts(bare)
+      ..sort((a, b) => a.section.compareTo(b.section));
+    var next = 1;
+    for (final s in bareSlots) {
+      while (bySection.containsKey(next)) {
+        next++;
+      }
+      if (next > 20) break;
+      bySection[next] = TimeSlot(
+        section: next,
+        startTime: s.startTime,
+        endTime: s.endTime,
+      );
+      next++;
+    }
+    final result = bySection.values.toList()
+      ..sort((a, b) => a.section.compareTo(b.section));
+    return result;
   }
 
   /// 比对读到的学校作息与目标学期现有作息

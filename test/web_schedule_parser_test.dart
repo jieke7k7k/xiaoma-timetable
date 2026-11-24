@@ -275,5 +275,45 @@ void main() {
       expect(result.courses.length, 1);
       expect(result.extractedTimeSlots, isEmpty);
     });
+
+    test('无表头表里只有一行「编号 时间」时不收（2.14.2 复审 Bug 5）', () {
+      // 单行「1 08:00-08:45」可能是通知表里的编号+时间，不是作息；
+      // 只有整表能读出 ≥2 节作息时，无表头表才进松散来源。
+      final result = WebScheduleParser.parse({
+        'tables': [
+          {
+            'rows': [
+              [
+                cell('时间'),
+                cell('星期一'),
+                cell('星期二'),
+                cell('星期三'),
+                cell('星期四'),
+                cell('星期五'),
+              ],
+              [
+                cell('1'),
+                cell('水文学\n(1-2节)1-16周\n教学楼101\n张三'),
+                cell(''),
+                cell(''),
+                cell(''),
+                cell(''),
+              ],
+              [cell('2'), cell(''), cell(''), cell(''), cell(''), cell('')],
+              [cell('3'), cell(''), cell(''), cell(''), cell(''), cell('')],
+            ],
+          },
+          {
+            'rows': [
+              [cell('通知'), cell('内容')],
+              [cell('1'), cell('08:00-08:45')],
+              [cell('备注'), cell('请按时上课')],
+            ],
+          },
+        ],
+      }, semesterId: 1);
+      expect(result.courses.length, 1);
+      expect(result.extractedTimeSlots, isEmpty);
+    });
   });
 }

@@ -1,3 +1,4 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xiaoma_timetable/models/course.dart';
 import 'package:xiaoma_timetable/providers/providers.dart';
@@ -6,7 +7,10 @@ import 'package:xiaoma_timetable/utils/slot_layout.dart';
 /// 默认显示全部 7 天：周末无课也不收起周六日（2026-11-24 他定）。
 void main() {
   test('周末自动收起开关默认关闭', () {
-    expect(AutoCollapseWeekendNotifier().build(), isFalse);
+    // 2.14.2 复审 Bug 9：默认值走 Riverpod 容器读，不直接 new Notifier 调 build。
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    expect(container.read(autoCollapseWeekendProvider), isFalse);
   });
 
   test('默认（不收起）时周末没课也显示 7 天', () {
