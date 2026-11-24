@@ -308,4 +308,125 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('259：按住索引栏拖动快速选择，气泡显示与松手消失', (tester) async {
+    final schools = _build30Schools();
+    final service = _FakeSchoolCatalogService(
+      schools: schools,
+      lastUsedUrl: schools.first.url,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SchoolPickerPage(
+          semesterId: 1,
+          catalogService: service,
+          enableStartDateConfirm: false,
+          webImportPageBuilder: (initialUrl) =>
+              const Scaffold(body: Text('web')),
+        ),
+      ),
+    );
+    await drain(tester);
+
+    final indexBar = find.byKey(const ValueKey('school_index_bar'));
+    expect(indexBar, findsOneWidget);
+
+    final aFinder = find.descendant(of: indexBar, matching: find.text('A'));
+    final zFinder = find.descendant(of: indexBar, matching: find.text('Z'));
+    expect(aFinder, findsOneWidget);
+    expect(zFinder, findsOneWidget);
+
+    final gesture = await tester.startGesture(tester.getCenter(aFinder));
+    await tester.pump();
+    // 按下即跳 A 组，气泡显示 A
+    expect(find.text('A'), findsWidgets);
+
+    await gesture.moveTo(tester.getCenter(zFinder));
+    await tester.pump();
+
+    final controller = tester
+        .widget<ListView>(find.byType(ListView).first)
+        .controller!;
+    final expectedZOffset = kRecentHeaderHeight +
+        kSchoolRowHeight +
+        kRecentDividerHeight +
+        kLetterHeaderHeight +
+        15 * kSchoolRowHeight;
+    final clampedExpected =
+        expectedZOffset.clamp(0.0, controller.position.maxScrollExtent);
+    expect(controller.offset, closeTo(clampedExpected, 1.0));
+
+    // 气泡显示 Z（按 key 定位气泡容器，避免 IgnorePointer 祖先误匹配列表节头）
+    final bubble = find.byKey(const ValueKey('school_index_bubble'));
+    expect(bubble, findsOneWidget);
+    expect(
+      find.descendant(of: bubble, matching: find.text('Z')),
+      findsOneWidget,
+    );
+
+    await gesture.up();
+    await tester.pump();
+    // 松手后气泡消失
+    expect(find.byKey(const ValueKey('school_index_bubble')), findsNothing);
+  });
+
+  testWidgets('259：拖到索引栏底部之外不崩，停在最后一个字母', (tester) async {
+    final schools = _build30Schools();
+    final service = _FakeSchoolCatalogService(
+      schools: schools,
+      lastUsedUrl: schools.first.url,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SchoolPickerPage(
+          semesterId: 1,
+          catalogService: service,
+          enableStartDateConfirm: false,
+          webImportPageBuilder: (initialUrl) =>
+              const Scaffold(body: Text('web')),
+        ),
+      ),
+    );
+    await drain(tester);
+
+    final indexBar = find.byKey(const ValueKey('school_index_bar'));
+    final aFinder = find.descendant(of: indexBar, matching: find.text('A'));
+    final barRect = tester.getRect(indexBar);
+
+    final gesture = await tester.startGesture(tester.getCenter(aFinder));
+    await tester.pump();
+
+    // 拖到栏底下方（超出 Column 范围）
+    await gesture.moveTo(Offset(barRect.center.dx, barRect.bottom + 200));
+    await tester.pump();
+
+    // 触点 clamp 到最后一个字母 #：气泡显示 #（按 key 定位）
+    final bubble = find.byKey(const ValueKey('school_index_bubble'));
+    expect(bubble, findsOneWidget);
+    expect(
+      find.descendant(of: bubble, matching: find.text('#')),
+      findsOneWidget,
+    );
+
+    final controller = tester
+        .widget<ListView>(find.byType(ListView).first)
+        .controller!;
+    // 最后一组已到达：# 节头滚入可见（限定在 ListView 内找，栏内 # 与气泡 # 不计）。
+    // 注意：不直接断言 offset == maxScrollExtent——jumpTo 按
+    // SliverChildBuilderDelegate 的预估 maxScrollExtent 做 clamp，
+    // 该预估在列表未全量布局时偏小（本用例里跳 # 时按 1381 落点，
+    // 随后才收敛到 1445），这是 _jumpToLetter 原有行为，259 未改；
+    // 拖到 # 能看到 # 组即满足需求。
+    expect(
+      find.descendant(
+        of: find.byType(ListView),
+        matching: find.text('#'),
+      ),
+      findsOneWidget,
+    );
+    expect(controller.offset, greaterThan(0));
+
+    await gesture.up();
+    await tester.pump();
+  });
 }

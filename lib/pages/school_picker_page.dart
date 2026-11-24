@@ -59,6 +59,8 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
   SchoolEntry? _lastUsedSchool;
   String _query = '';
   bool _loading = true;
+  /// 当前拖动到的字母（null = 没在拖），驱动索引栏高亮与大字母气泡
+  String? _dragLetter;
 
   @override
   void initState() {
@@ -343,34 +345,63 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
     final letters = sections.map((s) => s.letter).toList(growable: false);
     final isKeyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
 
-    return Row(
+    return Stack(
       children: [
-        Expanded(
-          child: ListView.builder(
-            controller: _scrollController,
-            itemCount: flatItems.length,
-            itemExtentBuilder: (index, _) => flatItems[index].height,
-            itemBuilder: (context, index) {
-              final item = flatItems[index];
-              final Widget child;
-              switch (item.type) {
-                case SchoolPickerListItemType.recentHeader:
-                  child = _buildSectionHeader('★ 最近使用', recent: true);
-                case SchoolPickerListItemType.recentSchool:
-                  child = _buildSchoolTile(item.school!, keyPrefix: 'recent');
-                case SchoolPickerListItemType.recentDivider:
-                  child = const Divider(height: kRecentDividerHeight);
-                case SchoolPickerListItemType.letterHeader:
-                  child = _buildSectionHeader(item.letter!);
-                case SchoolPickerListItemType.school:
-                  child = _buildSchoolTile(item.school!, keyPrefix: 'list');
-              }
-              return SizedBox(height: item.height, child: child);
-            },
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                itemCount: flatItems.length,
+                itemExtentBuilder: (index, _) => flatItems[index].height,
+                itemBuilder: (context, index) {
+                  final item = flatItems[index];
+                  final Widget child;
+                  switch (item.type) {
+                    case SchoolPickerListItemType.recentHeader:
+                      child = _buildSectionHeader('★ 最近使用', recent: true);
+                    case SchoolPickerListItemType.recentSchool:
+                      child =
+                          _buildSchoolTile(item.school!, keyPrefix: 'recent');
+                    case SchoolPickerListItemType.recentDivider:
+                      child = const Divider(height: kRecentDividerHeight);
+                    case SchoolPickerListItemType.letterHeader:
+                      child = _buildSectionHeader(item.letter!);
+                    case SchoolPickerListItemType.school:
+                      child = _buildSchoolTile(item.school!, keyPrefix: 'list');
+                  }
+                  return SizedBox(height: item.height, child: child);
+                },
+              ),
+            ),
+            if (!isKeyboardVisible && letters.isNotEmpty)
+              _buildIndexBar(letters, offsets),
+          ],
         ),
-        if (!isKeyboardVisible && letters.isNotEmpty)
-          _buildIndexBar(letters, offsets),
+        // 拖动时的大字母气泡：居中显示，不拦截触摸
+        if (_dragLetter != null)
+          IgnorePointer(
+            child: Center(
+              child: Container(
+                key: const ValueKey('school_index_bubble'),
+                width: 64,
+                height: 64,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _dragLetter!,
+                  style: const TextStyle(
+                    fontSize: 32,
+                    height: 1.0,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -403,7 +434,8 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
   }
 
   /// 右侧索引栏：只显示有学校的字母；每字母高度按可用高度自适应（12.0–20.0）；
-  /// 可用高度不足时整栏纵向滚动；键盘弹出时不渲染（调用方已判断）
+  /// 可用高度不足时整栏纵向滚动；键盘弹出时不渲染（调用方已判断）。
+  /// 整栏一个 Listener：按下即跳，按住拖动到哪个字母就跳到哪组，松手结束。
   Widget _buildIndexBar(List<String> letters, Map<String, double> offsets) {
     return SizedBox(
       key: const ValueKey('school_index_bar'),
@@ -415,26 +447,62 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
           final itemHeight = letters.isEmpty
               ? 0.0
               : (constraints.maxHeight / letters.length).clamp(12.0, 20.0);
-          return SingleChildScrollView(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (final letter in letters)
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => _jumpToLetter(letter, offsets),
-                    child: SizedBox(
+
+          // 按触点纵坐标换算字母下标，clamp 到有效范围
+          String letterAt(double dy) {
+            final raw = itemHeight <= 0 ? 0 : (dy / itemHeight).floor();
+            final index = raw.clamp(0, letters.length - 1);
+            return letters[index];
+          }
+
+          // 拖动中：字母变了才跳，防抖动
+          void handleMove(double dy) {
+            final letter = letterAt(dy);
+            if (letter == _dragLetter) return;
+            setState(() => _dragLetter = letter);
+            _jumpToLetter(letter, offsets);
+          }
+
+          return Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: (event) {
+              final letter = letterAt(event.localPosition.dy);
+              setState(() => _dragLetter = letter);
+              _jumpToLetter(letter, offsets);
+            },
+            onPointerMove: (event) => handleMove(event.localPosition.dy),
+            onPointerUp: (_) {
+              if (_dragLetter != null) setState(() => _dragLetter = null);
+            },
+            onPointerCancel: (_) {
+              if (_dragLetter != null) setState(() => _dragLetter = null);
+            },
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (final letter in letters)
+                    SizedBox(
                       height: itemHeight,
                       width: 24,
                       child: Center(
                         child: Text(
                           letter,
-                          style: const TextStyle(fontSize: 12, height: 1.0),
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.0,
+                            color: letter == _dragLetter
+                                ? Theme.of(context).colorScheme.primary
+                                : null,
+                            fontWeight: letter == _dragLetter
+                                ? FontWeight.w700
+                                : null,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           );
         },
