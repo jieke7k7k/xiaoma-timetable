@@ -152,7 +152,7 @@ object OngoingFocusCalculator {
             }
         } else {
             title = "暂无课程安排"
-            lines.add("近期没有要上的课，好好休息")
+            lines.add("近期暂无课程，请好好休息")
         }
 
         return Notice(title = title, lines = lines, boundary = nextBoundary(now, current, next))
