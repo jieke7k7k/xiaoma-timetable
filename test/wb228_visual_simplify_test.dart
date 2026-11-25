@@ -162,11 +162,11 @@ void main() {
         home: const AppearanceGridSettingsPage(),
         overrides: [uiSettingsProvider.overrideWith(() => fake)],
       );
-      expect(find.text('开启后周末没课时周视图只显示周一到周五，更宽敞'),
+      expect(find.text('开启后，周末无课时周视图仅显示周一至周五'),
           findsOneWidget);
-      expect(find.text('给今天这一整天加一圈主题色边框，默认关'), findsOneWidget);
-      expect(find.text('关掉后左侧只显示节次数字'), findsOneWidget);
-      expect(find.text('开时左上角显示「第 X 周 · 单周/双周」，关时只显示「第 X 周」，默认关'),
+      expect(find.text('为当日整列添加主题色边框，默认关闭'), findsOneWidget);
+      expect(find.text('关闭后左侧仅显示节次数字'), findsOneWidget);
+      expect(find.text('开启时左上角显示「第 X 周 · 单周/双周」，关闭时仅显示「第 X 周」，默认关闭'),
           findsOneWidget);
       // §3.4 只留 2 处 ⓘ（显示非本周课程、行高自适应一屏），其余 4 处已改为副标题
       expect(find.byType(AppInfoIconButton), findsNWidgets(2));
@@ -216,7 +216,7 @@ void main() {
     testWidgets('段头左右分栏：左「上午（第 1–5 节）」右「08:00 – 12:00」', (tester) async {
       await pumpPage(tester, home: const TimeSettingsPage());
       // 组标题留在框外（不再当框标题）
-      expect(find.text('上下课时间（点时间可修改）'), findsOneWidget);
+      expect(find.text('上下课时间（点击时间可修改）'), findsOneWidget);
       // 节次范围按实际分段点算：上午 1–5、下午 6–9、晚上 10–13（默认 13 节）
       expect(find.text('（第 1–5 节）'), findsOneWidget);
       expect(find.text('（第 6–9 节）'), findsOneWidget);

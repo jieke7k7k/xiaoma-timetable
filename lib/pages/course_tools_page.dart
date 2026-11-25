@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../ui/settings_icon_box.dart';
 import '../utils/app_haptics.dart';
+import 'week_view_page.dart';
 
 /// 课表工具（设置 → 课表工具）：功能类入口的二级页
 ///
@@ -12,31 +15,40 @@ import '../utils/app_haptics.dart';
 /// 1:1 一致：导出课表图片 / 考试倒计时 / 空闲时段 / 课程搜索 / 日期备注 /
 /// 菜单管理（菜单管理仍在最底部，见 2.1.7）。注意口径：上面 2.0.2 说的「五样」
 /// 是当初从设置页收进来的 5 个（不含菜单管理），与本页现有的 6 个入口是两回事。
-class CourseToolsPage extends StatelessWidget {
+/// WB_SPEC_261 §6：导出行与主页 ⋮ 菜单同款，调 showExportBottomSheet
+/// （整学期 PNG / 存相册 / 当前周 PNG），不再直跳只导本周的 /share-image。
+/// WB_SPEC_261 §7：6 个入口 leading 统一用 SettingsIconBox，与设置页同款。
+class CourseToolsPage extends ConsumerWidget {
   const CourseToolsPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: AppBar(title: const Text('课表工具'), centerTitle: true),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 24),
         children: [
           ListTile(
-            leading: const Icon(Icons.image_outlined),
+            leading: const SettingsIconBox(
+              icon: Icons.image_outlined,
+              category: SettingsIconCategory.schedule,
+            ),
             title: const Text('导出课表图片'),
-            subtitle: const Text('把当前浏览的那一周渲染成图片，走系统分享'),
+            subtitle: const Text('将整学期或当前周导出为图片'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               AppHaptics.tap();
-              Navigator.pushNamed(context, '/share-image');
+              showExportBottomSheet(context, ref);
             },
             enableFeedback: false,
           ),
           ListTile(
-            leading: const Icon(Icons.event_note_outlined),
+            leading: const SettingsIconBox(
+              icon: Icons.event_note_outlined,
+              category: SettingsIconCategory.reminder,
+            ),
             title: const Text('考试倒计时'),
-            subtitle: const Text('设置了考试日期的课程按日期升序排列'),
+            subtitle: const Text('按考试日期排序'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               AppHaptics.tap();
@@ -45,9 +57,12 @@ class CourseToolsPage extends StatelessWidget {
             enableFeedback: false,
           ),
           ListTile(
-            leading: const Icon(Icons.free_breakfast_outlined),
+            leading: const SettingsIconBox(
+              icon: Icons.free_breakfast_outlined,
+              category: SettingsIconCategory.schedule,
+            ),
             title: const Text('空闲时段'),
-            subtitle: const Text('按周列出每天没课的时段，找空档排事情'),
+            subtitle: const Text('按周列出每日空闲时段'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               AppHaptics.tap();
@@ -56,9 +71,12 @@ class CourseToolsPage extends StatelessWidget {
             enableFeedback: false,
           ),
           ListTile(
-            leading: const Icon(Icons.search_outlined),
+            leading: const SettingsIconBox(
+              icon: Icons.search_outlined,
+              category: SettingsIconCategory.system,
+            ),
             title: const Text('课程搜索'),
-            subtitle: const Text('按课名 / 老师 / 教室搜当前学期的课，点结果跳到那一周'),
+            subtitle: const Text('按课名、老师或教室搜索，点结果跳转至对应周'),
             trailing: const Icon(Icons.chevron_right),
             // WB_SPEC_235 跟进 §1-7：六个工具入口 = 轻点档
             onTap: () {
@@ -68,9 +86,12 @@ class CourseToolsPage extends StatelessWidget {
             enableFeedback: false,
           ),
           ListTile(
-            leading: const Icon(Icons.sticky_note_2_outlined),
+            leading: const SettingsIconBox(
+              icon: Icons.sticky_note_2_outlined,
+              category: SettingsIconCategory.reminder,
+            ),
             title: const Text('日期备注'),
-            subtitle: const Text('按日期记录待办备忘，可在通知栏与桌面小部件显示'),
+            subtitle: const Text('按日期记录待办，同步至通知栏与桌面小部件'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               AppHaptics.tap();
@@ -81,9 +102,12 @@ class CourseToolsPage extends StatelessWidget {
           ListTile(
             // 2.1.7（WB_SPEC_218 第 ④ 节）：菜单管理从设置首页移入课表工具页底部，
             // 路由不变（/menu-manage），只在归拢层级、不再单独占首页一行。
-            leading: const Icon(Icons.tune_outlined),
+            leading: const SettingsIconBox(
+              icon: Icons.tune_outlined,
+              category: SettingsIconCategory.appearance,
+            ),
             title: const Text('菜单管理'),
-            subtitle: const Text('右上角菜单里显示哪些功能、按什么顺序排'),
+            subtitle: const Text('自定义右上角菜单的项目与顺序'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               AppHaptics.tap();

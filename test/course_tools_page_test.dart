@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xiaoma_timetable/pages/course_tools_page.dart';
 
@@ -14,8 +15,10 @@ void main() {
     tester.view.physicalSize = const Size(1200, 4200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
+    // WB_SPEC_261 §6：CourseToolsPage 改为 ConsumerWidget（导出行 onTap
+    // 要用 ref 调 showExportBottomSheet），泵页须包 ProviderScope。
     await tester.pumpWidget(
-      const MaterialApp(home: CourseToolsPage()),
+      const ProviderScope(child: MaterialApp(home: CourseToolsPage())),
     );
     await tester.pump();
   }

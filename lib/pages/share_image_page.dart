@@ -306,7 +306,7 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                '正在导出第 $week 周 · 与主页同比例出图，点「分享图片」发给同学或保存',
+                '正在导出第 $week 周课表（与主页同比例），可分享或保存',
                 style: TextStyle(
                     fontSize: 13,
                   color: Theme.of(context).colorScheme.outline,
@@ -1474,7 +1474,7 @@ Future<Uint8List> generateAndShareSemesterSinglePng({
           files: [
             XFile.fromData(pngBytes, name: fileName, mimeType: 'image/png'),
           ],
-          text: '这是${semester.name}完整课表，请查收',
+          text: '这是${semester.name}完整课表',
         ),
       );
     }

@@ -383,7 +383,7 @@ class _SelectTimeSheetState extends ConsumerState<_SelectTimeSheet> {
                   const SizedBox(width: AppSpacing.xs),
                   Expanded(
                     child: Text(
-                      '该时段在部分周次已有『$occupiedName』，返回后可错开周次',
+                      '该时段在部分周次已有『$occupiedName』，返回后可错开周次安排',
                       style: TextStyle(fontSize: 12, color: scheme.tertiary),
                     ),
                   ),

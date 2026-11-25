@@ -117,7 +117,7 @@ class _CourseOverridePageState extends ConsumerState<CourseOverridePage> {
     final course = _course;
     if (course == null) return;
     if (!_cancel && _startSection > _endSection) {
-      _showError('开始节次不能大于结束节次哦');
+      _showError('开始节次不能大于结束节次');
       return;
     }
     final override = _buildOverride();
@@ -167,7 +167,7 @@ class _CourseOverridePageState extends ConsumerState<CourseOverridePage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('调整后的这节课与以下课程时间重叠：'),
+            const Text('调整后与以下课程时间重叠：'),
             const SizedBox(height: 8),
             for (final c in conflicts)
               Padding(
@@ -175,7 +175,7 @@ class _CourseOverridePageState extends ConsumerState<CourseOverridePage> {
                 child: Text('· $c'),
               ),
             const SizedBox(height: 8),
-            const Text('确定仍要这样调整吗？'),
+            const Text('确定按此调整吗？'),
           ],
         ),
         actions: [
@@ -206,7 +206,7 @@ class _CourseOverridePageState extends ConsumerState<CourseOverridePage> {
     final ok = await showAppConfirmDialog(
       context,
       title: '撤销本次调整',
-      message: '撤销后《${course.name}》第 $_week 周将恢复原上课时间，确定吗？',
+      message: '撤销后，《${course.name}》第 $_week 周将恢复原上课时间，是否继续？',
       confirmLabel: '撤销',
     );
     if (ok != true) return;
@@ -306,7 +306,7 @@ class _CourseOverridePageState extends ConsumerState<CourseOverridePage> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('本次停课'),
-            subtitle: const Text('这一节不上课，也不再提醒；其他周不受影响'),
+            subtitle: const Text('本节停课，不再提醒；其他周次不受影响'),
             value: _cancel,
             // WB_SPEC_235 跟进 §2：开关类 = 选择档
             onChanged: (v) {

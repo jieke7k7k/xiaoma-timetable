@@ -225,9 +225,9 @@ class _FriendlyErrorWidget extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               const Text(
-                '小马课表遇到了一点问题，已记录日志。\n'
-                '重启应用一般就能恢复；若反复出现，'
-                '可在「设置 → 数据管理」先备份再反馈。',
+                '小马课表遇到问题，已记录日志。\n'
+                '重启应用通常可恢复；若反复出现，'
+                '请于「设置 → 数据管理」先备份再反馈。',
               ),
             ],
           ),
@@ -316,7 +316,6 @@ final Map<String, WidgetBuilder> appRoutes = {
         '/settings-appearance': (context) => const AppearanceSettingsPage(),
         '/settings-reminders': (context) => const RemindersSettingsPage(),
         '/settings-data': (context) => const DataSettingsPage(),
-        '/settings-permissions': (context) => const PermissionsSettingsPage(),
         '/settings-widget': (context) => const WidgetSettingsPage(),
         // WB_SPEC_228 §9：4 个专项子页（第 3 层，全平铺）
   '/settings-appearance-grid': (context) => const AppearanceGridSettingsPage(),

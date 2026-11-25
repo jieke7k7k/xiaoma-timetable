@@ -180,7 +180,7 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('将以此日期作为第 1 周周一，导入后会与教务系统当前周数核对。'),
+                  const Text('将以此日期作为第 1 周周一，导入后将与教务系统当前周数核对。'),
                   const SizedBox(height: 12),
                   InkWell(
                     borderRadius: BorderRadius.circular(8),
@@ -276,9 +276,7 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
                         },
                       )
                     : null,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                // WB_SPEC_261 §8：border 是死代码（主题五态全覆盖），删掉，不改显示。
                 isDense: true,
               ),
             ),
@@ -299,7 +297,7 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
             top: false,
             child: ListTile(
               leading: const Icon(Icons.language),
-              title: const Text('不在列表里？手动输入教务网址'),
+              title: const Text('不在列表中？手动输入教务网址'),
               trailing: const Icon(Icons.chevron_right),
               onTap: _onManualInput,
             ),
@@ -318,7 +316,7 @@ class _SchoolPickerPageState extends State<SchoolPickerPage> {
           const SizedBox(height: 32),
           ListTile(
             leading: const Icon(Icons.edit_location_alt_outlined),
-            title: const Text('没找到这所学校，试试手动输入网址'),
+            title: const Text('未找到该学校，请手动输入网址'),
             trailing: const Icon(Icons.chevron_right),
             onTap: _onManualInput,
           ),

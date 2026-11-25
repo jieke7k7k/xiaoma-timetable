@@ -268,7 +268,7 @@ void main() {
       expect(find.byType(SettingsSwitchRow), findsOneWidget);
       expect(find.text('触感震动反馈'), findsOneWidget);
       expect(
-        find.text('点击按钮、切换开关与操作课表时提供轻微震动'),
+        find.text('点击按钮、切换开关或操作课表时提供轻微震动'),
         findsOneWidget,
       );
 

@@ -288,7 +288,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
   }
 
   /// 是否展开「周次同步」内联行（WB_SPEC_246 §2.2）：多时段课 + 本次改了周次，
-  /// 与颜色同步行同款门控——没改周次时不显示，避免与颜色行的「应用到本课全部」
+  /// 与颜色同步行同款门控——没改周次时不显示，避免与颜色行的「应用至本课程全部」
   /// 选择重文案（两行同时出现时 find.text 会撞上，复审 P1-2 跟进）。
   bool get _showWeeksSyncRow => _siblings.isNotEmpty && _weeksChanged;
 
@@ -363,11 +363,11 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
   Future<bool> _save({bool popOnSuccess = true}) async {
     if (!_formKey.currentState!.validate()) return false;
     if (_startSection > _endSection) {
-      _showError('开始节次不能大于结束节次哦');
+      _showError('开始节次不能大于结束节次');
       return false;
     }
     if (_weeks.isEmpty) {
-      _showError('至少选择一周上课哦');
+      _showError('请至少选择一周');
       return false;
     }
     final newName = _nameController.text.trim();
@@ -378,9 +378,9 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
       if (!mounted) return false;
       final go = await showAppConfirmDialog(
         context,
-        title: '合并同名课程？',
-        message: '当前学期已存在同名课程「$newName」，保存后它们的时段将合并管理'
-            '并同步共享属性，是否继续？',
+        title: '合并同名课程',
+        message: '当前学期已存在同名课程「$newName」，保存后将合并时段'
+            '并同步共享属性。是否继续？',
         confirmLabel: '继续',
         cancelLabel: '取消',
       );
@@ -484,7 +484,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
   /// - 教室/备注异构保护：用户本次没亲手改教室（或备注）时，兄弟时段里本来就
   ///   不同的那个值保留不动（周二理论课 302、周四实验课 105 不会被一起改成 302）；
   /// - 颜色**按需**同步（第 12.2 节取代第 10.3 节的「无条件同步」）：只有本次真改了
-  ///   颜色、且内联行选了「应用到本课全部」时，兄弟行才换成 [updated] 的新颜色；
+  ///   颜色、且内联行选了「应用至本课程全部」时，兄弟行才换成 [updated] 的新颜色；
   ///   没改颜色、或选了「仅改本节」时，兄弟行保留自己库里的 colorValue 不动
   ///   ——否则「只改个老师」会把各时段各自的颜色一起洗掉。
   List<Course> _buildSiblingsToSync(Course updated) {
@@ -494,10 +494,10 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
     final classroomTouched =
         _classroomController.text.trim() != norm(base.classroom);
     final noteTouched = _noteController.text.trim() != norm(base.note);
-    // 颜色同步判定：本次改过颜色 + 用户选了「应用到本课全部」
+    // 颜色同步判定：本次改过颜色 + 用户选了「应用至本课程全部」
     final syncColor = updated.colorValue != base.colorValue && _syncColorToAll;
     // 周次同步判定（WB_SPEC_246 §2.3）：本次改过周次（weeks 或 weekType）
-    // + 用户选了「应用到本课全部」。weeks 按集合比较（顺序打乱不算改过），
+    // + 用户选了「应用至本课程全部」。weeks 按集合比较（顺序打乱不算改过），
     // 与 §1.2 的口径一致。
     final weeksTouched = !weeksListEquals(updated.weeks, base.weeks) ||
         updated.weekType != base.weekType;
@@ -597,7 +597,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
         final scheme = Theme.of(ctx).colorScheme;
         return AppDialog(
           title: '当前时段有未保存的改动',
-          content: const AppDialogText('切换到这个时段前，要先保存这些改动吗？'),
+          content: const AppDialogText('切换前是否先保存当前改动？'),
           actions: [
             Row(
               children: [
@@ -658,7 +658,7 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('这门课与已有课程有 ${conflicts.length} 处冲突：'),
+              Text('本课程与已有课程存在 ${conflicts.length} 处冲突：'),
               const SizedBox(height: AppSpacing.s),
               for (final c in conflicts)
                 Padding(
@@ -744,13 +744,13 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           Text(
-            '🎨 已更改颜色：',
+            '已更改颜色：',
             style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
           ),
           _ColorSyncChoice(
             key: const ValueKey('color-sync-all'),
             selected: _syncColorToAll,
-            label: '应用到本课全部 $total 个时段',
+            label: '应用至本课程全部 $total 个时段',
             onTap: () => setState(() => _syncColorToAll = true),
           ),
           _ColorSyncChoice(
@@ -776,13 +776,13 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           Text(
-            '📅 周次：',
+            '周次：',
             style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
           ),
           _ColorSyncChoice(
             key: const ValueKey('weeks-sync-all'),
             selected: _syncWeeksToAll,
-            label: '应用到本课全部 $total 个时段',
+            label: '应用至本课程全部 $total 个时段',
             onTap: () => setState(() => _syncWeeksToAll = true),
           ),
           _ColorSyncChoice(
@@ -1010,8 +1010,8 @@ class _CourseEditPageState extends ConsumerState<CourseEditPage> {
                 ),
               const SizedBox(height: 2),
               Text(
-                '改课程名、老师、教室、备注会同步到本课全部时段；'
-                '颜色与周次按上方选择同步；时间只改这一条。',
+                '课程名、老师、教室与备注的修改将同步至本课程全部时段；'
+                '颜色与周次按上方选项同步；时间仅修改本条。',
                 style: TextStyle(fontSize: 12, color: scheme.outline),
               ),
               // 下间距 18：保证与下方输入框（浮动标签会向上凸出）之间留足空

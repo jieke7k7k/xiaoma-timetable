@@ -49,7 +49,7 @@ class SemesterManagePage extends ConsumerWidget {
             return EmptyState(
               icon: Icons.school_outlined,
               title: '还没有学期',
-              message: '创建一个学期，开始排你的课表吧',
+              message: '创建学期以开始排课',
               actionLabel: '新建学期',
               onAction: () => _createSemester(context, ref),
             );
@@ -209,7 +209,7 @@ class SemesterManagePage extends ConsumerWidget {
       await ref.read(semestersProvider.notifier).addSemester(created);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已创建「${created.name}」，点击卡片可切换过去')),
+          SnackBar(content: Text('已创建「${created.name}」，点击卡片可切换')),
         );
       }
     } catch (e) {
@@ -251,7 +251,7 @@ class SemesterManagePage extends ConsumerWidget {
     final ok = await showAppConfirmDialog(
       context,
       title: '切换学期',
-      message: '确定切换到「${s.name}」吗？\n课表与周次将显示该学期的内容。',
+      message: '确定切换至「${s.name}」吗？切换后，课表与周次将显示该学期内容。',
       confirmLabel: '切换',
     );
     if (ok != true) return;
@@ -275,13 +275,13 @@ class SemesterManagePage extends ConsumerWidget {
     final current = ref.read(currentSemesterProvider).value;
     if (current?.id == s.id) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('不能删除当前正在使用的学期，请先切换到其他学期')));
+          const SnackBar(content: Text('当前学期不可删除，请先切换至其他学期')));
       return;
     }
     final ok = await showAppConfirmDialog(
       context,
       title: '删除学期',
-      message: '确定删除「${s.name}」吗？\n该学期下的所有课程也会一并删除，且不可恢复。',
+      message: '确定删除「${s.name}」吗？该学期全部课程将一并删除，且不可恢复。',
       confirmLabel: '删除',
       // 破坏性确认：确认按钮统一由 AppDialog 渲染 error 色，不再手写 styleFrom
       destructive: true,

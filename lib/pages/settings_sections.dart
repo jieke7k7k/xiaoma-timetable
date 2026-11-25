@@ -44,7 +44,6 @@ import '../widgets/empty_state.dart';
 /// - [AppearanceSettingsPage]（/settings-appearance）：实时预览 + 8 行入口（WB_SPEC_228）
 /// - [RemindersSettingsPage]（/settings-reminders）：上课提醒 / 上课播报 / 常驻通知 / 提前提醒
 /// - [DataSettingsPage]（/settings-data）：导入 / 学期管理 / 备份 / 恢复 / 导出 ICS / 数据管理
-/// - [PermissionsSettingsPage]（/settings-permissions）：原 `_PermissionSummaryTile` 内容
 /// - [WidgetSettingsPage]（/settings-widget）：桌面小组件说明 + 立即刷新桌面小部件 / 部件状态（WB_SPEC_219）
 ///
 /// 2.0.7（WB_SPEC_208 第 2 节）Taste 化只动布局与层级：同一节内连续行之间用 1px
@@ -367,7 +366,7 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
                         '上课提醒',
                         style: TextStyle(fontWeight: FontWeight.w500),
                       ),
-                      subtitle: const Text('每节课提前提醒，App 被杀后也能准时响铃'),
+                      subtitle: const Text('每节课前提醒；应用被系统清理后仍可准时提醒'),
                       value: s.enabled,
                       // WB_SPEC_235 §7：这三行是裸 SwitchListTile（没走
                       // SettingsSwitchRow），震动要在这里自己包一下
@@ -412,7 +411,7 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
                   '上课播报',
                   style: TextStyle(fontWeight: FontWeight.w500),
                 ),
-                subtitle: const Text('主页顶部显示当前/下一节课状态条，默认开'),
+                subtitle: const Text('主页顶部显示当前与下一节课状态条，默认开启'),
                 value: ui.showClassBroadcast,
                 onChanged: (v) {
                   AppHaptics.select();
@@ -441,7 +440,7 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
                     '今日课程常驻通知',
                     style: TextStyle(fontWeight: FontWeight.w500),
                   ),
-                  subtitle: const Text('通知栏常驻显示今日剩余或明日课程预告'),
+                  subtitle: const Text('通知栏常驻显示今日剩余课程或明日课程预告'),
                   value: on,
                   onChanged: (v) {
                     AppHaptics.select();
@@ -500,6 +499,8 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
   Widget _exactAlarmHint(ColorScheme scheme) {
     return InkWell(
       // WB_SPEC_235 跟进：精确闹钟提示行 = 轻点档
+      // WB_SPEC_261 §5：补圆角 8，避免长按整行空白高亮像空框。
+      borderRadius: BorderRadius.circular(8),
       onTap: () async {
         AppHaptics.tap();
         await PermissionService.instance.openExactAlarmSettings();
@@ -514,7 +515,7 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                '精确闹钟未授权，提醒可能延迟几分钟',
+                '精确闹钟未授权，提醒可能延迟数分钟',
                 style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
               ),
             ),
@@ -544,7 +545,7 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
       final go = await showAppConfirmDialog(
         context,
         title: '需要通知权限',
-        message: '需要开启通知权限才能发送上课提醒，是否前往系统设置开启？',
+        message: '发送上课提醒需要通知权限，是否前往系统设置开启？',
         confirmLabel: '去设置',
         cancelLabel: '暂不',
       );
@@ -578,7 +579,7 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
       final go = await showAppConfirmDialog(
         context,
         title: '需要通知权限',
-        message: '需要开启通知权限才能在通知栏常驻显示今日课程，是否前往系统设置开启？',
+        message: '常驻显示今日课程需要通知权限，是否前往系统设置开启？',
         confirmLabel: '去设置',
         cancelLabel: '暂不',
       );
@@ -606,7 +607,7 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const Text(
-          '为防止系统后台清理导致漏报，建议在电池优化列表里把小马课表设为「不优化」',
+          '为防止系统后台清理导致漏报，建议于电池优化列表中将小马课表设为「不优化」',
         ),
         duration: const Duration(seconds: 6),
         action: SnackBarAction(
@@ -626,8 +627,8 @@ class _RemindersSettingsPageState extends ConsumerState<RemindersSettingsPage>
     final go = await showAppConfirmDialog(
       context,
       title: '开启精确闹钟',
-      message: '为保证 App 被杀后提醒仍准时，请在系统设置中允许「闹钟和提醒」权限。'
-          '拒绝也可继续，但提醒可能略有延迟。',
+      message: '为保证应用被系统清理后提醒仍准时，请在系统设置中允许「闹钟和提醒」权限。'
+          '拒绝亦可继续使用，但提醒可能略有延迟。',
       confirmLabel: '去设置',
       cancelLabel: '暂不',
     );
@@ -685,7 +686,7 @@ class DataSettingsPage extends ConsumerWidget {
             leading: const SettingsIconBox(icon: Icons.upload_file_outlined, category: SettingsIconCategory.data),
             title: const _InfoTitle(
               title: '导入课表',
-              message: 'ICS / 图片 OCR / PDF 导入，支持冲突检测',
+              message: '支持 ICS、图片 OCR 与 PDF 导入，含冲突检测',
             ),
             trailing: const _Chevron(),
             // WB_SPEC_235 跟进：设置子页入口行 = 轻点档
@@ -727,7 +728,7 @@ class DataSettingsPage extends ConsumerWidget {
             leading: const SettingsIconBox(icon: Icons.backup_outlined, category: SettingsIconCategory.data),
             title: const _InfoTitle(
               title: '备份到文件',
-              message: '导出全部数据为 JSON 文件，换机/重装可恢复',
+              message: '将全部数据导出为 JSON 文件，用于换机或重装恢复',
             ),
             trailing: const _Chevron(),
             // WB_SPEC_235 跟进：设置子页入口行 = 轻点档
@@ -749,7 +750,7 @@ class DataSettingsPage extends ConsumerWidget {
             // WB_SPEC_256 §7：「从备份恢复」入口行标题改为 error 色
             title: _InfoTitle(
               title: '从备份恢复',
-              message: '选择备份 JSON，恢复前会再次确认（覆盖现有数据）',
+              message: '选择备份 JSON 文件，恢复前将再次确认（覆盖现有数据）',
               titleColor: scheme.error,
             ),
             trailing: const _Chevron(),
@@ -771,7 +772,7 @@ class DataSettingsPage extends ConsumerWidget {
             leading: const SettingsIconBox(icon: Icons.calendar_month_outlined, category: SettingsIconCategory.data),
             title: const _InfoTitle(
               title: '导出课表（ICS）',
-              message: '当前学期课表导出为日历文件，可分享或导入其他日历 App',
+              message: '将当前学期课表导出为日历文件，可分享或导入其他日历应用',
             ),
             trailing: const _Chevron(),
             // WB_SPEC_235 跟进：设置子页入口行 = 轻点档
@@ -1012,8 +1013,8 @@ class _LocalOnlyInfoBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '小马课表采用纯本地隐私存储，不包含云端同步。换机或重装应用前，'
-              '请点击下方「备份到文件」并保存至微信文件传输助手或系统下载目录。',
+              '小马课表采用纯本地存储，不含云端同步。换机或重装前，'
+              '请点击下方「备份到文件」，并保存至微信文件传输助手或系统下载目录。',
               style: TextStyle(
                 fontSize: 13,
                 color: scheme.onTertiaryContainer,
@@ -1022,19 +1023,6 @@ class _LocalOnlyInfoBanner extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// 权限子页：原 [_PermissionSummaryTile] 的内容搬进来，首页只留一行入口
-class PermissionsSettingsPage extends StatelessWidget {
-  const PermissionsSettingsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('权限'), centerTitle: true),
-      body: ListView(children: [const _PermissionSummaryTile()]),
     );
   }
 }
@@ -1057,7 +1045,7 @@ class WidgetSettingsPage extends StatelessWidget {
               '今日课程小组件',
               style: const TextStyle(fontWeight: FontWeight.w500),
             ),
-            subtitle: Text('在桌面长按空白处 →「小组件」→ 找到「小马课表」，即可添加今日课程小组件'),
+            subtitle: Text('长按桌面空白处 →「小组件」→ 选择「小马课表」，即可添加今日课程小组件'),
           ),
           // WB_SPEC_219：从外观页移入「立即刷新桌面小部件」「部件状态」，
           // 追加在「今日课程小组件」说明行之后，中间用 0.5 Divider 隔开；
@@ -1073,7 +1061,7 @@ class WidgetSettingsPage extends StatelessWidget {
             leading: const SettingsIconBox(icon: Icons.widgets_outlined, category: SettingsIconCategory.appearance),
             title: const _InfoTitle(
               title: '立即刷新桌面小部件',
-              message: '把最新课程重新推送到桌面小部件',
+              message: '将最新课程重新推送至桌面小部件',
             ),
             // WB_SPEC_235 跟进复审 L1：补 enableFeedback: false 防双写
             enableFeedback: false,
@@ -1082,7 +1070,7 @@ class WidgetSettingsPage extends StatelessWidget {
               await WidgetService.instance.refreshWidgets();
               if (!context.mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已推送。若桌面仍不显示，长按小部件删除后重新添加一次即可')),
+                const SnackBar(content: Text('已推送。若桌面仍不显示，请删除小部件后重新添加。')),
               );
             },
           ),
@@ -1105,7 +1093,7 @@ class WidgetSettingsPage extends StatelessWidget {
                     '部件状态',
                     style: TextStyle(fontWeight: FontWeight.w500),
                   ),
-                  subtitle: Text('还没有收到小部件的更新记录（先添加一个桌面小部件）'),
+                  subtitle: Text('暂无小部件更新记录，请先添加桌面小部件'),
                 );
               }
               final t = DateTime.fromMillisecondsSinceEpoch(d.ts);
@@ -1127,66 +1115,6 @@ class WidgetSettingsPage extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// 权限入口行：显示「已授权 x / 3」摘要。
-///
-/// 2.0.2 起随「高级与数据」拆解单列在设置页一级页面（原 advanced_page.dart）。
-/// 2.0.5 起随 QQ 式整顿搬进权限子页（首页只留一行入口）。
-/// 状态查询是一次平台通道调用，因此只在 initState 里发起一次（放在 build 里
-/// 会让每次重建都查一遍）；从权限页返回时再查一次，用户在系统里改完立即可见。
-class _PermissionSummaryTile extends StatefulWidget {
-  const _PermissionSummaryTile();
-
-  @override
-  State<_PermissionSummaryTile> createState() => _PermissionSummaryTileState();
-}
-
-class _PermissionSummaryTileState extends State<_PermissionSummaryTile> {
-  late Future<PermissionSnapshot> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = PermissionService.instance.status();
-  }
-
-  Future<void> _open() async {
-    await Navigator.pushNamed(context, '/permissions');
-    if (!mounted) return;
-    setState(() => _future = PermissionService.instance.status());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<PermissionSnapshot>(
-      future: _future,
-      builder: (ctx, snap) {
-        final s = snap.data;
-        return ListTile(
-          leading: const SettingsIconBox(icon: Icons.shield_outlined, category: SettingsIconCategory.schedule),
-          title: const Text(
-            '权限',
-            style: TextStyle(fontWeight: FontWeight.w500),
-          ),
-          subtitle: Text(
-            s == null
-                ? '正在读取…'
-                : '通知 ${s.notification ? '已授权' : '未授权'} · '
-                    '闹钟 ${s.exactAlarm ? '已授权' : '未授权'} · '
-                    '电池 ${s.battery ? '已授权' : '未授权'}',
-          ),
-          trailing: const _Chevron(),
-          // WB_SPEC_235 跟进：权限汇总行 = 轻点档
-          onTap: () {
-            AppHaptics.tap();
-            _open();
-          },
-          enableFeedback: false,
-        );
-      },
     );
   }
 }
@@ -1300,7 +1228,7 @@ class _AppearanceGroup extends ConsumerWidget {
             // 承担（WB_SPEC_235 §6），这一行只写业务写入，绝不重复震一次。
             SettingsSwitchRow(
               title: '触感震动反馈',
-              subtitle: '点击按钮、切换开关与操作课表时提供轻微震动',
+              subtitle: '点击按钮、切换开关或操作课表时提供轻微震动',
               value: ui.enableHaptics,
               onChanged: (v) => apply(ui.copyWith(enableHaptics: v)),
             ),
@@ -1386,7 +1314,7 @@ class _AppearanceGroup extends ConsumerWidget {
                       apply(ui.copyWith(clearThemeCustomColor: true));
                       Navigator.pop(ctx);
                     },
-                    child: const Text('清除自定义，回到预置主题色'),
+                    child: const Text('清除自定义，恢复预置主题色'),
                   ),
                 ),
             ],
@@ -2308,7 +2236,7 @@ class FontSettingsSectionState extends State<FontSettingsSection> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('导入失败：这个文件不是有效的字体文件（仅支持 TTF / OTF）')),
+          const SnackBar(content: Text('导入失败：该文件不是有效的字体文件（仅支持 TTF / OTF）')),
         );
       }
     } finally {
@@ -2320,7 +2248,7 @@ class FontSettingsSectionState extends State<FontSettingsSection> {
     final ok = await showAppConfirmDialog(
       context,
       title: '删除导入字体',
-      message: '确定删除「${font.name}」吗？删除后使用该字体的设置会回到系统默认。',
+      message: '删除「${font.name}」后，使用该字体的设置将恢复系统默认。',
       confirmLabel: '删除',
       destructive: true,
     );
@@ -2386,7 +2314,7 @@ class FontSettingsSectionState extends State<FontSettingsSection> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
           child: Text(
-            '从手机里选 TTF / OTF 字体，导入后立即全 App 生效',
+            '从手机选择 TTF / OTF 字体，导入后立即全应用生效',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ),

@@ -127,7 +127,7 @@ class BackupCodec {
     try {
       root = jsonDecode(content);
     } catch (_) {
-      throw const BackupFormatException('文件不是有效的 JSON，可能已损坏或选错了文件');
+      throw const BackupFormatException('文件不是有效的 JSON，可能已损坏或选择错误');
     }
     if (root is! Map<String, dynamic>) {
       throw const BackupFormatException('备份文件结构不正确（顶层不是对象）');
@@ -140,7 +140,7 @@ class BackupCodec {
     }
     if (version > backupVersion) {
       throw BackupFormatException(
-          '备份文件版本过新（v$version），当前 App 只支持到 v$backupVersion，请先升级 App');
+          '备份文件版本过新（v$version），当前应用仅支持至 v$backupVersion，请先升级应用');
     }
     if (version < 1) {
       throw const BackupFormatException('版本号无法识别，可能不是「小马课表」的备份文件');

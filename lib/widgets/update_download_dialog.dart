@@ -211,7 +211,7 @@ class _UpdateDownloadDialogState extends State<UpdateDownloadDialog>
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '安装包已下载完成。首次更新需在系统设置中开启「允许来自此来源的应用」，授权后返回点「立即安装」即可。',
+                  '安装包已下载完成。首次更新需在系统设置中开启「允许来自此来源的应用」，授权后返回并点击「立即安装」。',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSecondaryContainer,
                   ),

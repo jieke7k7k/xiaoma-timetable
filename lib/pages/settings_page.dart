@@ -94,7 +94,7 @@ class SettingsPage extends ConsumerWidget {
                 icon: Icons.handyman_outlined,
                 category: SettingsIconCategory.schedule,
                 title: '课表工具箱',
-                subtitle: '搜索、空闲时段、考试倒计时',
+                subtitle: '课程搜索、空闲时段、考试倒计时',
                 route: '/course-tools',
               ),
               const _EntryTile(
@@ -120,7 +120,7 @@ class SettingsPage extends ConsumerWidget {
                 icon: Icons.widgets_outlined,
                 category: SettingsIconCategory.appearance,
                 title: '桌面小组件',
-                subtitle: '今日课程小组件的添加说明',
+                subtitle: '今日课程小组件添加说明',
                 route: '/settings-widget',
               ),
               _ReminderEntryTile(subtitle: reminderSubtitle),
@@ -133,16 +133,16 @@ class SettingsPage extends ConsumerWidget {
                 icon: Icons.backup_outlined,
                 category: SettingsIconCategory.data,
                 title: '数据备份与换机',
-                subtitle: '本地导出、恢复与换机迁移（纯本地存储）',
+                subtitle: '本地导出、恢复与换机迁移',
                 route: '/settings-data',
               ),
-              // §8：权限自检从 AppBar ⋮ 菜单移入设置首页，路由与自检逻辑不动
+              // §8：权限自检从 AppBar ⋮ 菜单移入设置首页；WB_SPEC_261 直达 /permissions
               const _EntryTile(
                 icon: Icons.shield_outlined,
                 category: SettingsIconCategory.data,
                 title: '权限自检',
                 subtitle: '通知、精确闹钟与电池优化授权状态',
-                route: '/settings-permissions',
+                route: '/permissions',
               ),
               // WB_SPEC_256 §3.2：「关于小马课表」从顶栏 ⋮ 下沉为设置页最底部的标准入口行
               const _EntryTile(

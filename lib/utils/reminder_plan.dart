@@ -35,8 +35,8 @@ DateTime computeReminderTime(DateTime courseStart, int advanceMinutes) =>
 String buildReminderBody(Course course, int advanceMinutes) {
   final room = course.classroom?.trim();
   final base = (room == null || room.isEmpty)
-      ? '《${course.name}》还有 $advanceMinutes 分钟上课'
-      : '《${course.name}》还有 $advanceMinutes 分钟在 $room 上课';
+      ? '《${course.name}》将于 $advanceMinutes 分钟后上课'
+      : '《${course.name}》将于 $advanceMinutes 分钟后在 $room 上课';
   final note = course.note?.trim();
   if (note == null || note.isEmpty) return base;
   return '$base（$note）';

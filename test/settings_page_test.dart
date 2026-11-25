@@ -98,9 +98,9 @@ void main() {
     expect(find.byType(Slider), findsNothing);
 
     // 各入口行的固定副标题（证明入口行存在）
-    expect(find.text('搜索、空闲时段、考试倒计时'), findsOneWidget);
-    expect(find.text('今日课程小组件的添加说明'), findsOneWidget);
-    expect(find.text('本地导出、恢复与换机迁移（纯本地存储）'), findsOneWidget);
+    expect(find.text('课程搜索、空闲时段、考试倒计时'), findsOneWidget);
+    expect(find.text('今日课程小组件添加说明'), findsOneWidget);
+    expect(find.text('本地导出、恢复与换机迁移'), findsOneWidget);
     expect(find.text('版本信息、检查更新、公告与使用帮助'), findsOneWidget);
   });
 

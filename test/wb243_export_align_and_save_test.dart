@@ -340,9 +340,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('导出整学期完整课表（图片）'), findsOneWidget);
+      expect(find.text('导出整学期课表（图片）'), findsOneWidget);
       expect(find.text('保存整学期课表到本地'), findsOneWidget);
-      expect(find.text('存到手机相册，随时查看'), findsOneWidget);
+      expect(find.text('保存至手机相册，随时查看'), findsOneWidget);
     });
   });
 }

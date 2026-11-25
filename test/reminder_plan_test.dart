@@ -57,26 +57,26 @@ void main() {
   group('buildReminderBody', () {
     test('有教室', () {
       final c = course(classroom: 'A101');
-      expect(buildReminderBody(c, 15), '《课程》还有 15 分钟在 A101 上课');
+      expect(buildReminderBody(c, 15), '《课程》将于 15 分钟后在 A101 上课');
     });
 
     test('无教室兜底', () {
-      expect(buildReminderBody(course(), 15), '《课程》还有 15 分钟上课');
+      expect(buildReminderBody(course(), 15), '《课程》将于 15 分钟后上课');
     });
 
     test('有教室 + 有备注：末尾括号追加备注', () {
       final c = course(classroom: 'A101', note: '带电脑');
-      expect(buildReminderBody(c, 15), '《课程》还有 15 分钟在 A101 上课（带电脑）');
+      expect(buildReminderBody(c, 15), '《课程》将于 15 分钟后在 A101 上课（带电脑）');
     });
 
     test('无教室 + 有备注：末尾括号追加备注', () {
       final c = course(note: '带电脑');
-      expect(buildReminderBody(c, 15), '《课程》还有 15 分钟上课（带电脑）');
+      expect(buildReminderBody(c, 15), '《课程》将于 15 分钟后上课（带电脑）');
     });
 
     test('备注只有空白时不追加', () {
       final c = course(classroom: 'A101', note: '   ');
-      expect(buildReminderBody(c, 15), '《课程》还有 15 分钟在 A101 上课');
+      expect(buildReminderBody(c, 15), '《课程》将于 15 分钟后在 A101 上课');
     });
   });
 

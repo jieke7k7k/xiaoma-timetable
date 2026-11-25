@@ -61,7 +61,7 @@ class _ImportPageState extends ConsumerState<ImportPage> {
           if (target != null) _targetCard(context, target, current),
           const SizedBox(height: 12),
           Text(
-            '选择导入方式，解析结果都会先进入核对页，确认后才写入课表。',
+            '选择导入方式；解析结果将先进入核对页，确认后写入课表。',
             style: Theme.of(context).textTheme.bodySmall
                 ?.copyWith(color: Theme.of(context).colorScheme.outline),
           ),
@@ -70,14 +70,14 @@ class _ImportPageState extends ConsumerState<ImportPage> {
             icon: Icons.cloud_download_outlined,
             color: const Color(0xFFB8BFC7),
             title: '从教务官网导入',
-            subtitle: '内置浏览器登录学校教务系统，打开课表页后一键抓取',
+            subtitle: '内置浏览器登录教务系统，打开课表页后抓取',
             onTap: () => _guardedImport(target, (t) => _importWeb(context, t)),
           ),
           _ImportTile(
             icon: Icons.photo_camera_outlined,
             color: const Color(0xFFAFC3BB),
             title: '拍照 / 相册识别课表',
-            subtitle: '本地 OCR 识别课表截图（中文），支持手动核对修正',
+            subtitle: '本地 OCR 识别课表截图（中文），可手动核对修正',
             onTap: () =>
                 _guardedImport(target, (t) => _importImage(context, t)),
           ),
@@ -85,14 +85,14 @@ class _ImportPageState extends ConsumerState<ImportPage> {
             icon: Icons.calendar_month_outlined,
             color: const Color(0xFF8FA3B0),
             title: '导入 ICS 日历文件',
-            subtitle: '从教务系统导出的 .ics 文件，自动匹配星期/节次/周次',
+            subtitle: '导入教务系统导出的 .ics 文件，自动匹配星期、节次与周次',
             onTap: () => _guardedImport(target, (t) => _importIcs(context, t)),
           ),
           _ImportTile(
             icon: Icons.picture_as_pdf_outlined,
             color: const Color(0xFFC4B8A8),
             title: '导入 PDF 课表文件',
-            subtitle: '提取 PDF 文本后复用相同解析流程',
+            subtitle: '提取 PDF 文本后按相同流程解析',
             onTap: () => _guardedImport(target, (t) => _importPdf(context, t)),
           ),
         ],
@@ -170,7 +170,7 @@ class _ImportPageState extends ConsumerState<ImportPage> {
     }
     final picked = await showAppSelectSheet<Semester>(
       context: context,
-      title: '这次导入到哪个学期？',
+      title: '导入至哪个学期',
       currentValue: currentValue,
       options: [
         for (final s in semesters)
@@ -216,7 +216,7 @@ class _ImportPageState extends ConsumerState<ImportPage> {
       final target = created.copyWith(id: id, isCurrent: true);
       setState(() => _target = target);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已新建并切换到「${created.name}」，课表将导入到这里')),
+        SnackBar(content: Text('已新建并切换至「${created.name}」，课表将导入该学期')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -340,7 +340,7 @@ class _ImportPageState extends ConsumerState<ImportPage> {
         _showError(
           context,
           source: '图片 OCR 导入',
-          message: '未识别出课程，请换一张更清晰的课表截图试试',
+          message: '未识别出课程，请更换更清晰的课表截图',
         );
         return;
       }
@@ -374,7 +374,7 @@ class _ImportPageState extends ConsumerState<ImportPage> {
         _showError(
           context,
           source: 'PDF 文件导入',
-          message: '未从 PDF 中提取到课程，请确认文件是文本型 PDF',
+          message: '未从 PDF 中提取到课程，请确认文件为文本型 PDF',
         );
         return;
       }
@@ -488,7 +488,7 @@ class _ImportPageState extends ConsumerState<ImportPage> {
               if (ctx.mounted) Navigator.pop(ctx);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('错误报告已复制，可发给他人帮忙排查')),
+                  const SnackBar(content: Text('错误报告已复制，可发送他人协助排查')),
                 );
               }
             },

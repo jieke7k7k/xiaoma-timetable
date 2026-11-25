@@ -19,7 +19,14 @@ class CourseSearchPage extends ConsumerStatefulWidget {
 }
 
 class _CourseSearchPageState extends ConsumerState<CourseSearchPage> {
+  final _controller = TextEditingController();
   String _query = '';
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   static const _weekNames = ['', '一', '二', '三', '四', '五', '六', '日'];
 
@@ -61,32 +68,44 @@ class _CourseSearchPageState extends ConsumerState<CourseSearchPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: TextField(
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: '搜课名 / 老师 / 教室',
-            border: InputBorder.none,
-            // WB_SPEC_231 第 12.1 节：全局主题把 filled 改成 false（框内填充改由
-            // CleanGapOutlineInputBorder 自画），这个搜索框用的是 InputBorder.none、
-            // 走不到自画边框，这里显式开着填充，保持改前的底色不变。
-            filled: true,
-          ),
-          onChanged: (v) => setState(() => _query = v),
-        ),
-        actions: [
-          if (_query.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.clear),
-              tooltip: '清空',
-              // WB_SPEC_235 §7：清空输入 = 轻点档
-              onPressed: () {
-                AppHaptics.tap();
-                setState(() => _query = '');
-              },
-            ),
-        ],
+        title: const Text('课程搜索'),
       ),
-      body: q.isEmpty
+      body: Column(
+        children: [
+          // WB_SPEC_261 §8：搜索框从 AppBar.title 移到 body 顶部，与选校器同款
+          // 写法（prefixIcon + suffixIcon 清空 + isDense，边框与内边距全走主题，
+          // 不再手写 border / filled / contentPadding）。旧写法的问题：只写了
+          // border: InputBorder.none，没写 enabledBorder / focusedBorder，
+          // InputDecorator 用主题补了 focusedBorder（CleanGap 主色 1.5dp），
+          // autofocus 让它进页面就常驻聚焦态，于是出现棕色粗边框；主题
+          // contentPadding 上下 28dp 又把框顶满 AppBar，提示文字贴边像被裁。
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: TextField(
+              controller: _controller,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: '搜索课名、老师或教室',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _query.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        tooltip: '清空',
+                        // WB_SPEC_235 §7：清空输入 = 轻点档
+                        onPressed: () {
+                          AppHaptics.tap();
+                          _controller.clear();
+                          setState(() => _query = '');
+                        },
+                      )
+                    : null,
+                isDense: true,
+              ),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
+          Expanded(
+            child: q.isEmpty
           ? const EmptyState(
               icon: Icons.search_outlined,
               title: '搜索当前学期的课程',
@@ -96,7 +115,7 @@ class _CourseSearchPageState extends ConsumerState<CourseSearchPage> {
               ? EmptyState(
                   icon: Icons.search_off_outlined,
                   title: '没有找到「$_query」',
-                  message: '换个关键词试试，或确认课程在当前学期里',
+                  message: '请更换关键词，或确认课程属于当前学期',
                 )
               : ListView.separated(
                   itemCount: results.length,
@@ -138,6 +157,9 @@ class _CourseSearchPageState extends ConsumerState<CourseSearchPage> {
                     );
                   },
                 ),
+          ),
+        ],
+      ),
     );
   }
 }

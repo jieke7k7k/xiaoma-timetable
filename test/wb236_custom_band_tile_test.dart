@@ -268,7 +268,7 @@ void main() {
     expect(find.text('节数与快捷设置'), findsOneWidget);
     expect(find.text('每日节数与分段'), findsOneWidget);
     expect(find.text('套用作息模板'), findsOneWidget);
-    expect(find.text('上下课时间（点时间可修改）'), findsOneWidget);
+    expect(find.text('上下课时间（点击时间可修改）'), findsOneWidget);
     // 默认 13 节：上 5 下 4 晚 4
     expect(find.text('共 13 节 · 上5 下4 晚4'), findsOneWidget);
     final valueRect = tester.getRect(find.text('共 13 节 · 上5 下4 晚4'));

@@ -133,7 +133,7 @@ void main() {
     expect(find.text('浙江师范大学'), findsNWidgets(2));
     expect(find.text('示例科技大学'), findsOneWidget);
     expect(find.text('正方教务'), findsOneWidget);
-    expect(find.text('不在列表里？手动输入教务网址'), findsOneWidget);
+    expect(find.text('不在列表中？手动输入教务网址'), findsOneWidget);
 
     // 搜索过滤：隐藏最近使用，只剩匹配项
     await tester.enterText(find.byType(TextField), '示例');
@@ -145,7 +145,7 @@ void main() {
     // 无结果空态
     await tester.enterText(find.byType(TextField), '不存在的大学');
     await drain(tester);
-    expect(find.text('没找到这所学校，试试手动输入网址'), findsOneWidget);
+    expect(find.text('未找到该学校，请手动输入网址'), findsOneWidget);
   });
 
   testWidgets('选校器：点选学校链式进入并回传结果', (tester) async {

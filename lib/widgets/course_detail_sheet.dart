@@ -229,7 +229,7 @@ class CourseDetailSheet extends ConsumerWidget {
     final ok = await showAppConfirmDialog(
       hostContext,
       title: '删除课程',
-      message: '确定删除《${course.name}》吗？删除后不可恢复哦。',
+      message: '确定删除《${course.name}》吗？删除后不可恢复。',
       confirmLabel: '删除',
       destructive: true,
     );

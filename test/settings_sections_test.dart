@@ -261,9 +261,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(find.byType(AppInfoIconButton), findsNothing);
-    expect(find.text('每节课提前提醒，App 被杀后也能准时响铃'), findsOneWidget);
-    expect(find.text('主页顶部显示当前/下一节课状态条，默认开'), findsOneWidget);
-    expect(find.text('通知栏常驻显示今日剩余或明日课程预告'), findsOneWidget);
+    expect(find.text('每节课前提醒；应用被系统清理后仍可准时提醒'), findsOneWidget);
+    expect(find.text('主页顶部显示当前与下一节课状态条，默认开启'), findsOneWidget);
+    expect(find.text('通知栏常驻显示今日剩余课程或明日课程预告'), findsOneWidget);
   });
 
   testWidgets('实时预览：今天列边框随 highlightTodayColumn 开关', (tester) async {
@@ -301,8 +301,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('数据备份与换机'), findsOneWidget);
-    expect(find.textContaining('纯本地隐私存储'), findsOneWidget);
-    expect(find.textContaining('不包含云端同步'), findsOneWidget);
+    expect(find.textContaining('纯本地存储'), findsOneWidget);
+    expect(find.textContaining('不含云端同步'), findsOneWidget);
     expect(find.text('导入课表'), findsOneWidget);
     expect(find.text('数据管理'), findsOneWidget);
     expect(find.byType(Divider), findsNWidgets(5));

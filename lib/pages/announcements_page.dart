@@ -40,7 +40,7 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
             return const EmptyState(
               icon: Icons.campaign_outlined,
               title: '暂无公告',
-              message: '没有网络或暂时没有发布过公告，稍后再来看看',
+              message: '暂无网络或尚未发布公告，请稍后再查看',
             );
           }
           return ListView.separated(

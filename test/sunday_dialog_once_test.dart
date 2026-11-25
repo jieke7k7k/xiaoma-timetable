@@ -26,7 +26,7 @@ import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
 /// 1. 纯判定：周日 + 本周 + 今天没记过才弹；
 /// 2. 持久化：标记后同一天（含新实例＝杀进程重进/页面重建）不再弹，下个周日重新弹；
 /// 3. 页面行为：首次进入弹、点「知道了」后切设置 Tab 再切回不弹、
-///    页面重建不弹、「看下周」仍跳周、库里只留最近一次已读日期。
+///    页面重建不弹、「查看下周」仍跳周、库里只留最近一次已读日期。
 void main() {
   setUpAll(() {
     sqfliteFfiInit();
@@ -267,7 +267,7 @@ void main() {
     await tester.pump();
   }
 
-  final dialogTitle = find.text('今天是周日');
+  final dialogTitle = find.text('今日为周日，本周已结束');
 
   testWidgets('今天周日且正看本周：首次进入弹一次', (tester) async {
     sundayDialogNow = () => sunday;
@@ -275,9 +275,9 @@ void main() {
     await pumpHome(tester);
 
     expect(await waitFor(tester, dialogTitle), isTrue, reason: '周日首次进入应弹出');
-    expect(find.text('今天是周日，本周已结束'), findsOneWidget);
-    // 未到最后一周（默认 20 周）→ 有「看下周」
-    expect(find.text('看下周'), findsOneWidget);
+    expect(find.text('今日为周日，本周已结束'), findsOneWidget);
+    // 未到最后一周（默认 20 周）→ 有「查看下周」
+    expect(find.text('查看下周'), findsOneWidget);
     expect(find.text('知道了'), findsOneWidget);
     // 弹出即记已读
     expect(
@@ -380,21 +380,21 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('「看下周」仍跳周：关闭弹窗并翻到下一周', (tester) async {
+  testWidgets('「查看下周」仍跳周：关闭弹窗并翻到下一周', (tester) async {
     sundayDialogNow = () => sunday;
     await seedCurrentSemester(tester);
     await pumpHome(tester);
 
     expect(await waitFor(tester, dialogTitle), isTrue);
-    await tester.tap(find.text('看下周'));
+    await tester.tap(find.text('查看下周'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(dialogTitle, findsNothing, reason: '看下周也要关掉弹窗');
+    expect(dialogTitle, findsNothing, reason: '查看下周也要关掉弹窗');
     expect(
       find.text('第 2 周'),
       findsOneWidget,
-      reason: '「看下周」仍要跳到下一周（行为不变）',
+      reason: '「查看下周」仍要跳到下一周（行为不变）',
     );
 
     await tester.pump(const Duration(seconds: 11));

@@ -133,7 +133,7 @@ class _ImportConflictsPageState extends State<ImportConflictsPage> {
               Navigator.pop(context, _choices);
             },
             icon: const Icon(Icons.check),
-            label: Text('按此处理并导入（导入 $willImport 门 · 跳过 $willSkip 门）'),
+            label: Text('按此处理并导入（导入 $willImport 门，跳过 $willSkip 门）'),
           ),
         ),
       ),

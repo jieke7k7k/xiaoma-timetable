@@ -359,7 +359,7 @@ void main() {
         ),
       );
 
-      const hint = '提示：点选任意日期，将自动对齐至当周周一';
+      const hint = '点选任意日期，将自动对齐至当周周一';
       expect(find.text(hint), findsOneWidget);
       expect(find.byIcon(Icons.info_outline), findsOneWidget);
       expect(
@@ -405,7 +405,7 @@ void main() {
       final fields =
           tester.widgetList<TextField>(find.byType(TextField)).toList();
       expect(fields.last.controller!.text, '16', reason: '当前学期 16 周');
-      expect(find.text('提示：点选任意日期，将自动对齐至当周周一'), findsOneWidget);
+      expect(find.text('点选任意日期，将自动对齐至当周周一'), findsOneWidget);
       await settlePendingDbTimers(tester);
     });
 

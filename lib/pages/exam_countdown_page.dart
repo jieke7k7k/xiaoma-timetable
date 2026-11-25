@@ -41,7 +41,7 @@ class ExamCountdownPage extends ConsumerWidget {
             return const EmptyState(
               icon: Icons.event_note_outlined,
               title: '还没有设置考试日期',
-              message: '编辑课程时打开「考试日期」即可在这里看到倒计时',
+              message: '编辑课程时设置「考试日期」，即可在此查看倒计时',
             );
           }
           return ListView.builder(

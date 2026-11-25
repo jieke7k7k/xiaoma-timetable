@@ -105,7 +105,7 @@ class CardStylePage extends ConsumerWidget {
               ),
               SettingsSwitchRow(
                 title: '隐藏地点里的校区',
-                subtitle: '去掉地点开头的「…校区」前缀',
+                subtitle: '去除地点开头的「…校区」前缀',
                 value: ui.hideCampus,
                 onChanged: (v) => apply(ui.copyWith(hideCampus: v)),
               ),
@@ -235,7 +235,7 @@ class CardStylePage extends ConsumerWidget {
               // 3. 模糊毛玻璃开关
               SettingsSwitchRow(
                 title: '模糊',
-                subtitle: '毛玻璃效果，底下的格子是虚的',
+                subtitle: '毛玻璃效果，下方格子呈虚化',
                 value: ui.conflictBlurEnabled,
                 onChanged: (v) => apply(ui.copyWith(conflictBlurEnabled: v)),
               ),

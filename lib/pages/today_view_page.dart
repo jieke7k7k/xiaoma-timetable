@@ -769,7 +769,7 @@ class _EmptyTodayCard extends StatelessWidget {
                     height: 1.4,
                   ),
                   children: [
-                    const TextSpan(text: '好好休息，或者前往'),
+                    const TextSpan(text: '好好休息，或前往'),
                     TextSpan(
                       text: '「课表」',
                       style: TextStyle(

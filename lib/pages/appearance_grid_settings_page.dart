@@ -35,7 +35,7 @@ class AppearanceGridSettingsPage extends ConsumerWidget {
             children: [
               SettingsSwitchRow(
                 title: '周末无课时自动收起周六日',
-                subtitle: '开启后周末没课时周视图只显示周一到周五，更宽敞',
+                subtitle: '开启后，周末无课时周视图仅显示周一至周五',
                 value: autoCollapse,
                 onChanged: (v) => ref
                     .read(autoCollapseWeekendProvider.notifier)
@@ -44,27 +44,27 @@ class AppearanceGridSettingsPage extends ConsumerWidget {
               // §4.1：ⓘ 只留「显示非本周课程」与下方「行高自适应一屏」两处
               SettingsSwitchRow(
                 title: '显示非本周课程',
-                infoMessage: '开启后其他周次的课程置灰显示，方便全局查看',
+                infoMessage: '开启后，其他周次的课程置灰显示',
                 value: showOther,
                 onChanged: (v) =>
                     ref.read(showOtherWeeksProvider.notifier).toggle(v),
               ),
               SettingsSwitchRow(
                 title: '今天整列边框高亮',
-                subtitle: '给今天这一整天加一圈主题色边框，默认关',
+                subtitle: '为当日整列添加主题色边框，默认关闭',
                 value: ui.highlightTodayColumn,
                 onChanged: (v) =>
                     apply(ui.copyWith(highlightTodayColumn: v)),
               ),
               SettingsSwitchRow(
                 title: '节数栏显示时间',
-                subtitle: '关掉后左侧只显示节次数字',
+                subtitle: '关闭后左侧仅显示节次数字',
                 value: ui.axisShowTime,
                 onChanged: (v) => apply(ui.copyWith(axisShowTime: v)),
               ),
               SettingsSwitchRow(
                 title: '标题显示单双周',
-                subtitle: '开时左上角显示「第 X 周 · 单周/双周」，关时只显示「第 X 周」，默认关',
+                subtitle: '开启时左上角显示「第 X 周 · 单周/双周」，关闭时仅显示「第 X 周」，默认关闭',
                 value: ui.showWeekParity,
                 onChanged: (v) => apply(ui.copyWith(showWeekParity: v)),
               ),
@@ -75,7 +75,7 @@ class AppearanceGridSettingsPage extends ConsumerWidget {
             children: [
               SettingsSwitchRow(
                 title: '行高自适应一屏',
-                infoMessage: '按屏幕高度均分行高，整张课表不用上下滚',
+                infoMessage: '按屏幕高度均分行高，整张课表无需上下滚动',
                 value: ui.autoFitHeight,
                 onChanged: (v) => apply(ui.copyWith(autoFitHeight: v)),
               ),

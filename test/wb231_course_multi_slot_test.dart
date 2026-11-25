@@ -275,7 +275,7 @@ void main() {
     await tester.tap(find.text('保存修改'));
     await drain(tester);
 
-    expect(find.text('合并同名课程？'), findsOneWidget);
+    expect(find.text('合并同名课程'), findsOneWidget);
     await tester.tap(find.text('取消'));
     await drain(tester);
 

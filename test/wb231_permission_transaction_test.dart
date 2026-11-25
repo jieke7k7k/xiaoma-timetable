@@ -83,7 +83,7 @@ void main() {
 
     expect(find.text('需要通知权限'), findsOneWidget);
     expect(
-      find.text('需要开启通知权限才能发送上课提醒，是否前往系统设置开启？'),
+      find.text('发送上课提醒需要通知权限，是否前往系统设置开启？'),
       findsOneWidget,
     );
     expect(find.text('去设置'), findsOneWidget);
@@ -111,9 +111,9 @@ void main() {
     await tapAndDrain(tester, find.text('暂不'));
 
     // 开关行下方的轻量提示（不是弹窗）
-    expect(find.text('精确闹钟未授权，提醒可能延迟几分钟'), findsOneWidget);
+    expect(find.text('精确闹钟未授权，提醒可能延迟数分钟'), findsOneWidget);
     // 首次开提醒成功 → 电池优化提示一次
-    expect(find.textContaining('建议在电池优化列表里把小马课表设为'), findsOneWidget);
+    expect(find.textContaining('建议于电池优化列表中将小马课表设为'), findsOneWidget);
     expect(await readSetting(tester, 'battery_hint_shown'), '1');
   });
 
@@ -126,7 +126,7 @@ void main() {
         tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, '上课提醒'));
     expect(tile.value, isTrue);
     expect(find.text('开启精确闹钟'), findsNothing);
-    expect(find.text('精确闹钟未授权，提醒可能延迟几分钟'), findsNothing);
+    expect(find.text('精确闹钟未授权，提醒可能延迟数分钟'), findsNothing);
   });
 
   testWidgets('电池提示只出现一次：标记已写过就不再提示', (tester) async {
@@ -137,7 +137,7 @@ void main() {
 
     await tapReminder(tester);
 
-    expect(find.textContaining('建议在电池优化列表里把小马课表设为'), findsNothing);
+    expect(find.textContaining('建议于电池优化列表中将小马课表设为'), findsNothing);
   });
 
   testWidgets('今日课程常驻通知：通知未授权时拨开保持关 + 确认框', (tester) async {
@@ -153,7 +153,7 @@ void main() {
     );
 
     expect(
-      find.text('需要开启通知权限才能在通知栏常驻显示今日课程，是否前往系统设置开启？'),
+      find.text('常驻显示今日课程需要通知权限，是否前往系统设置开启？'),
       findsOneWidget,
     );
     final tile = tester.widget<SwitchListTile>(

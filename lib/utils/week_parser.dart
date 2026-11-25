@@ -54,7 +54,7 @@ class WeekParser {
 
       rangeStr = rangeStr.trim();
       if (rangeStr.isEmpty) {
-        throw WeekParseException('「$part」格式不对，正确写法如 1-16 或 3 或 1-8单周');
+        throw WeekParseException('「$part」格式错误，正确写法如 1-16、3 或 1-8单周');
       }
 
       if (rangeStr.contains('-')) {
@@ -66,13 +66,13 @@ class WeekParser {
         final start = int.tryParse(bounds[0].trim());
         final end = int.tryParse(bounds[1].trim());
         if (start == null || end == null) {
-          throw WeekParseException('「$rangeStr」里只能填数字哦');
+          throw WeekParseException('「$rangeStr」仅可填写数字');
         }
         if (start > end) {
-          throw WeekParseException('「$rangeStr」起始周比分周还大，写反啦');
+          throw WeekParseException('「$rangeStr」起始周大于结束周');
         }
         if (start < 1 || end > maxWeeks) {
-          throw WeekParseException('周次要在 1~$maxWeeks 之间，「$rangeStr」超范围了');
+          throw WeekParseException('周次须在 1~$maxWeeks 之间，「$rangeStr」超出范围');
         }
         for (var w = start; w <= end; w++) {
           if (partType == oddWeek && w.isEven) continue;
@@ -86,14 +86,14 @@ class WeekParser {
           throw WeekParseException('「$rangeStr」不是有效周次，正确写法如 1-16 或 3');
         }
         if (w < 1 || w > maxWeeks) {
-          throw WeekParseException('周次要在 1~$maxWeeks 之间，「$rangeStr」超范围了');
+          throw WeekParseException('周次须在 1~$maxWeeks 之间，「$rangeStr」超出范围');
         }
         weeks.add(w);
       }
     }
 
     if (weeks.isEmpty) {
-      throw WeekParseException('没解析出任何周次，检查下输入？');
+      throw WeekParseException('未解析出任何周次，请检查输入');
     }
     final sorted = weeks.toList()..sort();
     return ParsedWeeks(weeks: sorted, weekType: weekType);

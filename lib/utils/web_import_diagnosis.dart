@@ -98,15 +98,15 @@ class WebImportDiagnosis {
   String get message {
     switch (failure) {
       case WebImportFailure.unreachable:
-        return '网页加载失败，学校教务网可能需要连接校园网或 VPN';
+        return '网页加载失败，教务系统可能需要连接校园网或 VPN';
       case WebImportFailure.stillLoading:
-        return '页面还在加载中，请等待课表画面完全显示后再点击抓取';
+        return '页面加载中，请待课表完全显示后再点击抓取';
       case WebImportFailure.loginRequired:
-        return '检测到当前处于登录界面（或登录已过期），请先在页面中完成登录';
+        return '当前处于登录界面（或登录已过期），请先完成登录';
       case WebImportFailure.captcha:
-        return '请先完成页面上的验证码校验，进入个人课表页后再点击抓取';
+        return '请先完成验证码校验，进入个人课表页后点击抓取';
       case WebImportFailure.wrongPage:
-        return '当前页面未找到课表，请先在网页菜单中点开『个人课表 / 学期理论课表』页面';
+        return '当前页面未找到课表，请于网页菜单中打开『个人课表 / 学期理论课表』页面';
       case WebImportFailure.layoutUnsupported:
         return '已找到课表表格，但暂未适配贵校的网页排版格式';
     }

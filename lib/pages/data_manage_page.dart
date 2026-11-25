@@ -126,8 +126,8 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
       final confirmed = await showAppConfirmDialog(
         context,
         title: '确认恢复备份？',
-        message: '备份中包含 ${data.semesters.length} 个学期、${data.courses.length} 门课程。'
-            '\n\n恢复会覆盖现有全部数据（含节次时间与设置），且无法撤销。',
+        message: '备份包含 ${data.semesters.length} 个学期、${data.courses.length} 门课程。'
+            '\n\n恢复将覆盖全部现有数据（含节次时间与设置），且无法撤销。',
         confirmLabel: '覆盖并恢复',
         destructive: true,
       );
@@ -150,8 +150,8 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
     final first = await showAppConfirmDialog(
       context,
       title: '恢复出厂？',
-      message: '将删除全部学期、课程、设置与导入的字体，回到刚安装时的状态。\n\n'
-          '此操作不可撤销。建议先导出一份备份。',
+      message: '将删除全部学期、课程、设置与导入字体，恢复至初始安装状态。\n\n'
+          '此操作不可撤销，建议先导出备份。',
       confirmLabel: '继续',
       destructive: true,
     );
@@ -160,7 +160,7 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
     final second = await showAppConfirmDialog(
       context,
       title: '最后确认',
-      message: '真的要清空全部数据吗？删除后只能通过备份文件恢复。',
+      message: '确定清空全部数据？清空后仅可通过备份文件恢复。',
       confirmLabel: '清空全部数据',
       destructive: true,
       barrierDismissible: false,
@@ -185,7 +185,7 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
     _refreshAll();
     Navigator.popUntil(context, (r) => r.isFirst);
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('已恢复出厂，回到初始状态')));
+        .showSnackBar(const SnackBar(content: Text('已恢复出厂设置')));
   }
 
   @override
@@ -228,7 +228,7 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
           ListTile(
             leading: const Icon(Icons.backup_outlined),
             title: const Text('备份到文件'),
-            subtitle: const Text('导出全部数据为 JSON 文件，换机/重装可恢复'),
+            subtitle: const Text('将全部数据导出为 JSON 文件，用于换机或重装恢复'),
             trailing: const Icon(Icons.chevron_right),
             // WB_SPEC_235 跟进 §1-6：三个数据入口行 = 轻点档
             // （确认框本身走 showAppConfirmDialog，破坏性那档在弹窗里）
@@ -242,7 +242,7 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
             leading: const Icon(Icons.restore_outlined),
             // WB_SPEC_256 §7：「从备份恢复」入口行标题改为 error 色
             title: Text('从备份恢复', style: TextStyle(color: scheme.error)),
-            subtitle: const Text('选择备份 JSON，恢复前会再次确认（覆盖现有数据）'),
+            subtitle: const Text('选择备份 JSON 文件，恢复前将再次确认（覆盖现有数据）'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               AppHaptics.tap();
@@ -260,7 +260,7 @@ class _DataManagePageState extends ConsumerState<DataManagePage> {
                 title: const Text('自动备份'),
                 subtitle: Text(
                   t == null
-                      ? '暂无自动备份（每 7 天自动生成一次）'
+                      ? '暂无自动备份（每 7 天生成一次）'
                       : '最近自动备份：${t.month}月${t.day}日',
                 ),
               );

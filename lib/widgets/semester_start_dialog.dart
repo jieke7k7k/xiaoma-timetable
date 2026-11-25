@@ -89,7 +89,7 @@ class _StartConfirmDialogState extends State<_StartConfirmDialog> {
           ),
           const SizedBox(height: 10),
           Text(
-            '所有课程的周次都按这个日期推算，错一位全表错位，请核对无误。',
+            '全部课程周次均按此日期推算，错一日则全表错位，请核对无误。',
             style: TextStyle(fontSize: 12, color: scheme.error),
           ),
         ],

@@ -44,14 +44,14 @@ void main() {
     test('1 地址无法访问：主框加载失败优先于一切 DOM 特征', () {
       final d = classify(mainFrameError: true, hasPassword: true);
       expect(d?.failure, WebImportFailure.unreachable);
-      expect(d?.message, '网页加载失败，学校教务网可能需要连接校园网或 VPN');
+      expect(d?.message, '网页加载失败，教务系统可能需要连接校园网或 VPN');
       expect(d?.actions, [WebImportAction.reload, WebImportAction.editUrl]);
     });
 
     test('2 页面未加载完：进度 < 90 且没看到课表关键词', () {
       final d = classify(loading: 40, readyState: 'loading');
       expect(d?.failure, WebImportFailure.stillLoading);
-      expect(d?.message, '页面还在加载中，请等待课表画面完全显示后再点击抓取');
+      expect(d?.message, '页面加载中，请待课表完全显示后再点击抓取');
       expect(d?.actions, [WebImportAction.dismiss]);
     });
 
@@ -63,7 +63,7 @@ void main() {
     test('3 登录态拦截：页面里有密码框', () {
       final d = classify(hasPassword: true, tables: 1, cells: 5);
       expect(d?.failure, WebImportFailure.loginRequired);
-      expect(d?.message, '检测到当前处于登录界面（或登录已过期），请先在页面中完成登录');
+      expect(d?.message, '当前处于登录界面（或登录已过期），请先完成登录');
     });
 
     test('3 的辅助信号：无密码框但 URL 含 login → 仍判登录页', () {
@@ -89,7 +89,7 @@ void main() {
     test('4 验证码拦截：有验证码特征且表格极少', () {
       final d = classify(hasCaptcha: true, tableCount: 1, cells: 3);
       expect(d?.failure, WebImportFailure.captcha);
-      expect(d?.message, '请先完成页面上的验证码校验，进入个人课表页后再点击抓取');
+      expect(d?.message, '请先完成验证码校验，进入个人课表页后点击抓取');
     });
 
     test('5 选错页面：无课表关键词、单元格也少', () {

@@ -206,12 +206,12 @@ void main() {
     testWidgets('空学期：默认「使用读取到的作息」', (tester) async {
       await pumpReview(tester, timeBlocks: blocks);
       expect(find.text('同步更新全局节次时间'), findsOneWidget);
-      expect(find.text('保持现有全局作息，上下课时间不作改动'), findsNothing);
+      expect(find.text('保持现有全局作息，上下课时间不变'), findsNothing);
     });
 
     testWidgets('有课程的学期：默认「保持现有作息」防误伤', (tester) async {
       await pumpReview(tester, timeBlocks: blocks, withExistingCourse: true);
-      expect(find.text('保持现有全局作息，上下课时间不作改动'), findsOneWidget);
+      expect(find.text('保持现有全局作息，上下课时间不变'), findsOneWidget);
       expect(find.text('同步更新全局节次时间'), findsNothing);
     });
   });
@@ -230,7 +230,7 @@ void main() {
       // 切到「保持现有作息」：差异区收起，说明变为不改动上下课时间
       await tester.tap(find.text('仅导入课程（保持现有作息）'));
       await settleFrames(tester);
-      expect(find.text('保持现有全局作息，上下课时间不作改动'), findsOneWidget);
+      expect(find.text('保持现有全局作息，上下课时间不变'), findsOneWidget);
       expect(find.textContaining('第 1 节：'), findsNothing);
     });
   });

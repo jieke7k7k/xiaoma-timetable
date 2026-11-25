@@ -48,7 +48,7 @@ class _AboutPageState extends State<AboutPage> {
 
   Future<void> _launch(
     String url, {
-    String failureMessage = '打不开这个链接，请检查浏览器',
+    String failureMessage = '无法打开该链接，请检查浏览器',
   }) async {
     final uri = Uri.parse(url);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -74,7 +74,7 @@ class _AboutPageState extends State<AboutPage> {
     if (info == null || info.latest == null) {
       if (manual) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('检查失败：暂时连不上更新通道，稍后再试')));
+            .showSnackBar(const SnackBar(content: Text('检查失败：暂时无法连接更新通道，请稍后再试')));
       }
       return;
     }
@@ -116,11 +116,11 @@ class _AboutPageState extends State<AboutPage> {
         title: '隐私说明',
         content: const SingleChildScrollView(
           child: Text(
-            '小马课表是一款完全本地运行的应用：\n\n'
-            '· 你的课表、学期、考试与全部设置只保存在这台手机里，不会上传到任何服务器。\n'
-            '· 唯一的联网行为是读取公开的「版本与公告」通道（只下载、不发送你的任何数据），以及你主动点的外链（下载新版、问题反馈）。\n'
-            '· 导入的字体文件保存在 App 私有目录，卸载即删除。\n'
-            '· 数据备份文件由你自己保管，里面包含你的全部课表数据，请不要随意转发。',
+            '小马课表为完全本地运行的应用：\n\n'
+            '· 课表、学期、考试与全部设置仅保存在本机，不会上传至任何服务器。\n'
+            '· 唯一联网行为为读取公开的「版本与公告」通道（仅下载，不发送任何数据），以及主动点击的外链（下载新版、问题反馈）。\n'
+            '· 导入的字体文件保存于应用私有目录，卸载时删除。\n'
+            '· 数据备份文件由用户自行保管，其中包含全部课表数据，请勿随意转发。',
           ),
         ),
         actions: [
@@ -200,7 +200,7 @@ class _AboutPageState extends State<AboutPage> {
             title: const Text('公告'),
             subtitle: Text(
               _channel == null
-                  ? '暂无缓存，点开查看'
+                  ? '暂无缓存，点击查看'
                   : _channel!.announcements.isEmpty
                   ? '暂无公告'
                   : '最新：${_channel!.announcements.first.title}',
@@ -273,7 +273,7 @@ class _AboutPageState extends State<AboutPage> {
           ListTile(
             leading: const Icon(Icons.feedback_outlined),
             title: const Text('问题反馈'),
-            subtitle: const Text('到公开通道仓提 Issue'),
+            subtitle: const Text('至公开通道仓提交 Issue'),
             trailing: const Icon(Icons.open_in_new, size: 18),
             onTap: () {
               AppHaptics.tap();

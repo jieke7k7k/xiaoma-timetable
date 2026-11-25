@@ -301,7 +301,7 @@ void main() {
     // 两行共存：撞色提示行在上、同步行在下，中间隔 8dp
     expect(find.text('该颜色已用于『高等数学』，仍可继续使用'), findsOneWidget);
     expect(find.textContaining('已更改颜色'), findsOneWidget);
-    expect(find.text('应用到本课全部 2 个时段'), findsOneWidget);
+    expect(find.text('应用至本课程全部 2 个时段'), findsOneWidget);
     expect(tester.takeException(), isNull, reason: '两行叠加不能溢出');
 
     await tester.tap(find.text('保存修改'));

@@ -294,9 +294,9 @@ void main() {
 
       await tester.tap(find.text('打开导出'));
       await _drain(tester);
-      expect(find.text('导出整学期完整课表（图片）'), findsOneWidget);
+      expect(find.text('导出整学期课表（图片）'), findsOneWidget);
 
-      await tester.tap(find.text('导出整学期完整课表（图片）'));
+      await tester.tap(find.text('导出整学期课表（图片）'));
       await _drain(tester);
 
       expect(find.byType(AppDialog), findsOneWidget);

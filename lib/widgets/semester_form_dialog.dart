@@ -266,7 +266,7 @@ class SemesterFormDialogState extends ConsumerState<SemesterFormDialog> {
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
-                    '提示：点选任意日期，将自动对齐至当周周一',
+                    '点选任意日期，将自动对齐至当周周一',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.outline,
                         ),

@@ -62,7 +62,7 @@ class TimeSettingsPage extends ConsumerWidget {
           // §5（233 重构）：组标题留在框外，上午 / 下午 / 晚上各成独立线框，
           // 框内只放一个段头；午间 / 晚间间隔行移到框与框之间的留白区。
           // 「默认展开当前时段」保持现状（跟随时钟走，不固定上午）。
-          const SettingsGroupHeader('上下课时间（点时间可修改）'),
+          const SettingsGroupHeader('上下课时间（点击时间可修改）'),
           if (morning.isNotEmpty)
             SettingsLineFrame(
               title: '上午',
@@ -163,9 +163,9 @@ class TimeSettingsPage extends ConsumerWidget {
   Future<void> _applyPreset(BuildContext context, WidgetRef ref) async {
     final ok = await showAppConfirmDialog(
       context,
-      title: '套用「常用大节时间」？',
-      message: '将把前 4 节课改为以下时间（其余节次不变）：\n\n第 1 节 09:40-10:40\n第 2 节 10:40-12:00\n'
-          '第 3 节 14:00-15:10\n第 4 节 15:10-16:20\n\n确定套用吗？',
+      title: '套用「常用大节时间」',
+      message: '前 4 节将改为以下时间（其余节次不变）：\n\n第 1 节 09:40-10:40\n第 2 节 10:40-12:00\n'
+          '第 3 节 14:00-15:10\n第 4 节 15:10-16:20',
       confirmLabel: '确认套用',
     );
     if (ok != true) return;
@@ -475,7 +475,7 @@ class _BandTileState extends State<_BandTile> {
                         const Padding(
                           padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
                           child: Text(
-                            '提示：修改即时生效，周视图左侧时间轴会自动同步。',
+                            '修改即时生效，周视图左侧时间轴将自动同步。',
                             style: TextStyle(fontSize: 12),
                           ),
                         ),
@@ -628,8 +628,8 @@ class SectionRulesBody extends ConsumerWidget {
         final ok = await showAppConfirmDialog(
           context,
           title: '减少节次',
-          message: '第 ${target + 1} 节及之后还有 $affected 门课程，'
-              '减少后这些课程将没有对应的上课时间。确定要减少吗？',
+          message: '第 ${target + 1} 节及之后仍有 $affected 门课程，'
+              '减少后这些课程将无对应上课时间，是否继续？',
           confirmLabel: '确定减少',
         );
         if (ok != true) return;

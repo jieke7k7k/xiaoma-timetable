@@ -400,7 +400,7 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('已导入到《${target.name}》：\n'
+                  Text('已导入至《${target.name}》：\n'
                       '新增 $imported 门，覆盖 $overwritten 门，跳过 $skipped 门'),
                   if (extendedTo > 0) ...[
                     const SizedBox(height: 8),
@@ -521,8 +521,8 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
           return AppDialog(
             title: '未读到该校作息时间',
             content: const Text(
-              '本次导入没有读到该校的作息时间，当前沿用的是之前设置的作息'
-              '（默认是浙师大时间），请确认是否正确。',
+              '本次导入未读取到该校作息时间，当前沿用既有作息'
+              '（默认为浙师大时间），请确认是否正确。',
             ),
             actions: [
               AppDialogAction(
@@ -554,7 +554,7 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
           return AppDialog(
             title: '作息时间一致',
             content: Text(
-              '本次导入读到该校作息（${incoming.length} 节），与当前设置一致，'
+              '本次导入读取到该校作息（${incoming.length} 节），与当前设置一致，'
               '请确认是否正确。',
             ),
             actions: [
@@ -585,7 +585,7 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '导入的课表作息与当前设置存在 ${compare.diffs.length} 处不同，是否切换为该校作息？',
+                  '导入课表的作息与当前设置存在 ${compare.diffs.length} 处不同，是否切换为该校作息？',
                 ),
                 const SizedBox(height: 12),
                 for (final diff in compare.diffs.take(8))
@@ -711,8 +711,8 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '按你确认的开学日期（${fmt(confirmed)}），今天是第 $calcWeek 周；\n'
-                    '但教务系统显示当前为第 $detectedWeek 周。',
+                    '按已确认的开学日期（${fmt(confirmed)}），今日为第 $calcWeek 周；\n'
+                    '教务系统显示当前为第 $detectedWeek 周。',
                   ),
                   const SizedBox(height: 12),
                   InkWell(
@@ -830,7 +830,7 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
     final go = await showAppConfirmDialog(
       context,
       title: '同名课程周数不一致',
-      message: '以下课程同名但周数不一致：\n${lines.join('\n')}\n\n'
+      message: '以下同名课程周数不一致：\n${lines.join('\n')}\n'
           '是否自动统一为最长周数？',
       confirmLabel: '自动统一',
       cancelLabel: '保持不变',
@@ -896,7 +896,7 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '导入的课程最晚到第 $inferred 周，超过当前学期的总周数 $total 周',
+            '导入课程最晚至第 $inferred 周，超出当前学期总周数 $total 周',
             style: const TextStyle(fontSize: 13),
           ),
           InkWell(
@@ -916,7 +916,7 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
                 ),
                 Expanded(
                   child: Text(
-                    '保存时把总周数调整为 $inferred 周',
+                    '保存时将总周数调整为 $inferred 周',
                     style: const TextStyle(fontSize: 13),
                   ),
                 ),
@@ -1030,7 +1030,7 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
             child: Text(
               _scheduleChoice == _ScheduleChoice.useFile
                   ? '同步更新全局节次时间'
-                  : '保持现有全局作息，上下课时间不作改动',
+                  : '保持现有全局作息，上下课时间不变',
               style: TextStyle(fontSize: 12, color: cs.outline),
             ),
           ),
@@ -1080,8 +1080,8 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
         if (didPop) return;
         final leave = await showAppConfirmDialog(
           context,
-          title: '放弃本次导入？',
-          message: '确定放弃本次导入核对吗？草稿不会被保存。',
+          title: '放弃本次导入',
+          message: '确定放弃本次导入？放弃后草稿将不予保存。',
           confirmLabel: '放弃',
           cancelLabel: '继续核对',
         );
@@ -1165,7 +1165,7 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
                     Expanded(
                       child: Text(
                         '本次导入没有读到该校的作息时间，当前沿用的是之前设置的作息'
-                        '（默认是浙师大时间）；如时间不对，可在设置-作息时间里手动修改。',
+                        '（默认为浙师大时间）；如时间有误，可于设置－作息时间中修改。',
                         style: TextStyle(
                           fontSize: 13,
                           color: Theme.of(
@@ -1187,7 +1187,7 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
                   ? EmptyState(
                       icon: Icons.inbox_outlined,
                       title: '没有解析出课程',
-                      message: '可以手动补录，或返回重新导入',
+                      message: '可手动补录，或返回重新导入',
                       actionLabel: '手动补录',
                       onAction: _addDraft,
                     )

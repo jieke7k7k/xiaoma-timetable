@@ -200,7 +200,7 @@ void main() {
         timeSlots: slots,
       );
       expect(after.title, '暂无课程安排');
-      expect(after.lines, ['近期没有要上的课，好好休息']);
+      expect(after.lines, ['近期暂无课程，请好好休息']);
       expect(notice.title, isNot('暂无课程安排'));
     });
   });

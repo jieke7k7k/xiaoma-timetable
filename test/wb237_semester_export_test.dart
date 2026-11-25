@@ -303,7 +303,7 @@ void main() {
       expect(SemesterExportHelper.calculateMaxWeek(_semesterCourses()), 18);
     });
 
-    test('空课程列表返回 0：调用方（BottomSheet）应提示「本学期还没有课」'
+    test('空课程列表返回 0：调用方（BottomSheet）应提示「本学期暂无课程」'
         '而不是按 N=0 生成', () {
       expect(SemesterExportHelper.calculateMaxWeek([]), 0);
     });
@@ -986,29 +986,29 @@ void main() {
     testWidgets('两行文案逐字正确；点取消关闭', (tester) async {
       await pumpSheet(tester, overrides: baseOverrides(courses: []));
       expect(find.text('导出课表'), findsOneWidget);
-      expect(find.text('导出整学期完整课表（图片）'), findsOneWidget);
-      expect(find.text('整学期一张图 · 适合发给同学或存档'), findsOneWidget);
-      expect(find.text('导出当前第 3 周课表（高清图片）'), findsOneWidget);
-      expect(find.text('适合发给同学或设为锁屏壁纸'), findsOneWidget);
-      expect(find.text('取消 / 关闭'), findsOneWidget);
-      await tester.tap(find.text('取消 / 关闭'));
+      expect(find.text('导出整学期课表（图片）'), findsOneWidget);
+      expect(find.text('整学期一张图，可分享或存档'), findsOneWidget);
+      expect(find.text('导出当前第 3 周课表（图片）'), findsOneWidget);
+      expect(find.text('可分享或设为锁屏壁纸'), findsOneWidget);
+      expect(find.text('取消'), findsOneWidget);
+      await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
       expect(find.text('导出课表'), findsNothing);
     });
 
-    testWidgets('空学期点单图行：提示「本学期还没有课」，不生成', (tester) async {
+    testWidgets('空学期点单图行：提示「本学期暂无课程」，不生成', (tester) async {
       await pumpSheet(tester, overrides: baseOverrides(courses: []));
-      await tester.tap(find.text('导出整学期完整课表（图片）'));
+      await tester.tap(find.text('导出整学期课表（图片）'));
       await tester.pumpAndSettle();
-      expect(find.text('本学期还没有课'), findsOneWidget);
+      expect(find.text('本学期暂无课程'), findsOneWidget);
       expect(find.text('导出课表'), findsNothing);
     });
 
     testWidgets('空学期点 PNG 行：同样提示，不跳分享页', (tester) async {
       await pumpSheet(tester, overrides: baseOverrides(courses: []));
-      await tester.tap(find.text('导出当前第 3 周课表（高清图片）'));
+      await tester.tap(find.text('导出当前第 3 周课表（图片）'));
       await tester.pumpAndSettle();
-      expect(find.text('本学期还没有课'), findsOneWidget);
+      expect(find.text('本学期暂无课程'), findsOneWidget);
       expect(find.text('导出课表'), findsNothing);
     });
 
@@ -1020,7 +1020,7 @@ void main() {
       // 在真异步里点行 + 立即 pump 一帧：「生成中…」应已画出；假时钟的
       // 单次 pump 会把整条链一次冲完，看不到它。
       await tester.runAsync(() async {
-        await tester.tap(find.text('导出整学期完整课表（图片）'));
+        await tester.tap(find.text('导出整学期课表（图片）'));
         await tester.pump();
       });
       expect(find.text('生成中…'), findsOneWidget);
@@ -1072,7 +1072,7 @@ void main() {
         overrides: baseOverrides(courses: _semesterCourses()),
       );
       await tester.runAsync(() async {
-        await tester.tap(find.text('导出整学期完整课表（图片）'));
+        await tester.tap(find.text('导出整学期课表（图片）'));
         await tester.pump();
       });
       // 单图生成是真异步（离屏渲染 + 编码），等 60 轮（约 6 秒真时间）；
@@ -1105,21 +1105,21 @@ void main() {
         overrides: baseOverrides(courses: _semesterCourses()),
       );
       await tester.runAsync(() async {
-        await tester.tap(find.text('导出整学期完整课表（图片）'));
+        await tester.tap(find.text('导出整学期课表（图片）'));
         await tester.pump();
       });
       expect(find.text('生成中…'), findsOneWidget);
       final pngTile = tester.widget<ListTile>(
         find.ancestor(
-          of: find.text('导出当前第 3 周课表（高清图片）'),
+          of: find.text('导出当前第 3 周课表（图片）'),
           matching: find.byType(ListTile),
         ),
       );
       expect(pngTile.enabled, isFalse);
-      await tester.tap(find.text('导出当前第 3 周课表（高清图片）'));
+      await tester.tap(find.text('导出当前第 3 周课表（图片）'));
       await tester.pump();
       expect(find.text('导出课表'), findsOneWidget);
-      await tester.tap(find.text('取消 / 关闭'));
+      await tester.tap(find.text('取消'));
       await tester.pump();
       expect(find.text('导出课表'), findsOneWidget);
     });
@@ -1323,6 +1323,22 @@ void main() {
     }
 
     testWidgets('第 6 周画出冲突块；点上半进药物化学详情、点下半进药理学详情', (tester) async {
+      // WB_SPEC_261 复审（DeepSeek A2）：不用写死两帧 300ms 赌动画时长，
+      // 改按 finder 轮询出现/消失。
+      Future<void> waitFor(Finder f) async {
+        for (var i = 0; i < 25; i++) {
+          if (f.evaluate().isNotEmpty) return;
+          await tester.pump(const Duration(milliseconds: 60));
+        }
+      }
+
+      Future<void> waitGone(Finder f) async {
+        for (var i = 0; i < 25; i++) {
+          if (f.evaluate().isEmpty) return;
+          await tester.pump(const Duration(milliseconds: 60));
+        }
+      }
+
       await pumpHome(tester);
       expect(find.byType(ConflictBlock), findsOneWidget);
       expect(find.text('药物化学'), findsOneWidget);
@@ -1331,7 +1347,7 @@ void main() {
       // 点上半
       var rect = tester.getRect(find.byType(ConflictBlock));
       await tester.tapAt(Offset(rect.center.dx, rect.top + rect.height * 0.25));
-      await tester.pumpAndSettle();
+      await waitFor(find.byType(CourseDetailSheet));
       expect(find.byType(CourseDetailSheet), findsOneWidget);
       expect(
         find.descendant(
@@ -1342,11 +1358,11 @@ void main() {
       );
       // 关掉详情，再点下半
       Navigator.of(tester.element(find.byType(CourseDetailSheet))).pop();
-      await tester.pumpAndSettle();
+      await waitGone(find.byType(CourseDetailSheet));
       expect(find.byType(CourseDetailSheet), findsNothing);
       rect = tester.getRect(find.byType(ConflictBlock));
       await tester.tapAt(Offset(rect.center.dx, rect.top + rect.height * 0.75));
-      await tester.pumpAndSettle();
+      await waitFor(find.byType(CourseDetailSheet));
       expect(find.byType(CourseDetailSheet), findsOneWidget);
       expect(
         find.descendant(

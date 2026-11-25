@@ -301,7 +301,7 @@ void main() {
       expect(plans.first.reminderTime, DateTime(2026, 9, 16, 9, 45));
       expect(
         buildReminderBody(plans.first.course, 15),
-        '《高等数学》还有 15 分钟在 B203 上课',
+        '《高等数学》将于 15 分钟后在 B203 上课',
       );
     });
   });

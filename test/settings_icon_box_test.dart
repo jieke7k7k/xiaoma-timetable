@@ -371,9 +371,11 @@ void main() {
       expect(categoryOfRow(tester, '部件状态'), SettingsIconCategory.system);
     });
 
-    testWidgets('权限页：权限行为 schedule', (tester) async {
-      await pumpPage(tester, const PermissionsSettingsPage());
-      expect(categoryOfRow(tester, '权限'), SettingsIconCategory.schedule);
+    // WB_SPEC_261 §4：中间页 PermissionsSettingsPage 已删除，「权限自检」
+    // 行直达 /permissions；这里只断言首页行分类，点按直达见 wb261 测试。
+    testWidgets('权限页：权限自检行在首页为 data', (tester) async {
+      await pumpPage(tester, const SettingsPage());
+      expect(categoryOfRow(tester, '权限自检'), SettingsIconCategory.data);
     });
   });
 }

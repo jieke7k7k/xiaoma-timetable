@@ -113,9 +113,9 @@ void main() {
     await tapAndSettle(
       tester,
       find.text('更改'),
-      waitFor: find.text('这次导入到哪个学期？'),
+      waitFor: find.text('导入至哪个学期'),
     );
-    expect(find.text('这次导入到哪个学期？'), findsOneWidget);
+    expect(find.text('导入至哪个学期'), findsOneWidget);
   }
 
   group('WB_SPEC_256 §7：导入目标学期选择', () {
@@ -158,7 +158,7 @@ void main() {
         waitFor: find.text('导入到：大二下学期'),
       );
 
-      expect(find.text('这次导入到哪个学期？'), findsNothing);
+      expect(find.text('导入至哪个学期'), findsNothing);
       expect(find.text('导入到：大二下学期'), findsOneWidget);
     });
 
@@ -174,13 +174,13 @@ void main() {
         waitFor: find.text('新建学期'),
       );
       expect(find.text('新建学期'), findsOneWidget);
-      expect(find.text('这次导入到哪个学期？'), findsNothing);
+      expect(find.text('导入至哪个学期'), findsNothing);
 
       await tapAndSettle(tester, find.text('取消'));
 
       // 表单关了，回到导入页，目标仍是原来的大三上学期
       expect(find.text('新建学期'), findsNothing);
-      expect(find.text('这次导入到哪个学期？'), findsNothing);
+      expect(find.text('导入至哪个学期'), findsNothing);
       expect(find.text('导入到：大三上学期'), findsOneWidget);
     });
 
@@ -210,9 +210,9 @@ void main() {
         waitFor: find.text('导入到：大三下学期'),
       );
 
-      expect(find.text('这次导入到哪个学期？'), findsNothing);
+      expect(find.text('导入至哪个学期'), findsNothing);
       expect(find.text('导入到：大三下学期'), findsOneWidget);
-      expect(find.textContaining('已新建并切换到「大三下学期」'), findsOneWidget);
+      expect(find.textContaining('已新建并切换至「大三下学期」'), findsOneWidget);
 
       // 新学期已写入库并成为当前学期
       final rows = await tester.runAsync(

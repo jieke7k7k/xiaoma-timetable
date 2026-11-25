@@ -37,7 +37,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
             return const EmptyState(
               icon: Icons.sticky_note_2_outlined,
               title: '还没有备注',
-              message: '点右下角加号，记下某天要做的事或要带的东西',
+              message: '点击右下角加号，记录某日待办事项或待带物品',
             );
           }
           // 日期倒序（最近的在前），同一天内保持写入顺序
@@ -185,7 +185,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                   textInputAction: TextInputAction.done,
                   // WB_SPEC_230 第 5.2 节：手写圆角框删掉，统一吃全局 inputDecorationTheme
                   decoration: const InputDecoration(
-                    hintText: '要记点什么？',
+                    hintText: '输入备注内容',
                   ),
                 ),
               ],

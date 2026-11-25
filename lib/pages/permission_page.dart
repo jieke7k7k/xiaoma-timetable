@@ -58,7 +58,7 @@ class _PermissionPageState extends State<PermissionPage> {
                 _PermissionTile(
                   icon: Icons.notifications_active_outlined,
                   title: '通知权限',
-                  subtitle: '上课提醒、今日课程常驻通知、备注都走通知栏',
+                  subtitle: '上课提醒、今日课程常驻通知与备注均通过通知栏推送',
                   granted: status.notification,
                   working: _working,
                   onOpen: () => _jump(
@@ -77,7 +77,7 @@ class _PermissionPageState extends State<PermissionPage> {
                 _PermissionTile(
                   icon: Icons.alarm_outlined,
                   title: '精确闹钟',
-                  subtitle: '让上课提醒准点到点；不开也能提醒，可能有几分钟误差',
+                  subtitle: '确保上课提醒准时送达；未开启时仍可提醒，或有数分钟误差',
                   granted: status.exactAlarm,
                   working: _working,
                   onOpen: () => _jump(
@@ -87,7 +87,7 @@ class _PermissionPageState extends State<PermissionPage> {
                 _PermissionTile(
                   icon: Icons.battery_std_outlined,
                   title: '电池优化白名单',
-                  subtitle: '不加入白名单时，系统省电策略可能让提醒延迟或消失',
+                  subtitle: '未加入白名单时，系统省电策略可能导致提醒延迟或丢失',
                   granted: status.battery,
                   working: _working,
                   onOpen: () => _jump(
@@ -98,7 +98,7 @@ class _PermissionPageState extends State<PermissionPage> {
                   leading: const Icon(Icons.info_outline),
                   title: const Text('应用详情页'),
                   subtitle: const Text(
-                    '上面某一项在你的系统上找不到时，可以到应用详情页里手动改',
+                    '若上述某项在当前系统上不存在，可于应用详情页手动设置',
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   // WB_SPEC_235 跟进 §1-16：应用详情页入口 = 轻点档
@@ -132,12 +132,12 @@ class _PermissionPageState extends State<PermissionPage> {
                       const SizedBox(height: AppSpacing.s),
                       const _ReliabilityStep(
                         index: 1,
-                        text: '开启自启动：在系统「应用管理 → 自启动」里允许小马课表自启动'
-                            '（各厂商入口位置不同，需手动找）',
+                        text: '开启自启动：在系统「应用管理 → 自启动」中允许小马课表自启动'
+                            '（各厂商入口位置不同）',
                       ),
                       _ReliabilityStep(
                         index: 2,
-                        text: '忽略电池优化：把本机省电策略对小马课表的限制关掉',
+                        text: '忽略电池优化：关闭本机省电策略对小马课表的限制',
                         onTap: _working
                             ? null
                             : () => _jump(
@@ -146,8 +146,8 @@ class _PermissionPageState extends State<PermissionPage> {
                       ),
                       const _ReliabilityStep(
                         index: 3,
-                        text: '最近任务卡片下拉加锁：在最近任务界面把「小马课表」'
-                            '卡片下拉加锁，避免一键清理时被清掉',
+                        text: '最近任务卡片下拉加锁：在最近任务界面将「小马课表」'
+                            '卡片下拉加锁，避免一键清理时被清除',
                       ),
                     ],
                   ),
@@ -155,9 +155,9 @@ class _PermissionPageState extends State<PermissionPage> {
                 Padding(
                   padding: const EdgeInsets.all(AppSpacing.l),
                   child: Text(
-                    '三项都不是必需的：没开也能正常看课表，只是提醒可能延迟或'
-                    '在后台被省电策略掐掉。权限在用到时申请：开启提醒时才申请通知与'
-                    '精确闹钟，其余时间不会主动弹窗要权限。',
+                    '以上三项均非必需：未开启亦可正常查看课表，仅提醒可能延迟或'
+                    '被省电策略拦截。权限按需申请：仅在开启提醒时申请通知与'
+                    '精确闹钟权限。',
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall

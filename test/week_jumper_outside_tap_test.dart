@@ -19,6 +19,7 @@ import 'package:xiaoma_timetable/providers/providers.dart';
 import 'package:xiaoma_timetable/utils/deliberate_page_physics.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
 import 'package:xiaoma_timetable/widgets/home_tab_bar.dart';
+import 'package:xiaoma_timetable/widgets/marquee_text.dart';
 
 /// WB_SPEC_223：周数跳转条点外面收起（只收起，不触发底下操作）。
 ///
@@ -301,10 +302,6 @@ void main() {
     await tester.tapAt(first ? centers.first : centers.last);
   }
 
-  /// 当前／下一节课状态条：三种文案之一（正在上课／下一节／近期暂无课程）。
-  Finder focusBarText() =>
-      find.textContaining(RegExp(r'正在上课|下一节|近期暂无课程'));
-
   testWidgets('点课程卡片只收起：详情不打开', (tester) async {
     final spy = _RouteSpy();
     await pumpHome(tester, spy);
@@ -366,7 +363,11 @@ void main() {
     // §7：选周后跳转条保持展开，手动点标题收起再重新展开
     expectExpanded(tester);
     await tester.tap(titleInkWell());
-    await tester.pumpAndSettle();
+    // WB_SPEC_261 跟进：不用 pumpAndSettle——主页状态条已是跑马灯
+    //（WB_SPEC_260，文字超宽时无限滚动），pumpAndSettle 永远等不到 settle
+    // 而超时；手动泵两帧即可跑完收起动画。
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
     expectCollapsed(tester);
 
     await openJumper(tester);
@@ -661,11 +662,17 @@ void main() {
     // §7：选周后跳转条保持展开，手动点标题收起再重新展开
     expectExpanded(tester);
     await tester.tap(titleInkWell());
-    await tester.pumpAndSettle();
+    // WB_SPEC_261 跟进：不用 pumpAndSettle——主页状态条已是跑马灯
+    //（WB_SPEC_260，文字超宽时无限滚动），pumpAndSettle 永远等不到 settle
+    // 而超时；手动泵两帧即可跑完收起动画。
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
     expectCollapsed(tester);
 
     await openJumper(tester);
-    await tester.tap(focusBarText());
+    // WB_SPEC_261 复审（DeepSeek A3）：直接点跑马灯本体，不依赖「同一文本渲染
+    // 两份、取第一份」的实现细节。
+    await tester.tap(find.byType(MarqueeText));
     await tester.pump(const Duration(milliseconds: 300));
 
     expectCollapsed(tester);
@@ -805,17 +812,21 @@ void main() {
     expect(pageViewPhysics(tester), isA<NeverScrollableScrollPhysics>());
 
     // 点高亮区确认：进新建课页面（桩页带 stub 文案）
-    // pumpAndSettle：把 300ms 入场动画跑完，否则新路由还在 offstage，
+    // 手动泵两帧把 300ms 入场动画跑完，否则新路由还在 offstage，
     // finder（默认跳过 offstage）找不到桩页、pageBack 也找不到返回按钮
+    //（不用 pumpAndSettle：主页跑马灯在滚动时它永远等不到 settle）。
     await tester.tapAt(cell);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
     expect(spy.pushed, isNotEmpty);
     expect(spy.pushed.last, '/course-edit');
     expect(find.text('stub'), findsWidgets);
 
     // 回来后恢复可滑（桩页无系统返回按钮，直接 pop）
     Navigator.of(tester.element(find.text('stub').first)).pop();
-    await tester.pumpAndSettle();
+    // 同上，不用 pumpAndSettle（跑马灯在滚动）。
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
     expect(pageViewPhysics(tester), isA<DeliberatePagePhysics>());
     await tester.pump(const Duration(seconds: 60));
   });

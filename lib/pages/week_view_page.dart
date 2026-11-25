@@ -37,6 +37,7 @@ import '../widgets/conflict_block.dart';
 import '../widgets/course_card.dart';
 import '../widgets/course_detail_sheet.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/marquee_text.dart';
 import '../widgets/semester_form_dialog.dart';
 
 /// 周视图主页
@@ -526,22 +527,21 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
     return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
 
-  /// 周日收尾小弹窗（WB_SPEC_209 第 1 节）：文案「今天是周日，本周已结束」，
-  /// 「知道了」关闭；未到最后一周时多一个「看下周」跳到下周，最后一周不显示。
+  /// 周日收尾小弹窗（WB_SPEC_209 第 1 节）：文案「今日为周日，本周已结束」，
+  /// 「知道了」关闭；未到最后一周时多一个「查看下周」跳到下周，最后一周不显示。
   /// 点弹窗外区域关闭与「知道了」等效（AlertDialog 默认可点外关闭）。
-  /// 文案、按钮、「看下周」跳周行为在 2.1.4 一律不变，只改「弹不弹」的判定。
+  /// 文案、按钮、「查看下周」跳周行为在 2.1.4 一律不变，只改「弹不弹」的判定。
   Future<void> _showSundayDialog(int week, int totalWeeks) {
     return showDialog<void>(
       context: context,
       builder: (ctx) => AppDialog(
-        title: '今天是周日',
-        content: const AppDialogText('今天是周日，本周已结束'),
+        title: '今日为周日，本周已结束',
         actions: [
           // WB_SPEC_235 跟进 §1-15 / §4：弹窗按钮改走标准构造
           AppDialogAction(label: '知道了', onPressed: () => Navigator.pop(ctx)),
           if (week < totalWeeks)
             AppDialogAction(
-              label: '看下周',
+              label: '查看下周',
               primary: true,
               onPressed: () {
                 Navigator.pop(ctx);
@@ -557,7 +557,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
   ///
   /// 判定依据是 app_settings 里持久化的「已读日期」（见 [SundayDialogGate]），
   /// 不再是页面 State 的布尔值：
-  /// - 同一个周日只弹一次：点了「知道了」、点了「看下周」、点了弹窗外区域关闭，
+  /// - 同一个周日只弹一次：点了「知道了」、点了「查看下周」、点了弹窗外区域关闭，
   ///   都算已读——已读是在弹窗弹出的那一刻写下的，不依赖任何一个按钮回调；
   /// - 当天内切设置再切回、页面重建、杀进程重进都不再弹；
   /// - 到了下一个周日，日期戳变了，重新弹一次。
@@ -833,7 +833,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
           else
             IconButton(
               key: const ValueKey<String>('edit_mode_entry_btn'),
-              tooltip: '编辑模式（开启后可添加/修改课程）',
+              tooltip: '编辑模式（开启后可添加或修改课程）',
               icon: const Icon(Icons.edit_outlined),
               onPressed: () {
                 if (_guardJumper()) return;
@@ -1131,6 +1131,12 @@ class _BackToWeekRail extends StatelessWidget {
       elevation: 2,
       child: InkWell(
         // WB_SPEC_235 跟进：「回到本周」竖条 = 轻点档
+        // WB_SPEC_261 §5：与父级 Material 同款左侧圆角，按压高亮与水波纹
+        // 按竖条形状裁剪，不再是铺满竖条的直角矩形。
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(AppRadii.card),
+          bottomLeft: Radius.circular(AppRadii.card),
+        ),
         onTap: () {
           AppHaptics.tap();
           onTap();
@@ -2238,7 +2244,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
                           title: '本周没有课程',
                           message: editMode
                               ? '点击空白格子新建，或从底部「新建」导入课表'
-                              : '点右上角的编辑按钮开启编辑模式后，可添加课程',
+                              : '开启右上角编辑模式后，可添加课程',
                         ),
                       ),
                       Padding(
@@ -2286,7 +2292,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
                     title: '本周没有课程',
                     message: editMode
                         ? '点击空白格子新建，或从底部「新建」导入课表'
-                        : '点右上角的编辑按钮开启编辑模式后，可添加课程',
+                        : '开启右上角编辑模式后，可添加课程',
                   ),
                 ),
               ),
@@ -2710,7 +2716,7 @@ class _PositionedCourseCard extends StatelessWidget {
                 title: Text(courseOverride == null ? '调整本次' : '查看/撤销本次调整'),
                 subtitle: Text(
                   courseOverride == null
-                      ? '只改这一节课的时间/教室，不影响其他周'
+                      ? '仅修改本节课的时间与教室，不影响其他周次'
                       : describeOverride(courseOverride),
                 ),
                 onTap: () {
@@ -2849,14 +2855,12 @@ class _ClassFocusBar extends StatelessWidget {
               Icon(icon, size: 16, color: scheme.primary),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
+                child: MarqueeText(
                   text,
                   style: TextStyle(
                     fontSize: 13,
                     color: scheme.onSurfaceVariant,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -2885,8 +2889,8 @@ void showExportBottomSheet(BuildContext context, WidgetRef ref) {
 }
 
 /// 导出 BottomSheet 内容（WB_SPEC_239 §2）：
-/// 单图行「导出整学期完整课表（图片）」/ PNG 行「导出当前第 X 周课表（高清图片）」/
-/// 取消行「取消 / 关闭」。
+/// 单图行「导出整学期课表（图片）」/ PNG 行「导出当前第 X 周课表（高清图片）」/
+/// 取消行「取消」。
 ///
 /// 用 ConsumerStatefulWidget 承载 exportingSemester 状态（StatefulBuilder 的
 /// builder 回调内声明会被重建重置，加载态不生效）。
@@ -2918,7 +2922,7 @@ class _ExportBottomSheetContentState
   void _showEmptySemesterSnackBar() {
     Navigator.pop(context);
     ScaffoldMessenger.of(widget.parentContext)
-        .showSnackBar(const SnackBar(content: Text('本学期还没有课')));
+        .showSnackBar(const SnackBar(content: Text('本学期暂无课程')));
   }
 
   /// WB_SPEC_243 §2：分享与保存共用的整学期单图生成核心（P1-1：关键数据
@@ -3002,7 +3006,7 @@ class _ExportBottomSheetContentState
               mimeType: 'image/png',
             ),
           ],
-          text: '这是${res.semester.name}完整课表，请查收',
+          text: '这是${res.semester.name}完整课表',
         ),
       );
     } catch (e) {
@@ -3092,8 +3096,8 @@ class _ExportBottomSheetContentState
         ListTile(
           key: const ValueKey<String>('export_semester_single_png'),
           leading: const Icon(Icons.image_outlined),
-          title: Text(_exportingSemester ? '生成中…' : '导出整学期完整课表（图片）'),
-          subtitle: const Text('整学期一张图 · 适合发给同学或存档'),
+          title: Text(_exportingSemester ? '生成中…' : '导出整学期课表（图片）'),
+          subtitle: const Text('整学期一张图，可分享或存档'),
           trailing: _exportingSemester
               ? const SizedBox(
                   width: 20,
@@ -3115,7 +3119,7 @@ class _ExportBottomSheetContentState
           key: const ValueKey<String>('save_semester_single_png'),
           leading: const Icon(Icons.save_alt_outlined),
           title: Text(_savingSemester ? '保存中…' : '保存整学期课表到本地'),
-          subtitle: const Text('存到手机相册，随时查看'),
+          subtitle: const Text('保存至手机相册，随时查看'),
           trailing: _savingSemester
               ? const SizedBox(
                   width: 20,
@@ -3135,8 +3139,8 @@ class _ExportBottomSheetContentState
         ListTile(
           key: const ValueKey<String>('export_current_week_png'),
           leading: const Icon(Icons.image_outlined),
-          title: Text('导出当前第 ${widget.displayWeek} 周课表（高清图片）'),
-          subtitle: const Text('适合发给同学或设为锁屏壁纸'),
+          title: Text('导出当前第 ${widget.displayWeek} 周课表（图片）'),
+          subtitle: const Text('可分享或设为锁屏壁纸'),
           // P1-6：生成期间两行全禁（之前只禁 PDF 行，点 PNG/取消会
           // 一边跑生成一边跳页/关 sheet，生成白算还可能对已 dispose 的
           // State 操作）。取消要等生成结束，不另做中止逻辑。
@@ -3160,7 +3164,7 @@ class _ExportBottomSheetContentState
           key: const ValueKey<String>('export_cancel'),
           title: Center(
             child: Text(
-              '取消 / 关闭',
+              '取消',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w500,

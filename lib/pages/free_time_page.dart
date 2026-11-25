@@ -111,7 +111,7 @@ class _FreeTimePageState extends ConsumerState<FreeTimePage> {
                 ? const EmptyState(
                     icon: Icons.schedule_outlined,
                     title: '还没有作息时间',
-                    message: '先在设置里配置作息，才能算出空闲时段',
+                    message: '请先于设置中配置作息时间，以计算空闲时段',
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.all(12),

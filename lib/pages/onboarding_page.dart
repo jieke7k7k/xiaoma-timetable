@@ -56,32 +56,32 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     _ImportPath(
       icon: Icons.cloud_download_outlined,
       title: '从教务官网导入',
-      subtitle: '内置浏览器登录学校教务系统，打开课表页后一键抓取',
+      subtitle: '内置浏览器登录教务系统，打开课表页后抓取',
       route: '/import',
       web: true,
     ),
     _ImportPath(
       icon: Icons.calendar_month_outlined,
       title: '导入 ICS 日历文件',
-      subtitle: '从教务系统导出的 .ics 文件，自动匹配星期/节次/周次',
+      subtitle: '导入教务系统导出的 .ics 文件，自动匹配星期、节次与周次',
       route: '/import',
     ),
     _ImportPath(
       icon: Icons.photo_camera_outlined,
       title: '拍照 / 相册识别课表',
-      subtitle: '本地 OCR 识别课表截图（中文），支持手动核对修正',
+      subtitle: '本地 OCR 识别课表截图（中文），可手动核对修正',
       route: '/import',
     ),
     _ImportPath(
       icon: Icons.picture_as_pdf_outlined,
       title: '导入 PDF 课表文件',
-      subtitle: '提取 PDF 文本后复用相同解析流程',
+      subtitle: '提取 PDF 文本后按相同流程解析',
       route: '/import',
     ),
     _ImportPath(
       icon: Icons.edit_outlined,
       title: '手动建课',
-      subtitle: '直接填课程名与时间，适合临时加课、补录单门课',
+      subtitle: '直接填写课程名与时间，适用于临时加课或补录单门课程',
       route: '/course-edit',
     ),
   ];
@@ -91,14 +91,14 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     (
       Icons.widgets_outlined,
       '把课表放到桌面',
-      '长按桌面空白处添加「小马课表」小部件，\n今天还没上完的课一眼就能看到，\n不用每次打开 App。',
+      '长按桌面空白处添加「小马课表」小部件，\n当日未结束的课程一目了然，\n无需每次打开应用。',
       '/settings-widget',
       '去看桌面小部件设置',
     ),
     (
       Icons.backup_outlined,
       '记得备份',
-      '你的数据只存在这台手机里。\n换手机前去「设置 → 数据管理」导出备份，\n新手机上一次恢复到位。',
+      '数据仅保存在本机。\n换机前请于「设置 → 数据管理」导出备份，\n新机上一次恢复即可。',
       '/settings-data',
       '去看数据备份设置',
     ),
@@ -295,7 +295,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
           ),
           const SizedBox(height: AppSpacing.s),
           Text(
-            '任选一条，点一下直接去对应的导入方式。',
+            '任选一项，点击直达对应导入方式。',
             style: TextStyle(fontSize: 15, color: scheme.onSurfaceVariant),
           ),
           const SizedBox(height: AppSpacing.l),

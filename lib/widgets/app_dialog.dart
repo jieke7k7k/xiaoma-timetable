@@ -23,15 +23,16 @@ class AppDialog extends StatelessWidget {
   const AppDialog({
     super.key,
     required this.title,
-    required this.content,
+    this.content,
     this.actions,
   });
 
   /// 弹窗标题（必填，保持各页面标题层级一致）
   final String title;
 
-  /// 弹窗正文（任意组件；纯文本优先传 [AppDialogText] 保持排版一致）
-  final Widget content;
+  /// 弹窗正文（任意组件；纯文本优先传 [AppDialogText] 保持排版一致）。
+  /// 可为空：只有标题的弹窗（如周日收尾）不传，标题与按钮之间不留空白。
+  final Widget? content;
 
   /// 按钮区（右对齐；不需要按钮时可传空列表）
   final List<Widget>? actions;
@@ -39,6 +40,7 @@ class AppDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final content = this.content;
     return AlertDialog(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadii.dialog),
@@ -67,10 +69,12 @@ class AppDialog extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
       ),
-      content: DefaultTextStyle(
-        style: theme.textTheme.bodyMedium ?? const TextStyle(),
-        child: content,
-      ),
+      content: content == null
+          ? null
+          : DefaultTextStyle(
+              style: theme.textTheme.bodyMedium ?? const TextStyle(),
+              child: content,
+            ),
       actions: actions,
     );
   }

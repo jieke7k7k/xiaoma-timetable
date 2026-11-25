@@ -14,7 +14,7 @@ import 'package:xiaoma_timetable/utils/morandi_palette.dart';
 ///
 /// 覆盖规格第 12.2 节列出的全部测试点：
 /// - 内联行仅在「多时段 + 本次改了颜色」时出现；
-/// - 默认选「应用到本课全部」；
+/// - 默认选「应用至本课程全部」；
 /// - 切「仅改本节」后兄弟颜色不动、当前时段变色；
 /// - 只改老师不改颜色时兄弟颜色不动（防「颜色被洗掉」回归）；
 /// - Toast 文案（含「颜色仅应用于当前时段」）；
@@ -187,7 +187,7 @@ void main() {
   bool colorRowVisible() =>
       find.textContaining('已更改颜色').evaluate().isNotEmpty;
 
-  testWidgets('多时段改色：色块下方展开内联行，默认「应用到本课全部」', (tester) async {
+  testWidgets('多时段改色：色块下方展开内联行，默认「应用至本课程全部」', (tester) async {
     await tester.runAsync(seedTwoSlots);
     await openEditor(tester, ids[0]);
 
@@ -197,7 +197,7 @@ void main() {
     await tapColor(tester, 4);
 
     expect(colorRowVisible(), isTrue);
-    expect(find.text('应用到本课全部 2 个时段'), findsOneWidget);
+    expect(find.text('应用至本课程全部 2 个时段'), findsOneWidget);
     expect(find.text('仅改本节'), findsOneWidget);
     expect(choiceSelected(tester, 'color-sync-all'), isTrue, reason: '默认应用到全部');
     expect(choiceSelected(tester, 'color-sync-current'), isFalse);
@@ -399,7 +399,7 @@ void main() {
     await openEditor(tester, ids[0]);
 
     expect(
-      find.text('改课程名、老师、教室、备注会同步到本课全部时段；颜色与周次按上方选择同步；时间只改这一条。'),
+      find.text('课程名、老师、教室与备注的修改将同步至本课程全部时段；颜色与周次按上方选项同步；时间仅修改本条。'),
       findsOneWidget,
     );
   });

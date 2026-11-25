@@ -275,10 +275,10 @@ class _WebImportPageState extends State<WebImportPage> {
           _fallbackHint = diag != null
               ? null
               : result.tablesFound == 0
-              ? '当前页面没找到课表表格。请先登录教务系统、打开「学生课表」页面，再点抓取。'
-              : '找到了 ${result.tablesFound} 个表格、${result.cellsScanned} 个单元格，'
-                    '但没认出课程。请确认打开的是课表页面；若已是课表页，'
-                    '可能是该校格式暂未适配——把课表页截图发我，我来适配。';
+              ? '当前页面未找到课表表格。请先登录教务系统并打开「学生课表」页面，再点击抓取。'
+              : '已找到 ${result.tablesFound} 个表格、${result.cellsScanned} 个单元格，'
+                    '但未识别出课程。请确认已打开课表页面；若已打开，'
+                    '可能是该校格式暂未适配——请将课表页截图发送给开发者适配。';
         });
         return;
       }
@@ -325,7 +325,7 @@ class _WebImportPageState extends State<WebImportPage> {
         showAppInfoDialog(
           context,
           title: '反馈给开发者',
-          message: '把课表页截图发我（微信或邮件都行），我来适配贵校的排版格式。',
+          message: '请将课表页截图发送给开发者（微信或邮件均可），以便适配贵校的排版格式。',
         );
     }
   }
@@ -475,8 +475,8 @@ class _WebImportPageState extends State<WebImportPage> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                '① 在学校页面里登录（账号密码只填在学校网页，App 不保存）'
-                ' → ② 打开「学生课表」页 → ③ 点右下角「抓取本页课表」',
+                '① 在学校页面登录（账号密码仅填写于学校网页，应用不保存）'
+                '→ ② 打开「学生课表」页 → ③ 点击右下角「抓取本页课表」',
                 style: TextStyle(fontSize: 12),
               ),
             ),
@@ -535,7 +535,7 @@ class _WebImportPageState extends State<WebImportPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              '直接输入域名即可（例如 jwxt.xxx.edu.cn），登录并打开课表页后再点击「抓取本页课表」',
+              '直接输入域名即可（例如 jwxt.xxx.edu.cn），登录并打开课表页后点击「抓取本页课表」',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: colorScheme.onSurfaceVariant,

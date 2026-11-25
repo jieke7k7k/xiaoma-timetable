@@ -330,8 +330,8 @@ void main() {
       await pumpTimePage(tester);
       expect(find.byType(SettingsLineFrame), findsNWidgets(4));
       // 组标题在框外：它是 SettingsGroupHeader，不是某个框的标题
-      // （§6 新文案：各节上下课时间（点击时间直接修改）→ 上下课时间（点时间可修改））
-      expect(find.text('上下课时间（点时间可修改）'), findsOneWidget);
+      // （§6 新文案：各节上下课时间（点击时间直接修改）→ 上下课时间（点击时间可修改））
+      expect(find.text('上下课时间（点击时间可修改）'), findsOneWidget);
       for (final band in TimeBand.values) {
         final frame = tester.widget<SettingsLineFrame>(
           find.ancestor(

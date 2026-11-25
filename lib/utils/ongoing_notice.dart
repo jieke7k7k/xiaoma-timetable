@@ -69,7 +69,7 @@ OngoingNotice buildOngoingNotice({
   }
   return const OngoingNotice(
     title: '暂无课程安排',
-    lines: ['近期没有要上的课，好好休息'],
+    lines: ['近期暂无课程，请好好休息'],
   );
 }
 
