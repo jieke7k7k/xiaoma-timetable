@@ -1,18 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../widgets/empty_state.dart';
+
 /// 更新日志页（1.2.4）：直接渲染打包进 App 的 CHANGELOG.md，
 /// 发布新版时自动跟随，无需单独维护一份。
-class ChangelogPage extends StatelessWidget {
+class ChangelogPage extends StatefulWidget {
   const ChangelogPage({super.key});
+
+  @override
+  State<ChangelogPage> createState() => _ChangelogPageState();
+}
+
+class _ChangelogPageState extends State<ChangelogPage> {
+  late Future<String> _changelogFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _changelogFuture = rootBundle.loadString('CHANGELOG.md');
+  }
+
+  void _reload() {
+    setState(() {
+      _changelogFuture = rootBundle.loadString('CHANGELOG.md');
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('更新日志'), centerTitle: true),
       body: FutureBuilder<String>(
-        future: rootBundle.loadString('CHANGELOG.md'),
+        future: _changelogFuture,
         builder: (context, snap) {
+          if (snap.hasError) {
+            return EmptyState(
+              icon: Icons.error_outline,
+              title: '更新日志加载失败',
+              message: '请重试或重新打开页面',
+              actionLabel: '重试',
+              onAction: _reload,
+            );
+          }
           if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }

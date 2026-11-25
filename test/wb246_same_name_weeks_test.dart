@@ -120,7 +120,6 @@ void main() {
     });
 
     tearDown(() async {
-      Dao.debugBeforeUpdateCourse = null;
       await db.close();
     });
 

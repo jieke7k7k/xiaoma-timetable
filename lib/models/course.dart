@@ -61,7 +61,8 @@ class Course {
         teacher: map['teacher'] as String?,
         classroom: map['classroom'] as String?,
         colorValue: map['colorValue'] as int,
-        dayOfWeek: map['dayOfWeek'] as int,
+        // 容错：脏数据导致星期越界时钳制到 1~7，避免页面按星期下标取值崩溃
+        dayOfWeek: (map['dayOfWeek'] as int? ?? 1).clamp(1, 7),
         startSection: map['startSection'] as int,
         endSection: map['endSection'] as int,
         // 容错：weeksJson 损坏时按空列表处理，避免解析异常导致闪退

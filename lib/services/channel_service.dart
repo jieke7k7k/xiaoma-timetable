@@ -147,13 +147,18 @@ class ChannelService {
   /// 拉取最新通道内容并写缓存；失败返回缓存，都没有返回 null
   static Future<ChannelInfo?> fetch() async {
     final state = await _readState();
+    // client 声明在 try 外、构造在 try 内：构造本身也可能抛
+    // （如测试环境阻断 HttpClient 创建），必须同样静默回退缓存
+    HttpClient? client;
     try {
-      final client = HttpClient()
-        ..connectionTimeout = const Duration(seconds: 8);
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
       final req = await client.getUrl(Uri.parse(channelUrl));
       final resp = await req.close().timeout(const Duration(seconds: 8));
       if (resp.statusCode == 200) {
-        final raw = await resp.transform(utf8.decoder).join();
+        final raw = await resp
+            .transform(utf8.decoder)
+            .join()
+            .timeout(const Duration(seconds: 8));
         final info = parseChannel(raw);
         if (info != null) {
           state['cache'] = raw;
@@ -164,6 +169,8 @@ class ChannelService {
       }
     } catch (_) {
       // 无网/超时：静默回退缓存
+    } finally {
+      client?.close();
     }
     final raw = state['cache'] as String?;
     return raw == null ? null : parseChannel(raw);

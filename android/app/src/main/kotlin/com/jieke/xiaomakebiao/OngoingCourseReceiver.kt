@@ -174,12 +174,15 @@ class OngoingCourseReceiver : BroadcastReceiver() {
                     )
                     return
                 }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // API 23+（含 API 23–30）统一走 setExactAndAllowWhileIdle，避免 Doze 推迟翻页
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     alarmManager.setExactAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent
                     )
                 } else {
-                    alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                    alarmManager.setExact(
+                        AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent
+                    )
                 }
             } catch (t: Throwable) {
                 // 授权在排链瞬间被撤销会抛 SecurityException：降级而不是丢掉整条链

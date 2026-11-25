@@ -1,16 +1,14 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:xiaoma_timetable/database/dao.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
-import 'package:xiaoma_timetable/main.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/pages/week_view_page.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
+
+import 'helpers/pump_helpers.dart';
 
 /// WB_SPEC_221：左上角周数按钮展开态聚焦框。
 ///
@@ -65,44 +63,12 @@ void main() {
     await db.close();
   });
 
-  /// 反复「真实等待 + 推进假时钟」直到目标出现：学期 provider 首帧是
-  /// 真实异步读库，单次 pump 拿不到数据（周视图停在加载态，AppBar 还没出来）。
-  Future<void> pumpUntil(
-    WidgetTester tester,
-    Finder finder, {
-    int rounds = 25,
-  }) async {
-    for (var i = 0; i < rounds; i++) {
-      if (finder.evaluate().isNotEmpty) return;
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 80)),
-      );
-      await tester.pump(const Duration(milliseconds: 60));
-    }
-  }
-
   Future<void> pumpHome(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-
-    await tester.runAsync(() async {
-      await HttpOverrides.runZoned(
-        () async {
-          await tester.pumpWidget(
-            const ProviderScope(
-              child: MaterialApp(home: HomeShell()),
-            ),
-          );
-          await tester.pump();
-          await Future<void>.delayed(const Duration(milliseconds: 1500));
-        },
-        createHttpClient: (_) => throw const SocketException('测试环境阻断网络'),
-      );
-    });
-    await tester.pump();
-    await pumpUntil(tester, find.byIcon(Icons.more_vert));
+    await pumpHomeShell(tester, readyFinder: find.byIcon(Icons.more_vert));
   }
 
   /// 标题 InkWell 里的 AnimatedContainer（承载聚焦框边框与底色）。
@@ -141,9 +107,8 @@ void main() {
     expect(style.fontSize, 17);
     expect(style.fontWeight, FontWeight.bold);
 
-    // 清掉 App 启动联动留下的挂起 Timer（220 轮教训：结尾不 pump 满假时间
-    // 会报 "A Timer is still pending"）。
-    await tester.pump(const Duration(seconds: 60));
+    // 收尾：卸载树并排空启动联动残留 Timer（T11）。
+    await finishHomeShell(tester);
   });
 
   /// 收起态前置断言（复审 L3）：点标题前先确认当前确在收起态，
@@ -190,9 +155,8 @@ void main() {
     expect(arrow.color, primary);
     expect(titleTextStyle(tester).color, primary);
 
-    // 清掉 App 启动联动留下的挂起 Timer（220 轮教训：结尾不 pump 满假时间
-    // 会报 "A Timer is still pending"）。
-    await tester.pump(const Duration(seconds: 60));
+    // 收尾：卸载树并排空启动联动残留 Timer（T11）。
+    await finishHomeShell(tester);
   });
 
   testWidgets('再点收起：框与底回透明、箭头回向下，文字文案不变',
@@ -228,8 +192,7 @@ void main() {
       findsOneWidget,
     );
 
-    // 清掉 App 启动联动留下的挂起 Timer（220 轮教训：结尾不 pump 满假时间
-    // 会报 "A Timer is still pending"）。
-    await tester.pump(const Duration(seconds: 60));
+    // 收尾：卸载树并排空启动联动残留 Timer（T11）。
+    await finishHomeShell(tester);
   });
 }

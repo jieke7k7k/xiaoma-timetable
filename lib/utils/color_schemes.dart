@@ -190,6 +190,19 @@ int mapCourseColor(int storedValue, CourseColorScheme scheme) {
   return scheme.colors[idx];
 }
 
+/// 课程显示色统一解析入口（S2-6）：先按当前配色方案映射，再按深浅色模式做深色降饱和。
+///
+/// 周视图卡片、课程详情、考试倒计时、课程搜索、导入冲突页统一复用本函数，
+/// 避免各页面各自取色导致深色模式或换配色后色点不一致。
+Color resolveCourseDisplayColor(
+  int storedColorValue,
+  CourseColorScheme scheme,
+  Brightness brightness,
+) {
+  final mapped = Color(mapCourseColor(storedColorValue, scheme));
+  return MorandiPalette.desaturateForDark(mapped, brightness: brightness);
+}
+
 /// 全软件主题预置（种子色，整套界面配色由 ColorScheme.fromSeed 推导）
 class ThemePreset {
   const ThemePreset({required this.id, required this.name, required this.seed});

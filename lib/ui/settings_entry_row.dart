@@ -189,7 +189,9 @@ class SettingsSliderRow extends StatelessWidget {
                 // WB_SPEC_235 §6：档位**真的变了**才震一下（拖动过程中的
                 // 像素级连续回调不重复震）；HSV 色盘滑杆不走本组件，保持安静
                 onChanged: (v) {
-                  if (v.round() != value.round()) AppHaptics.select();
+                  // WB_SPEC_235 §6 / S4-4：带 divisions 的滑杆回调已是离散档位，
+                  // 值真的变化即触发选择震动（AppHaptics 内部有 45ms 节流兜底）
+                  if ((v - value).abs() > 1e-6) AppHaptics.select();
                   onChanged(v);
                 },
               ),

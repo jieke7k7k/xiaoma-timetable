@@ -37,11 +37,14 @@ void main() {
     }
   });
 
-  /// 按 App 的方式打开：onCreate / onUpgrade 都指向 DbHelper 里的同一份实现
+  /// 按 App 的方式打开：onCreate / onUpgrade 都指向 DbHelper 里的同一份实现；
+  /// onConfigure 与生产 _open（db_helper.dart:147）同一行，外键开关
+  /// 必须随库一起开——M3（DeepSeek 264 复审 B 段）断言的正是这条生产路径。
   Future<Database> openAt(int version) => databaseFactory.openDatabase(
     dbPath,
     options: OpenDatabaseOptions(
       version: version,
+      onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, v) => DbHelper.instance.createSchema(db),
       onUpgrade: (db, from, to) =>
           DbHelper.instance.upgradeSchema(db, from, to),
@@ -124,5 +127,174 @@ void main() {
     expect(rows, isNotEmpty, reason: '同版本重启不重复清理');
     expect(rows.single['value'], '999999999');
     await again.close();
+  });
+
+  test('早期 v1 库（无 app_settings / 无 notes / courses 无 v5 扩展列）跨级升至 v7', () async {
+    // 构造真实 v1 schema（不含 app_settings、notes 与 v5 新增列）
+    final v1 = await databaseFactory.openDatabase(
+      dbPath,
+      options: OpenDatabaseOptions(
+        version: 1,
+        onCreate: (db, v) async {
+          await db.execute('''
+            CREATE TABLE semesters (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              startDate TEXT NOT NULL,
+              totalWeeks INTEGER NOT NULL DEFAULT 20,
+              isCurrent INTEGER NOT NULL DEFAULT 0
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE time_slots (
+              section INTEGER PRIMARY KEY,
+              startTime TEXT NOT NULL,
+              endTime TEXT NOT NULL
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE courses (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              semesterId INTEGER NOT NULL,
+              name TEXT NOT NULL,
+              teacher TEXT,
+              classroom TEXT,
+              colorValue INTEGER NOT NULL,
+              dayOfWeek INTEGER NOT NULL,
+              startSection INTEGER NOT NULL,
+              endSection INTEGER NOT NULL,
+              weeksJson TEXT NOT NULL,
+              weekType INTEGER NOT NULL DEFAULT 0,
+              note TEXT,
+              examDate INTEGER
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE course_overrides (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              courseId INTEGER NOT NULL,
+              originalWeek INTEGER NOT NULL,
+              targetWeek INTEGER NOT NULL,
+              targetDayOfWeek INTEGER,
+              targetStartSection INTEGER,
+              targetEndSection INTEGER,
+              targetClassroom TEXT
+            )
+          ''');
+          await db.insert('semesters', {
+            'name': '大一上学期',
+            'startDate': '2024-09-02',
+            'totalWeeks': 20,
+            'isCurrent': 1,
+          });
+          await db.insert('courses', {
+            'semesterId': 1,
+            'name': '高等数学',
+            'colorValue': 0xFF6B8E7B,
+            'dayOfWeek': 1,
+            'startSection': 1,
+            'endSection': 2,
+            'weeksJson': '[1,2,3]',
+            'weekType': 0,
+          });
+        },
+      ),
+    );
+    await v1.close();
+
+    // 跨级升至 v7：依次补建 app_settings、notes、courses/notes v5 扩展列，不丢旧数据
+    final db = await openAt(7);
+    // M3（DeepSeek 264 复审 B 段）：外键开关必须走生产 DbHelper._open 的 onConfigure，
+    // 不能只靠 DAO 测试自带的 PRAGMA；这里直接断言生产路径打开的库外键已开启
+    final fk = await db.rawQuery('PRAGMA foreign_keys');
+    expect(fk.single['foreign_keys'], 1);
+    final tables = {
+      for (final r in await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table'",
+      ))
+        r['name'] as String,
+    };
+    expect(tables, containsAll(['semesters', 'time_slots', 'courses', 'course_overrides', 'app_settings', 'notes']));
+
+    final courseCols = {
+      for (final r in await db.rawQuery('PRAGMA table_info(courses)'))
+        r['name'] as String,
+    };
+    expect(courseCols, containsAll(['examEndTime', 'examPlace', 'updatedAt']));
+
+    final noteCols = {
+      for (final r in await db.rawQuery('PRAGMA table_info(notes)'))
+        r['name'] as String,
+    };
+    expect(noteCols, contains('updatedAt'));
+
+    // 历史课程数据完好且可正常写入新列与 notes 表
+    final courses = await db.query('courses');
+    expect(courses.length, 1);
+    expect(courses.first['name'], '高等数学');
+    await db.insert('notes', {
+      'date': '2026-11-25',
+      'content': '升级后新建备注',
+      'createdAt': 1700000000000,
+      'updatedAt': 1700000000000,
+    });
+    expect((await db.query('notes')).length, 1);
+    await db.close();
+  });
+
+  test('v4 库（含已退役表与遗留键）升至 v7 后表清键净，且重复跑 v4→v7 幂等不报错', () async {
+    final v4 = await databaseFactory.openDatabase(
+      dbPath,
+      options: OpenDatabaseOptions(
+        version: 4,
+        onCreate: (db, v) async {
+          await DbHelper.instance.createSchema(db);
+          for (final table in DbHelper.retiredTables) {
+            await db.execute('CREATE TABLE $table (id INTEGER PRIMARY KEY)');
+          }
+          for (final key in [...DbHelper.retiredSettingKeys, ...DbHelper.retiredSyncKeys]) {
+            await db.insert('app_settings', {'key': key, 'value': 'legacy'});
+          }
+          await db.insert('app_settings', {'key': 'theme_mode', 'value': 'light'});
+        },
+      ),
+    );
+    await v4.close();
+
+    // 升至 v7（createSchema 已含 v5 列，顺带验证 C1 的 PRAGMA table_info 防重加列）
+    final db = await openAt(7);
+    final tables = {
+      for (final r in await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table'",
+      ))
+        r['name'] as String,
+    };
+    for (final retired in DbHelper.retiredTables) {
+      expect(tables, isNot(contains(retired)));
+    }
+    final remainingKeys = {
+      for (final r in await db.query('app_settings')) r['key'] as String,
+    };
+    for (final key in [...DbHelper.retiredSettingKeys, ...DbHelper.retiredSyncKeys]) {
+      expect(remainingKeys, isNot(contains(key)));
+    }
+    expect(remainingKeys, contains('theme_mode'));
+    // L9（DeepSeek 264 复审 B 段）：用例名里的「重复跑 v4→v7 幂等」要真跑第二次——
+    // 直接重调同一段迁移，退役表不复活、保留键不丢、重复加列不报错
+    await DbHelper.instance.upgradeSchema(db, 4, 7);
+    final tablesAfterSecond = {
+      for (final r in await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table'",
+      ))
+        r['name'] as String,
+    };
+    for (final retired in DbHelper.retiredTables) {
+      expect(tablesAfterSecond, isNot(contains(retired)));
+    }
+    final keysAfterSecond = {
+      for (final r in await db.query('app_settings')) r['key'] as String,
+    };
+    expect(keysAfterSecond, contains('theme_mode'));
+    await db.close();
   });
 }

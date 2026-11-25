@@ -42,8 +42,14 @@ class _WeekPickerState extends ConsumerState<WeekPicker> {
   @override
   void initState() {
     super.initState();
-    _selected = widget.initialWeeks.toSet();
-    _weekType = widget.initialWeekType;
+    // 兼容旧数据：若传入了单双周标记，初始化时一次性过滤进 _selected 并归一化为 allWeeks，
+    // 确保后续 _toggleWeek / _quickSelect / _parseText 三条路径语义一致（S2-9）。
+    _selected = widget.initialWeeks.where((w) {
+      if (widget.initialWeekType == WeekParser.oddWeek) return w.isOdd;
+      if (widget.initialWeekType == WeekParser.evenWeek) return w.isEven;
+      return true;
+    }).toSet();
+    _weekType = WeekParser.allWeeks;
     _textController =
         TextEditingController(text: WeekParser.toText(_selected.toList(), _weekType));
   }

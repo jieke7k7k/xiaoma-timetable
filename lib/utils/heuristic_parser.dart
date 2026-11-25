@@ -64,6 +64,8 @@ class HeuristicParser {
               ? [for (var w = 1; w <= 16; w++) w]
               : lastWeeks,
         ));
+        // 每生成一门草稿课后重置教室，防止上一门课的教室号串台到下一门无教室课程
+        lastClassroom = null;
       }
     }
     return drafts;
@@ -90,38 +92,42 @@ class HeuristicParser {
     if (range != null) {
       final a = int.parse(range.group(1)!);
       final b = int.parse(range.group(2)!);
-      return (a, b);
+      return (a >= 1 && a <= b) ? (a, b) : null;
     }
     final single = RegExp(r'第?\s*(\d{1,2})\s*节').firstMatch(text);
     if (single != null) {
       final a = int.parse(single.group(1)!);
-      return (a, a);
+      return a >= 1 ? (a, a) : null;
     }
     return null;
   }
 
-  /// 提取周次，如「1-16周」「1-16」「1,3,5周」
+  /// 提取周次，如「1-16周」「1-16单周」「1-16周(双)」「1,3,5周」
   static List<int>? _extractWeeks(String text) {
-    final range =
-        RegExp(r'(\d{1,2})\s*[-—~至]\s*(\d{1,2})\s*周?').firstMatch(text);
-    if (range != null) {
-      final a = int.parse(range.group(1)!);
-      final b = int.parse(range.group(2)!);
-      if (a <= b && a >= 1 && b <= 30) {
-        return [for (var w = a; w <= b; w++) w];
-      }
+    // 区间或列表后必须带「周」，避免把「3-4节」「16-222」「08:00-09:40」误判为周次
+    final match = RegExp(
+      r'((?:\d{1,2}(?:\s*[-—－~至]\s*\d{1,2})?\s*(?:[（(]?[单双]周?[)）]?)?\s*周?\s*[,，]\s*)*'
+      r'\d{1,2}(?:\s*[-—－~至]\s*\d{1,2})?\s*(?:[（(]?[单双]周?[)）]?)?\s*周(?:\s*[（(][单双]周?[)）])?)',
+    ).firstMatch(text);
+    if (match == null) return null;
+
+    // 归一化为 WeekParser.parse 接受的格式，统一处理单双周与范围校验
+    final normalized = match
+        .group(1)!
+        .replaceAll('至', '-')
+        .replaceAllMapped(
+          RegExp(r'[（(]\s*([单双])周?\s*[)）]'),
+          (m) => m.group(1)!,
+        )
+        .replaceAll('周', '')
+        .trim();
+    if (normalized.isEmpty) return null;
+
+    try {
+      return WeekParser.parse(normalized).weeks;
+    } catch (_) {
+      return null;
     }
-    // 列表形式：1,3,5周
-    final list = RegExp(r'([\d,，\s]+)\s*周').firstMatch(text);
-    if (list != null) {
-      try {
-        final parsed = WeekParser.parse(list.group(1)!.replaceAll('，', ','));
-        return parsed.weeks;
-      } catch (_) {
-        return null;
-      }
-    }
-    return null;
   }
 
   /// 提取教室号，如「16-222」「A301」「16号楼222」

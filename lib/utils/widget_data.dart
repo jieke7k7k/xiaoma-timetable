@@ -5,6 +5,7 @@ import '../models/semester.dart';
 import '../models/time_slot.dart';
 import '../models/ui_settings.dart';
 import 'color_schemes.dart';
+import 'course_display_formatter.dart';
 import 'next_class.dart';
 import 'week_calc.dart';
 
@@ -125,12 +126,21 @@ WidgetPayload buildWidgetPayload({
       '${day.month}.${day.day} '
       '${week >= 1 ? '第$week周 ' : ''}周${_weekdayNames[day.weekday - 1]}';
   WidgetRow toRow(ClassSession s) {
+    final displayName = CourseDisplayFormatter.formatCourseName(
+      s.course.name,
+      hideNameMarks: ui.hideNameMarks,
+    );
+    final displayClassroom = CourseDisplayFormatter.formatClassroom(
+      s.course.classroom,
+      hideCampus: ui.hideCampus,
+      showLocationAt: ui.showLocationAt,
+    );
     final parts = [
-      s.course.classroom?.trim() ?? '',
+      displayClassroom,
       s.course.teacher?.trim() ?? '',
     ].where((e) => e.isNotEmpty).join(' ');
     return WidgetRow(
-      name: s.course.name,
+      name: displayName,
       sub: parts,
       start: fmtHhmm(s.start),
       end: fmtHhmm(s.end),

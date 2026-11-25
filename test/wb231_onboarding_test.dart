@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:xiaoma_timetable/database/dao.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
+import 'package:xiaoma_timetable/main.dart';
 import 'package:xiaoma_timetable/pages/onboarding_page.dart';
+import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
+
+import 'helpers/pump_helpers.dart';
 
 /// WB_SPEC_231 第 3.1 / 3.2 节：引导页 5 条导入路径 + 直达的路由闭环。
 ///
@@ -156,62 +161,52 @@ void main() {
     expect(find.text('IMPORT_PAGE'), findsNothing);
   });
 
-  testWidgets('直达后按返回 → 落在课表主页（不在引导页）', (tester) async {
-    await tester.runAsync(() async {
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            routes: {
-              '/import': (_) => const Scaffold(body: Text('IMPORT_PAGE')),
-              '/course-edit': (_) =>
-                  const Scaffold(body: Text('COURSE_EDIT_PAGE')),
-              '/settings-widget': (_) =>
-                  const Scaffold(body: Text('WIDGET_SETTINGS')),
-              '/settings-data': (_) =>
-                  const Scaffold(body: Text('DATA_SETTINGS')),
-            },
-            home: const _TestGate(),
-          ),
+  testWidgets('生产根门卫（appRoutes["/"]）：直达后写标记并切至 HomeShell，返回不回引导页', (
+    tester,
+  ) async {
+    PackageInfo.setMockInitialValues(
+      appName: '小马课表',
+      packageName: 'com.jieke.xiaomakebiao',
+      version: '2.16.1',
+      buildNumber: '55',
+      buildSignature: '',
+    );
+    sundayDialogNow = () => DateTime(2026, 11, 16);
+    addTearDown(() => sundayDialogNow = DateTime.now);
+
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          initialRoute: '/',
+          routes: {
+            // 直接接入生产根门卫 _RootGate（main.dart），仅对二级目标页打桩
+            '/': appRoutes['/']!,
+            '/import': (_) => const Scaffold(body: Text('IMPORT_PAGE')),
+            '/course-edit': (_) => const Scaffold(body: Text('COURSE_EDIT_PAGE')),
+          },
         ),
-      );
-    });
-    await settle(tester);
+      ),
+    );
+    await pumpUntil(tester, find.text('导入 ICS 日历文件'));
 
     await tester.tap(find.text('导入 ICS 日历文件'));
-    await settle(tester);
-    expect(find.text('IMPORT_PAGE'), findsOneWidget);
+    await pumpUntil(tester, find.text('IMPORT_PAGE'));
     expect(await readDone(tester), '1');
 
-    // 返回：落在主页，不回引导页（Kimi 复审优化 5 点名的缺口）
+    // 返回：生产根门卫已完成 onboardingDoneProvider 刷新，落在真实 HomeShell，不回引导页
     Navigator.of(tester.element(find.text('IMPORT_PAGE'))).pop();
-    await settle(tester);
-    expect(find.text('HOME_PAGE'), findsOneWidget);
+    await pumpUntil(tester, find.byType(HomeShell));
+    expect(find.byType(HomeShell), findsOneWidget);
     expect(find.text('课表从哪来'), findsNothing);
+
+    await finishHomeShell(tester);
   });
 }
 
-/// 根门卫替身（模拟 main.dart 的真实链路）：标记未写时显示引导页，
-/// 写完标记后切到主页；直达页 pop 后落在主页，不回引导页。
-class _TestGate extends StatefulWidget {
-  const _TestGate();
-
-  @override
-  State<_TestGate> createState() => _TestGateState();
-}
-
-class _TestGateState extends State<_TestGate> {
-  var _done = false;
-
-  @override
-  Widget build(BuildContext context) {
-    if (_done) {
-      return const Scaffold(body: Text('HOME_PAGE'));
-    }
-    return OnboardingPage(
-      onDone: () async {
-        await Dao.instance.setSetting('onboarding_done', '1');
-        if (mounted) setState(() => _done = true);
-      },
-    );
-  }
-}
+/// 根门卫替身已删除（WB_SPEC_264 T8）：末尾用例改为直接挂载生产根门卫
+/// appRoutes['/']（main.dart 的 _RootGate），不再用替身模拟。

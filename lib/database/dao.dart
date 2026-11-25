@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:sqflite/sqflite.dart';
 
 import '../models/course.dart';
@@ -6,6 +7,15 @@ import '../models/note.dart';
 import '../models/semester.dart';
 import '../models/time_slot.dart';
 import 'db_helper.dart';
+
+/// 数据库友好中文异常（C24）：[toString] 直接返回中文原因，避免底层英文堆栈直达 UI
+class DaoException implements Exception {
+  const DaoException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
+}
 
 /// 数据访问对象：封装各表的增删改查
 /// 所有数据库异常在此处统一捕获并向上抛出带中文信息的异常，由 UI 层友好提示
@@ -17,6 +27,23 @@ class Dao {
   /// 抛错即可验证「多时段一起保存」的整批回滚。生产环境恒为 null。
   static Future<void> Function(Course course)? debugBeforeUpdateCourse;
 
+  /// 统一捕获底层数据库异常：原始异常仅打日志，向上抛出友好中文 [DaoException]（C24）。
+  /// 业务前置校验抛出的 [ArgumentError] / [StateError] 原样向上传递。
+  Future<T> _guard<T>(String action, Future<T> Function() fn) async {
+    try {
+      return await fn();
+    } on DaoException {
+      rethrow;
+    } on ArgumentError {
+      rethrow;
+    } on StateError {
+      rethrow;
+    } catch (e) {
+      debugPrint('DAO $action 失败：$e');
+      throw DaoException('$action失败，请稍后重试');
+    }
+  }
+
   Future<Database> get _db async => DbHelper.instance.database;
 
   /// 把一批写操作包进单个事务（1.3.1：批量导入落库用）。
@@ -26,116 +53,147 @@ class Dao {
   /// 不传执行器时各方法仍各自独立执行，旧调用点行为不变。
   Future<T> runInTransaction<T>(
     Future<T> Function(DatabaseExecutor txn) action,
-  ) async {
+  ) => _guard('批量数据保存', () async {
     final db = await _db;
     return db.transaction((txn) => action(txn));
-  }
+  });
 
   // ---------- 学期 ----------
 
-  Future<List<Semester>> getAllSemesters() async {
+  Future<List<Semester>> getAllSemesters() => _guard('读取学期列表', () async {
     final db = await _db;
     final rows = await db.query('semesters', orderBy: 'id ASC');
     return rows.map(Semester.fromMap).toList();
-  }
+  });
 
   /// 获取当前激活学期；若无（理论上不会发生）则返回 null
-  Future<Semester?> getCurrentSemester() async {
+  Future<Semester?> getCurrentSemester() => _guard('读取当前学期', () async {
     final db = await _db;
-    final rows =
-        await db.query('semesters', where: 'isCurrent = 1', limit: 1);
+    final rows = await db.query(
+      'semesters',
+      where: 'isCurrent = 1',
+      orderBy: 'id ASC',
+      limit: 1,
+    );
     if (rows.isEmpty) return null;
     return Semester.fromMap(rows.first);
-  }
+  });
 
-  Future<int> insertSemester(Semester s) async {
+  Future<int> insertSemester(Semester s) => _guard('新建学期', () async {
     final db = await _db;
-    return db.insert('semesters', s.toMap());
-  }
+    if (!s.isCurrent) {
+      return db.insert('semesters', s.toMap());
+    }
+    // 插入即激活时在事务内先清零旧标记，保证 isCurrent = 1 唯一
+    return db.transaction((txn) async {
+      await txn.update('semesters', {'isCurrent': 0});
+      return txn.insert('semesters', s.toMap());
+    });
+  });
 
-  Future<int> updateSemester(Semester s) async {
+  Future<int> updateSemester(Semester s) => _guard('更新学期', () async {
+    if (s.id == null) {
+      throw ArgumentError('更新学期失败：缺少学期 id');
+    }
     final db = await _db;
     return db.update('semesters', s.toMap(),
         where: 'id = ?', whereArgs: [s.id]);
-  }
+  });
 
   /// 切换当前学期：事务内先把所有学期置为非当前，再激活目标学期
-  Future<void> setCurrentSemester(int semesterId) async {
+  Future<void> setCurrentSemester(int semesterId) => _guard('切换学期', () async {
     final db = await _db;
     await db.transaction((txn) async {
       await txn.update('semesters', {'isCurrent': 0});
-      await txn.update('semesters', {'isCurrent': 1},
-          where: 'id = ?', whereArgs: [semesterId]);
-    });
-  }
-
-  Future<int> deleteSemester(int id) async {
-    final db = await _db;
-    // 先手动删除该学期下的课程与调课记录（部分 Android 版本外键级联未必开启）
-    await db.transaction((txn) async {
-      final courseRows = await txn
-          .query('courses', columns: ['id'], where: 'semesterId = ?', whereArgs: [id]);
-      for (final row in courseRows) {
-        await txn.delete('course_overrides',
-            where: 'courseId = ?', whereArgs: [row['id']]);
+      final updated = await txn.update(
+        'semesters',
+        {'isCurrent': 1},
+        where: 'id = ?',
+        whereArgs: [semesterId],
+      );
+      if (updated == 0) {
+        throw StateError('目标学期不存在，切换失败并已回滚');
       }
+    });
+  });
+
+  Future<int> deleteSemester(int id) => _guard('删除学期', () async {
+    final db = await _db;
+    // 先手动删除该学期下的课程与调课记录（部分 Android 版本外键级联未必开启）；
+    // C20：单条子查询 SQL 批量删调课记录，替代按课程逐条循环删除
+    await db.transaction((txn) async {
+      await txn.delete(
+        'course_overrides',
+        where: 'courseId IN (SELECT id FROM courses WHERE semesterId = ?)',
+        whereArgs: [id],
+      );
       await txn.delete('courses', where: 'semesterId = ?', whereArgs: [id]);
       await txn.delete('semesters', where: 'id = ?', whereArgs: [id]);
     });
     return 1;
-  }
+  });
 
   // ---------- 节次时间 ----------
 
-  Future<List<TimeSlot>> getTimeSlots() async {
+  Future<List<TimeSlot>> getTimeSlots() => _guard('读取节次时间', () async {
     final db = await _db;
     final rows = await db.query('time_slots', orderBy: 'section ASC');
     return rows.map(TimeSlot.fromMap).toList();
-  }
+  });
 
   /// 保存节次时间：已有节次则更新，没有则插入。
   /// 导入校准可能扩出新节次（如第 13 节），纯 update 会静默丢弃，
   /// 故用 insert + replace 主键冲突策略实现 upsert。
-  Future<void> deleteTimeSlot(int section) async {
-    final db = await _db;
+  Future<void> deleteTimeSlot(int section, {DatabaseExecutor? txn}) => _guard('删除节次时间', () async {
+    final db = txn ?? await _db;
     await db.delete('time_slots', where: 'section = ?', whereArgs: [section]);
-  }
+  });
 
-  Future<void> updateTimeSlot(TimeSlot slot) async {
-    final db = await _db;
-    await db.insert('time_slots', slot.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace);
-  }
+  Future<void> updateTimeSlot(TimeSlot slot, {DatabaseExecutor? txn}) => _guard('保存节次时间', () async {
+    final db = txn ?? await _db;
+    await db.insert(
+      'time_slots',
+      slot.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  });
 
   // ---------- 课程 ----------
 
-  Future<List<Course>> getCoursesBySemester(int semesterId) async {
+  Future<List<Course>> getCoursesBySemester(int semesterId) => _guard('读取课程列表', () async {
     final db = await _db;
-    final rows = await db.query('courses',
-        where: 'semesterId = ?', whereArgs: [semesterId]);
+    final rows = await db.query(
+      'courses',
+      where: 'semesterId = ?',
+      whereArgs: [semesterId],
+      orderBy: 'id ASC',
+    );
     return rows.map(Course.fromMap).toList();
-  }
+  });
 
   /// 插入课程。[txn] 非空时在该事务内执行（批量导入整体原子化用）。
   /// 顺手补 updatedAt（最后修改时间，供将来按修改时间排序等场景用）。
-  Future<int> insertCourse(Course c, {DatabaseExecutor? txn}) async {
+  Future<int> insertCourse(Course c, {DatabaseExecutor? txn}) => _guard('新建课程', () async {
     final db = txn ?? await _db;
     final map = c.toMap()..['updatedAt'] = DateTime.now().millisecondsSinceEpoch;
     final id = await db.insert('courses', map);
     return id;
-  }
+  });
 
   /// 改课程（整行覆盖）。单条 UPDATE，本身就是原子的——C8 的复核结论是这里
   /// 不用包事务，只有 deleteCourse（删调课 + 删课程两条 SQL）才需要。
   /// 顺手补 updatedAt（最后修改时间）。
-  Future<int> updateCourse(Course c, {DatabaseExecutor? txn}) async {
+  Future<int> updateCourse(Course c, {DatabaseExecutor? txn}) => _guard('更新课程', () async {
+    if (c.id == null) {
+      throw ArgumentError('更新课程失败：缺少课程 id');
+    }
     final hook = debugBeforeUpdateCourse;
     if (hook != null) await hook(c);
     final db = txn ?? await _db;
     final map = c.toMap()..['updatedAt'] = DateTime.now().millisecondsSinceEpoch;
     final n = await db.update('courses', map, where: 'id = ?', whereArgs: [c.id]);
     return n;
-  }
+  });
 
   /// 多时段一起保存（WB_SPEC_231 第 10.4 节）：一次事务写多行。
   ///
@@ -150,7 +208,7 @@ class Dao {
     Course currentUpdated,
     List<Course> siblingsToSync, {
     DatabaseExecutor? txn,
-  }) async {
+  }) => _guard('多时段一起保存', () async {
     Future<int> run(DatabaseExecutor t) async {
       var n = await updateCourse(currentUpdated, txn: t);
       for (final sibling in siblingsToSync) {
@@ -162,7 +220,7 @@ class Dao {
     if (txn != null) return run(txn);
     final db = await _db;
     return db.transaction(run);
-  }
+  });
 
   /// 删除课程（含其调课记录）。[txn] 非空时在该事务内执行
   ///
@@ -170,7 +228,7 @@ class Dao {
   /// SQL，分开执行时中途失败会留下「课程没了、调课记录还挂着」的悬空数据。
   /// 传了 [txn] 说明调用方已经在一个更大的事务里（批量导入），直接沿用，
   /// 不再嵌套（sqflite 的嵌套事务是保存点，语义已够用，但没必要多一层）。
-  Future<int> deleteCourse(int id, {DatabaseExecutor? txn}) async {
+  Future<int> deleteCourse(int id, {DatabaseExecutor? txn}) => _guard('删除课程', () async {
     if (txn != null) {
       await txn.delete('course_overrides',
           where: 'courseId = ?', whereArgs: [id]);
@@ -181,29 +239,29 @@ class Dao {
       await t.delete('course_overrides', where: 'courseId = ?', whereArgs: [id]);
       return t.delete('courses', where: 'id = ?', whereArgs: [id]);
     });
-  }
+  });
 
   // ---------- 备份导出（阶段五：跨学期全量读取） ----------
 
   /// 全部学期的所有课程（JSON 全量备份用，与 getCoursesBySemester 不同）
-  Future<List<Course>> getAllCourses() async {
+  Future<List<Course>> getAllCourses() => _guard('读取全部课程', () async {
     final db = await _db;
     final rows = await db.query('courses');
     return rows.map(Course.fromMap).toList();
-  }
+  });
 
   /// 全部单次调课记录（JSON 全量备份用）
-  Future<List<CourseOverride>> getAllOverrides() async {
+  Future<List<CourseOverride>> getAllOverrides() => _guard('读取全部调课记录', () async {
     final db = await _db;
     final rows = await db.query('course_overrides');
     return rows.map(CourseOverride.fromMap).toList();
-  }
+  });
 
   // ---------- 单次调课（阶段五·节假日调课） ----------
 
   /// 某学期的全部单次调课记录（JOIN courses 按学期过滤）。
   /// 周视图渲染 / 提醒重排 / 常驻通知 / 小组件都按当前学期取这份数据。
-  Future<List<CourseOverride>> getOverridesBySemester(int semesterId) async {
+  Future<List<CourseOverride>> getOverridesBySemester(int semesterId) => _guard('读取调课记录', () async {
     final db = await _db;
     final rows = await db.rawQuery(
       'SELECT o.* FROM course_overrides o '
@@ -212,11 +270,11 @@ class Dao {
       [semesterId],
     );
     return rows.map(CourseOverride.fromMap).toList();
-  }
+  });
 
   /// 保存单次调课（同一 (courseId, originalWeek) 至多一条）：
   /// 事务内先删旧记录再插入，重复调整等同覆盖，不会残留两条。
-  Future<int> upsertOverride(CourseOverride o) async {
+  Future<int> upsertOverride(CourseOverride o) => _guard('保存调课记录', () async {
     final db = await _db;
     return db.transaction((txn) async {
       await txn.delete('course_overrides',
@@ -224,25 +282,25 @@ class Dao {
           whereArgs: [o.courseId, o.originalWeek]);
       return txn.insert('course_overrides', o.toMap());
     });
-  }
+  });
 
-  Future<int> deleteOverride(int id) async {
+  Future<int> deleteOverride(int id) => _guard('撤销调课记录', () async {
     final db = await _db;
     return db.delete('course_overrides', where: 'id = ?', whereArgs: [id]);
-  }
+  });
 
   // ---------- 备注（v3：AI 备注 / 常驻通知 / 桌面小部件） ----------
 
   /// 全部备注，按日期升序、同日内按写入顺序（id）升序。
   /// 备注页、常驻通知都吃这份（数量级是「人手写」的量，全表读足够）。
-  Future<List<Note>> getAllNotes() async {
+  Future<List<Note>> getAllNotes() => _guard('读取备注列表', () async {
     final db = await _db;
     final rows = await db.query('notes', orderBy: 'date ASC, id ASC');
     return rows.map(Note.fromMap).toList();
-  }
+  });
 
   /// 某一天的备注（[date] 为 yyyy-MM-dd），按写入顺序
-  Future<List<Note>> getNotesByDate(String date) async {
+  Future<List<Note>> getNotesByDate(String date) => _guard('读取当日备注', () async {
     final db = await _db;
     final rows = await db.query(
       'notes',
@@ -251,11 +309,11 @@ class Dao {
       orderBy: 'id ASC',
     );
     return rows.map(Note.fromMap).toList();
-  }
+  });
 
   /// 批量取若干天的备注（小组件一次要未来 7 天，避免逐日各查一次）。
   /// [dates] 为空时返回空列表，不会拼出非法 SQL。
-  Future<List<Note>> getNotesByDates(List<String> dates) async {
+  Future<List<Note>> getNotesByDates(List<String> dates) => _guard('批量读取备注', () async {
     if (dates.isEmpty) return [];
     final db = await _db;
     final placeholders = List.filled(dates.length, '?').join(', ');
@@ -266,64 +324,67 @@ class Dao {
       orderBy: 'date ASC, id ASC',
     );
     return rows.map(Note.fromMap).toList();
-  }
+  });
 
-  Future<int> insertNote(Note n) async {
+  Future<int> insertNote(Note n) => _guard('新增备注', () async {
     final db = await _db;
     final map = n.toMap()..['updatedAt'] = DateTime.now().millisecondsSinceEpoch;
     final id = await db.insert('notes', map);
     return id;
-  }
+  });
 
-  Future<int> updateNote(Note n) async {
+  Future<int> updateNote(Note n) => _guard('更新备注', () async {
+    if (n.id == null) {
+      throw ArgumentError('更新备注失败：缺少备注 id');
+    }
     final db = await _db;
     final map = n.toMap()..['updatedAt'] = DateTime.now().millisecondsSinceEpoch;
     final count = await db.update('notes', map, where: 'id = ?', whereArgs: [n.id]);
     return count;
-  }
+  });
 
   /// 删除一条备注，返回受影响行数（0 表示 id 不存在）
-  Future<int> deleteNote(int id) async {
+  Future<int> deleteNote(int id) => _guard('删除备注', () async {
     final db = await _db;
     return db.delete('notes', where: 'id = ?', whereArgs: [id]);
-  }
+  });
 
   // ---------- 应用设置（键值对，阶段四：提醒开关/提前分钟等） ----------
 
-  Future<String?> getSetting(String key) async {
+  Future<String?> getSetting(String key) => _guard('读取应用设置', () async {
     final db = await _db;
     final rows =
         await db.query('app_settings', where: 'key = ?', whereArgs: [key], limit: 1);
     if (rows.isEmpty) return null;
     return rows.first['value'] as String?;
-  }
+  });
 
   /// 写入/覆盖设置项（键为 PRIMARY KEY，重复写走 replace）
-  Future<void> setSetting(String key, String value) async {
+  Future<void> setSetting(String key, String value) => _guard('保存应用设置', () async {
     final db = await _db;
     await db.insert('app_settings', {'key': key, 'value': value},
         conflictAlgorithm: ConflictAlgorithm.replace);
-  }
+  });
 
   /// 读取布尔型设置（约定存 "1"/"0"）
-  Future<bool> getSettingBool(String key, bool defaultValue) async {
+  Future<bool> getSettingBool(String key, bool defaultValue) => _guard('读取布尔设置', () async {
     final v = await getSetting(key);
     if (v == null) return defaultValue;
     return v == '1' || v.toLowerCase() == 'true';
-  }
+  });
 
   /// 读取整型设置（解析失败回退默认值）
-  Future<int> getSettingInt(String key, int defaultValue) async {
+  Future<int> getSettingInt(String key, int defaultValue) => _guard('读取整数设置', () async {
     final v = await getSetting(key);
     return int.tryParse(v ?? '') ?? defaultValue;
-  }
+  });
 
   /// 全部应用设置键值对（JSON 全量备份用）
-  Future<Map<String, String>> getAllSettings() async {
+  Future<Map<String, String>> getAllSettings() => _guard('读取全部应用设置', () async {
     final db = await _db;
     final rows = await db.query('app_settings');
     return {
       for (final r in rows) r['key'] as String: r['value'] as String,
     };
-  }
+  });
 }

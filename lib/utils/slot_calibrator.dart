@@ -173,8 +173,10 @@ class SlotCalibrator {
         start = prevEnd + (ks.containsKey(sec) ? 0 : 10);
         if (end <= start) end = start + fallbackLesson;
       }
-      start = start.clamp(0, 1439);
-      end = end.clamp(0, 1439);
+      // 钳制到当天合法分钟区间：start 最高 23:58（1438），保证 end >= start + 1，
+      // 避免产出 23:59–23:59 的零时长退化节次（S2-10）
+      start = start.clamp(0, 1438);
+      end = end.clamp(start + 1, 1439);
       result.add(TimeSlot(
           section: sec, startTime: _hm(start), endTime: _hm(end)));
       prevEnd = end;

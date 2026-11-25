@@ -76,13 +76,16 @@ void main() {
     });
   });
 
-  group('开学日期脏数据回退（与 Kotlin 侧一致，Kimi 复审 Bug 2）', () {
-    test('startDate 解析失败时回退到本周一、9 天复用，下周一的第 2 周课能算出来', () {
-      // 期望按运行时真实今天推导，不写死日期：startDateParsed 用真实 DateTime.now() 回退。
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final thisMonday = WeekCalc.alignToMonday(today);
-      final nextMonday = thisMonday.add(const Duration(days: 7));
+  group('开学日期脏数据回退（与 Kotlin 侧一致，Kimi 复审 Bug 2 / WB_SPEC_264 T4）', () {
+    test('startDate 解析失败时按传入 now 回退到当周一、9 天复用，下周一的第 2 周课能算出来', () {
+      // R3-3 起 computeClassFocus 按传入 now 的当日解析回退，不再依赖实时 DateTime.now()
+      final now = DateTime(2026, 9, 9, 10, 0); // 周三
+      final thisMonday = WeekCalc.alignToMonday(now); // 2026-09-07
+      final nextMonday = DateTime(
+        thisMonday.year,
+        thisMonday.month,
+        thisMonday.day + 7,
+      ); // 2026-09-14
       final semester = Semester(name: '脏数据学期', startDate: '', totalWeeks: 20);
       final course = Course(
         id: 1,

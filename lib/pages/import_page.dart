@@ -19,7 +19,6 @@ import '../ui/app_styles.dart';
 import '../utils/app_haptics.dart';
 import '../utils/ics_parser.dart';
 import '../utils/morandi_palette.dart';
-import '../database/dao.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/semester_form_dialog.dart';
 import '../widgets/semester_start_dialog.dart';
@@ -247,13 +246,10 @@ class _ImportPageState extends ConsumerState<ImportPage> {
       final iso = DateFormat('yyyy-MM-dd').format(res);
       if (iso != target.startDate) {
         final updated = target.copyWith(startDate: iso);
-        await Dao.instance.updateSemester(updated);
+        // 学期更新统一走 SemestersNotifier.updateSemester（C15 收口）：
+        // 落库 + 刷列表 + 当前学期同步内存 + 钳制浏览周 + 通知/小组件联动
+        await ref.read(semestersProvider.notifier).updateSemester(updated);
         if (!mounted) return;
-        // 当前学期被改到时同步内存状态，今日周次立即按新日期重算
-        if (ref.read(currentSemesterProvider).value?.id == updated.id) {
-          ref.read(currentSemesterProvider.notifier).setDirectly(updated);
-        }
-        ref.invalidate(semestersProvider);
         setState(() => _target = updated);
         target = updated;
       }

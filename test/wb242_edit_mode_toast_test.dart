@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/models/course.dart';
 import 'package:xiaoma_timetable/models/course_override.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
@@ -64,31 +65,13 @@ void main() {
     isCurrent: true,
   );
 
-  /// 14 节标准节次（与 App 默认节次表同口径）。
-  List<TimeSlot> slots14() => const [
-    TimeSlot(section: 1, startTime: '08:00', endTime: '08:45'),
-    TimeSlot(section: 2, startTime: '08:55', endTime: '09:40'),
-    TimeSlot(section: 3, startTime: '10:00', endTime: '10:45'),
-    TimeSlot(section: 4, startTime: '10:55', endTime: '11:40'),
-    TimeSlot(section: 5, startTime: '14:00', endTime: '14:45'),
-    TimeSlot(section: 6, startTime: '14:55', endTime: '15:40'),
-    TimeSlot(section: 7, startTime: '16:00', endTime: '16:45'),
-    TimeSlot(section: 8, startTime: '16:55', endTime: '17:40'),
-    TimeSlot(section: 9, startTime: '19:00', endTime: '19:45'),
-    TimeSlot(section: 10, startTime: '19:55', endTime: '20:40'),
-    TimeSlot(section: 11, startTime: '20:50', endTime: '21:35'),
-    TimeSlot(section: 12, startTime: '21:45', endTime: '22:30'),
-    TimeSlot(section: 13, startTime: '22:40', endTime: '23:25'),
-    TimeSlot(section: 14, startTime: '23:35', endTime: '00:20'),
-  ];
-
   List<Override> overrides(List<Course> list) => [
     currentSemesterProvider.overrideWith(
       () => _FakeSemesterNotifier(semester()),
     ),
     coursesProvider.overrideWith(() => _FakeCoursesNotifier(list)),
     courseOverridesProvider.overrideWith(() => _FakeOverridesNotifier()),
-    timeSlotsProvider.overrideWith(() => _FakeSlotsNotifier(slots14())),
+    timeSlotsProvider.overrideWith(() => _FakeSlotsNotifier(defaultTimeSlots)),
     uiSettingsProvider.overrideWith(
       () => _FakeUiNotifier(const UiSettings(autoFitHeight: false)),
     ),
@@ -137,6 +120,50 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   }
 
+  // L3（DeepSeek 264 复审 B 段）：wb240 被删后，EditModeTitlePill/EditModeToast
+  // 只剩整页场景；这里恢复裸组件挂载用例——胶囊文案、飘窗高度、无 SnackBar、
+  // 无常驻横栏，不依赖整页状态。
+  group('WB_SPEC_242 编辑模式飘窗（裸组件）', () {
+    testWidgets('EditModeTitlePill 胶囊文案与 EditModeToast 飘窗逐字对齐', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: AppBar(title: const EditModeTitlePill()),
+            body: Column(
+              children: [EditModeToast(onDismiss: () {})],
+            ),
+          ),
+        ),
+      );
+
+      // 1. AppBar 胶囊只写「✏️ 编辑模式」
+      expect(find.text('✏️ 编辑模式'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('appbar_edit_mode_pill')),
+        findsOneWidget,
+      );
+
+      // 2. 悬浮胶囊飘窗：新版文案（「已锁定滑动」已删），高 38dp
+      final toastFinder = find.byKey(const ValueKey<String>('edit_mode_toast'));
+      expect(toastFinder, findsOneWidget);
+      expect(find.text('点空格加课 · 长按课程编辑'), findsOneWidget);
+      expect(tester.getSize(toastFinder).height, 38.0);
+
+      // 3. 无 2 秒 SnackBar，无常驻横栏
+      expect(find.byType(SnackBar), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('edit_mode_persistent_banner')),
+        findsNothing,
+      );
+
+      // 收尾：把飘窗的 3 秒定时器跑完再结束，否则 teardown 报 Timer pending。
+      await tester.pump(const Duration(milliseconds: 3500));
+      await tester.pump(const Duration(milliseconds: 300));
+    });
+  });
+
   group('WB_SPEC_242 编辑模式飘窗', () {
     testWidgets('进编辑模式出现悬浮胶囊飘窗，不再出现常驻横栏', (tester) async {
       await pumpWeekView(tester, list: [course(name: '普通课程')]);
@@ -148,15 +175,19 @@ void main() {
       );
       // 点铅笔进编辑模式。
       await enterEditMode(tester);
-      // 飘窗出现，文案为新版；常驻横栏仍无（已删）。
-      expect(find.byKey(const ValueKey<String>('edit_mode_toast')), findsOneWidget);
+      // 飘窗出现，文案为新版、高 38dp，无 SnackBar 与常驻横栏（合并原 wb240 重复用例，T15）。
+      final toastFinder = find.byKey(const ValueKey<String>('edit_mode_toast'));
+      expect(toastFinder, findsOneWidget);
       expect(find.text('点空格加课 · 长按课程编辑'), findsOneWidget);
+      expect(tester.getSize(toastFinder).height, 38.0);
+      expect(find.byType(SnackBar), findsNothing);
       expect(
         find.byKey(const ValueKey<String>('edit_mode_persistent_banner')),
         findsNothing,
       );
-      // 顶栏胶囊出现（呼吸动画不影响查找）。
+      // 顶栏胶囊出现且文案逐字对齐（呼吸动画不影响查找）。
       expect(find.byKey(const ValueKey<String>('appbar_edit_mode_pill')), findsOneWidget);
+      expect(find.text('✏️ 编辑模式'), findsOneWidget);
       // 「完成」按钮出现。
       expect(find.byKey(const ValueKey<String>('edit_mode_done_btn')), findsOneWidget);
       // 收尾：把飘窗的 3 秒定时器跑完再结束，否则 teardown 报 Timer pending。
@@ -183,10 +214,8 @@ void main() {
       await tester.tap(find.byIcon(Icons.close));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
+      // 生产代码手动关闭已 cancel 自动淡出 Timer，无需再额外 pump(3500ms)
       expect(find.byKey(const ValueKey<String>('edit_mode_toast')), findsNothing);
-      // 收尾：把飘窗的 3 秒定时器跑完再结束，否则 teardown 报 Timer pending。
-      await tester.pump(const Duration(milliseconds: 3500));
-      await tester.pump(const Duration(milliseconds: 300));
     });
   });
 
@@ -197,12 +226,11 @@ void main() {
       // 先等飘窗自动消失，避免它挡住长按点。
       await tester.pump(const Duration(milliseconds: 3500));
       await tester.pump(const Duration(milliseconds: 300));
-      // 长按周二第 3 节空白格起高亮：周二列约在屏幕横向 1/3 处，
-      // 第 3 节行约在纵向 1/4 处（表头 + 2 节之后）。
-      final size = tester.view.physicalSize / tester.view.devicePixelRatio;
-      final gesture = await tester.startGesture(
-        Offset(size.width * 0.35, size.height * 0.28),
-      );
+      // T5(c)：按表头「二」中心 X 与时间轴第 3 节中心 Y 精确定位周二第 3 节空白格，
+      // 不依赖硬编码屏幕比例坐标。
+      final tuesdayX = tester.getCenter(find.text('二')).dx;
+      final section3Y = tester.getCenter(find.text('3')).dy;
+      final gesture = await tester.startGesture(Offset(tuesdayX, section3Y));
       // 长按阈值约 500ms，hold 住再松手。
       await tester.pump(const Duration(milliseconds: 600));
       await gesture.up();

@@ -33,6 +33,17 @@ object OngoingFocusCalculator {
     private const val IDLE_TICK_MINUTE = 5
 
     /**
+     * 课次确定性排序比较器（与 Dart 侧 _compareSessions 同口径）：
+     * 按开始时刻、结束时刻、课程 id 升序排列（无 id 排在最后），
+     * 避免同时间多门课时双端排序稳定性差异导致选中不同焦点课。
+     */
+    private val SESSION_COMPARATOR = compareBy<FocusSession>(
+        { it.start },
+        { it.end },
+        { it.course.id ?: Int.MAX_VALUE },
+    )
+
+    /**
      * 决策：开关关 / 无当前学期 / 正常出文案三档。
      *
      * 读库失败（[OngoingDbReader.read] 返回 null）在调用方等价于 [NoSemester]：
@@ -103,7 +114,7 @@ object OngoingFocusCalculator {
                 )
             )
         }
-        sessions.sortBy { it.start }
+        sessions.sortWith(SESSION_COMPARATOR)
 
         // 正在上的课：第一个满足 start <= now < end 的
         var current: FocusSession? = null
@@ -205,7 +216,7 @@ object OngoingFocusCalculator {
             val end = combineDateAndTime(date, endSlot.endTime) ?: continue
             out.add(FocusSession(course = c, date = date, start = start, end = end))
         }
-        out.sortBy { it.start }
+        out.sortWith(SESSION_COMPARATOR)
         return out
     }
 

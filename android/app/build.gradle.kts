@@ -31,12 +31,16 @@ android {
         versionName = flutter.versionName
     }
 
+    // S4-7：钥匙存在性判断抽成一个局部布尔值，供 signingConfigs 与 buildTypes.release 共用
+    val ksPath = System.getenv("KEYSTORE_PATH")
+    val hasReleaseKeystore =
+        !ksPath.isNullOrEmpty() && file(ksPath).exists() && file(ksPath).length() > 0
+
     signingConfigs {
         create("release") {
             // 正式签名：云端构建时由 GitHub Secrets 注入钥匙路径与密码（环境变量）；本地无钥匙时不配置，release 回退用 debug 签名
-            val ksPath = System.getenv("KEYSTORE_PATH")
-            if (!ksPath.isNullOrEmpty() && file(ksPath).exists() && file(ksPath).length() > 0) {
-                storeFile = file(ksPath)
+            if (hasReleaseKeystore) {
+                storeFile = file(ksPath!!)
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")
                 keyPassword = System.getenv("KEY_PASSWORD")
@@ -51,7 +55,10 @@ android {
             isShrinkResources = false
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = if (!System.getenv("KEYSTORE_PATH").isNullOrEmpty()) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
+            signingConfig = if (hasReleaseKeystore)
+                signingConfigs.getByName("release")
+            else
+                signingConfigs.getByName("debug")
         }
     }
 }

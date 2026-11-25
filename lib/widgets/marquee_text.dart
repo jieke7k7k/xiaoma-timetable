@@ -125,6 +125,7 @@ class _MarqueeTextState extends State<MarqueeText>
         DefaultTextStyle.of(context).style.merge(widget.style);
     final textDirection = Directionality.of(context);
     final textScaler = MediaQuery.textScalerOf(context);
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -149,7 +150,8 @@ class _MarqueeTextState extends State<MarqueeText>
         final textHeight = painter.height;
         painter.dispose();
 
-        final shouldScroll = textWidth > maxWidth + 0.5;
+        // S4-5：无障碍开启「移除动画」时停止滚动，回退为静态省略号文本
+        final shouldScroll = !disableAnimations && textWidth > maxWidth + 0.5;
         final cycleWidth = textWidth + widget.gap;
 
         _scheduleSync(shouldScroll: shouldScroll, cycleWidth: cycleWidth);

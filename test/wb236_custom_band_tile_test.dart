@@ -12,6 +12,8 @@ import 'package:xiaoma_timetable/ui/settings_line_frame.dart';
 import 'package:xiaoma_timetable/utils/app_haptics.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
 
+import 'helpers/pump_helpers.dart';
+
 /// WB_SPEC_236 §4：_BandTile 自画段头验收（弃 ExpansionTile 后）。
 ///
 /// 覆盖：无灰块、分隔线、箭头、点按切换、初始展开跟传入值、select 震动、
@@ -50,9 +52,13 @@ void main() {
     sundayDialogNow = () => monday;
     String two(int v) => v.toString().padLeft(2, '0');
     final start = '${monday.year}-${two(monday.month)}-${two(monday.day)}';
+    // T3：createSchema 已种入默认学期（isCurrent=1），先清空再插入测试学期
+    await db.delete('semesters');
     await Dao.instance.insertSemester(
       Semester(name: '测试学期', startDate: start, isCurrent: true),
     );
+    // T10：默认锁定上午 09:00，避免测试在 12:00 / 18:00 整点分界跨分钟抖动
+    timeSettingsNow = () => DateTime(2026, 11, 16, 9, 0);
     // 235 同款：假时钟 + 平台震动捕获，避免 45ms 节流让计数不稳
     fakeNow = DateTime(2026, 11, 16, 21);
     hapticCalls.clear();
@@ -69,6 +75,7 @@ void main() {
 
   tearDown(() async {
     sundayDialogNow = DateTime.now;
+    timeSettingsNow = DateTime.now;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null);
     AppHaptics.resetForTest();
@@ -83,20 +90,14 @@ void main() {
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-
-    await tester.runAsync(() async {
-      await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(
-            home: TimeSettingsPage(),
-          ),
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: TimeSettingsPage(),
         ),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-    });
-    for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+      ),
+    );
+    await pumpUntil(tester, find.text('共 13 节 · 上5 下4 晚4'));
   }
 
   Finder bandHeader(String name) => find.descendant(
@@ -111,7 +112,7 @@ void main() {
 
   testWidgets('_BandTile：无灰块、分隔线、箭头、切换与震动', (tester) async {
     await pumpTimePage(tester);
-    final expected = currentTimeBand(DateTime.now());
+    final expected = currentTimeBand(timeSettingsNow());
 
     // 初始展开跟传入值：只有当前时段的子项在树里
     const firstSections = {'morning': 1, 'afternoon': 6, 'evening': 10};
@@ -260,6 +261,29 @@ void main() {
       findsNothing,
     );
     expect(find.text('第 6 节'), findsNothing);
+  });
+
+  group('T10：早/午/晚三个固定时刻各自默认仅展开对应时段', () {
+    final samples = <({String label, DateTime clock, TimeBand band})>[
+      (label: '上午 09:00', clock: DateTime(2026, 11, 16, 9, 0), band: TimeBand.morning),
+      (label: '下午 14:00', clock: DateTime(2026, 11, 16, 14, 0), band: TimeBand.afternoon),
+      (label: '晚上 20:00', clock: DateTime(2026, 11, 16, 20, 0), band: TimeBand.evening),
+    ];
+    const firstSections = {'morning': 1, 'afternoon': 6, 'evening': 10};
+
+    for (final s in samples) {
+      testWidgets('${s.label} → 仅展开 ${s.band.name}', (tester) async {
+        timeSettingsNow = () => s.clock;
+        await pumpTimePage(tester);
+        for (final band in TimeBand.values) {
+          expect(
+            find.text('第 ${firstSections[band.name]} 节'),
+            band == s.band ? findsOneWidget : findsNothing,
+            reason: '${s.label} 时应仅展开 ${s.band.name}',
+          );
+        }
+      });
+    }
   });
 
   testWidgets('§6 作息页新文案与 360dp 不溢出', (tester) async {

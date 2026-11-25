@@ -3,10 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../models/course.dart';
+import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../ui/app_styles.dart';
+import '../utils/color_schemes.dart';
 import '../utils/exam_countdown.dart';
-import '../utils/morandi_palette.dart';
 import '../widgets/empty_state.dart';
 
 /// 星期几的中文简称（weekday 1=周一 … 7=周日）
@@ -26,6 +27,8 @@ class ExamCountdownPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final coursesAsync = ref.watch(coursesProvider);
+    final colorScheme =
+        (ref.watch(uiSettingsProvider).value ?? const UiSettings()).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('考试倒计时'), centerTitle: true),
       body: coursesAsync.when(
@@ -48,8 +51,11 @@ class ExamCountdownPage extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(
                 AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.l),
             itemCount: exams.length,
-            itemBuilder: (context, i) =>
-                _ExamCard(course: exams[i], now: now),
+            itemBuilder: (context, i) => _ExamCard(
+              course: exams[i],
+              now: now,
+              courseColorScheme: colorScheme,
+            ),
           );
         },
         // 数据库异常等兜底：图标 + 中文提示 + 重试，不闪退不白屏
@@ -68,18 +74,24 @@ class ExamCountdownPage extends ConsumerWidget {
 
 /// 单条考试倒计时卡片
 class _ExamCard extends StatelessWidget {
-  const _ExamCard({required this.course, required this.now});
+  const _ExamCard({
+    required this.course,
+    required this.now,
+    required this.courseColorScheme,
+  });
 
   final Course course;
   final DateTime now;
+  final CourseColorScheme courseColorScheme;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    // 课程色点与周视图保持同源；深色下降饱和，避免亮色块刺眼（同 course_card 逻辑）
-    final dotColor = isDark
-        ? MorandiPalette.desaturateForDark(Color(course.colorValue))
-        : Color(course.colorValue);
+    // 课程色点与周视图保持同源（配色方案映射 + 深色降饱和）
+    final dotColor = resolveCourseDisplayColor(
+      course.colorValue,
+      courseColorScheme,
+      Theme.of(context).brightness,
+    );
 
     final examDate =
         DateTime.fromMillisecondsSinceEpoch(course.examDate!);

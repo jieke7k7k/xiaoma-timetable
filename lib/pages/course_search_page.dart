@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/course.dart';
+import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../utils/app_haptics.dart';
+import '../utils/color_schemes.dart';
 import '../utils/week_parser.dart';
 import '../widgets/empty_state.dart';
 
@@ -48,6 +50,8 @@ class _CourseSearchPageState extends ConsumerState<CourseSearchPage> {
     final courses = ref.watch(coursesProvider).value ?? const <Course>[];
     final semester = ref.watch(currentSemesterProvider).value;
     final todayWeek = ref.watch(todayWeekProvider);
+    final ui = ref.watch(uiSettingsProvider).value ?? const UiSettings();
+    final brightness = Theme.of(context).brightness;
     final q = _query.trim().toLowerCase();
     // WB_SPEC_235 跟进：顺手修掉一个既有崩溃——级联 `..sort()` 的优先级比
     // 条件表达式高，原写法等价于 `(q.isEmpty ? const <Course>[] : ...)..sort()`，
@@ -127,7 +131,11 @@ class _CourseSearchPageState extends ConsumerState<CourseSearchPage> {
                         width: 12,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: Color(c.colorValue),
+                          color: resolveCourseDisplayColor(
+                            c.colorValue,
+                            ui.colorScheme,
+                            brightness,
+                          ),
                           borderRadius: BorderRadius.circular(3),
                         ),
                       ),

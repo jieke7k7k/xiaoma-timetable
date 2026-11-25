@@ -35,12 +35,16 @@ class SettingsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 动态副标题三处（WB_SPEC_218 第 ④ 节：状态外露、入口收拢）
+    // 动态副标题三处（WB_SPEC_218 第 ④ 节：状态外露、入口收拢；C22 修正文案边界）
     final semester = ref.watch(currentSemesterProvider).value;
     final todayWeek = ref.watch(todayWeekProvider);
     final semesterSubtitle = semester == null
         ? '学期名称、开学日期、总周数'
-        : '${semester.name} · 第 $todayWeek 周';
+        : todayWeek <= 0
+            ? '${semester.name} · 未开学'
+            : todayWeek > semester.totalWeeks
+                ? '${semester.name} · 已结束'
+                : '${semester.name} · 第 $todayWeek 周';
 
     final themeMode =
         ref.watch(themeSettingsProvider).value ?? ThemeMode.system;
@@ -49,14 +53,14 @@ class SettingsPage extends ConsumerWidget {
       ThemeMode.dark => '深色',
       _ => '跟随系统',
     };
-    // WB_SPEC_234：底栏无条件常显，「底栏已关」这一态已不存在，副标题恒为标签栏
-    const barLabel = '标签栏';
-    final appearanceSubtitle = '$themeLabel · $barLabel';
+    final appearanceSubtitle = themeLabel;
 
     final reminder = ref.watch(reminderSettingsProvider).value;
     final reminderSubtitle = reminder == null
         ? '上课提醒、上课播报、今日课程常驻通知、提前提醒'
-        : '${reminder.enabled ? '已开启' : '未开启'} · 课前 ${reminder.advanceMinutes} 分钟通知';
+        : reminder.enabled
+            ? '已开启 · 课前 ${reminder.advanceMinutes} 分钟通知'
+            : '未开启';
 
     return Scaffold(
       appBar: AppBar(

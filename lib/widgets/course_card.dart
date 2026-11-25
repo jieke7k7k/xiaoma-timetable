@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/course.dart';
+import '../models/ui_settings.dart';
 import '../models/time_slot.dart';
 import '../ui/app_styles.dart';
 import '../utils/color_schemes.dart';
@@ -12,7 +13,8 @@ import '../utils/morandi_palette.dart';
 /// 跨节次合并时高度由父布局按 (endSection - startSection + 1) 撑高。
 /// 单击进入详情，长按弹出编辑/删除菜单（菜单是否可用由周视图编辑模式决定）。
 /// 显示色经当前配色方案映射（[displayColorValue]，由调用方用
-/// mapCourseColor 算好传入；不传则用课程存储色）。
+/// mapCourseColor 算好传入；不传则走统一入口 resolveCourseDisplayColor，
+/// 按 [colorScheme]（未传用默认方案）映射后再做深色降饱和）。
 /// 圆角、边框、字号档位、显示项开关均来自「界面设置」，由调用方传入，
 /// 默认值保持 1.1.0 之前的观感，方便其他场景（如预览）直接复用。
 /// 深色模式下底色经 [MorandiPalette.desaturateForDark] 降饱和降明度，
@@ -26,6 +28,7 @@ class CourseCard extends StatelessWidget {
     this.dimmed = false,
     this.badgeText,
     this.displayColorValue,
+    this.colorScheme,
     this.cornerRadius = 12,
     this.borderWidth = 0.0,
     this.textScale = 1.0,
@@ -52,6 +55,10 @@ class CourseCard extends StatelessWidget {
 
   /// 实际显示色（ARGB，已按当前配色方案映射）；为空用课程存储色
   final int? displayColorValue;
+
+  /// displayColorValue 为空时 resolveCourseDisplayColor 用的配色方案；
+  /// 未传用默认方案（UiSettings 默认 colorSchemeId）。
+  final CourseColorScheme? colorScheme;
 
   /// 圆角半径（界面设置）
   final double cornerRadius;
@@ -89,11 +96,18 @@ class CourseCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 深色模式：底色降饱和降明度 + 浅色文字；浅色模式：原色 + 深色文字
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final baseColor = Color(displayColorValue ?? course.colorValue);
-    final cardColor = isDark
-        ? MorandiPalette.desaturateForDark(baseColor)
-        : baseColor;
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
+    final cardColor = displayColorValue != null
+        ? MorandiPalette.desaturateForDark(
+            Color(displayColorValue!),
+            brightness: brightness,
+          )
+        : resolveCourseDisplayColor(
+            course.colorValue,
+            colorScheme ?? const UiSettings().colorScheme,
+            brightness,
+          );
     // B4：卡片底色本身偏深时（自选了深色课程色），即便浅色模式也改用
     // 浅色文字/角标，边框改提亮一档——避免深底深字看不清
     final useLightText = isDark || cardColor.computeLuminance() < 0.42;

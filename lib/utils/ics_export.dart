@@ -1,6 +1,8 @@
 import '../models/course.dart';
+import '../models/course_override.dart';
 import '../models/semester.dart';
 import '../models/time_slot.dart';
+import 'override_effect.dart';
 import 'week_calc.dart';
 
 /// ICS 导出（阶段五）：把一个学期的课表导出为标准 .ics 日历文本
@@ -24,55 +26,69 @@ class IcsExporter {
   ///
   /// [semester] 提供开学日期（周次 → 具体日期的换算基准）与日历名；
   /// [courses] 为该学期全部课程；[slots] 为节次时间表；
+  /// [overrides] 为单次调课记录（可选，默认空列表），导出时按周应用停课与调课；
   /// 节次时间缺失的课程无法给出具体时刻，跳过并计入 [IcsExportResult.skippedCount]。
   static IcsExportResult build({
     required Semester semester,
     required List<Course> courses,
     required List<TimeSlot> slots,
+    List<CourseOverride> overrides = const [],
     DateTime? now,
   }) {
     final slotBySection = {for (final s in slots) s.section: s};
     final stamp = _toUtcStamp(now ?? DateTime.now());
     final semesterStart = semester.startDateParsed;
 
-    // 按星期几 + 起始节次排序，让导出文件里事件顺序稳定可读
-    final sorted = [...courses]..sort((a, b) {
-        final byDay = a.dayOfWeek.compareTo(b.dayOfWeek);
-        if (byDay != 0) return byDay;
-        return a.startSection.compareTo(b.startSection);
-      });
+    // 汇总全部课程涉及的周次（去重升序），逐周应用单次调课后再输出 VEVENT
+    final allWeeks = <int>{
+      for (final c in courses) ...c.weeks,
+    }.toList()
+      ..sort();
 
     final buffer = StringBuffer();
     buffer.write('BEGIN:VCALENDAR\r\n');
     buffer.write('VERSION:2.0\r\n');
-    buffer.write('PRODID:-//simple-timetable//jiankebiao 1.0//CN\r\n');
+    buffer.write('PRODID:-//xiaoma-timetable//xiaomakebiao 1.0//CN\r\n');
     buffer.write('CALSCALE:GREGORIAN\r\n');
     // X-WR-CALNAME 为事实标准扩展：多数日历 App 会用它作为导入后的日历名
     buffer.write('X-WR-CALNAME:${_escapeText(semester.name)}\r\n');
 
     var eventCount = 0;
     var skippedCount = 0;
-    for (final c in sorted) {
-      // 去重排序周次；isActiveInWeek 再过滤一次单双周——周次数组是权威数据，
-      // 但 weekType 字段为兼容旧数据保留，两道过滤保证与周视图显示一致
-      final weeks = {...c.weeks}.toList()..sort();
-      for (final week in weeks) {
-        if (!c.isActiveInWeek(week)) continue;
+
+    for (final week in allWeeks) {
+      // 按周应用单次调课，并按 isActiveInWeek 过滤出本周实际生效课次
+      final effective = effectiveCoursesForWeek(
+        courses: courses,
+        overrides: overrides,
+        week: week,
+      ).where((c) => c.isActiveInWeek(week)).toList()
+        ..sort((a, b) {
+          final byDay = a.dayOfWeek.compareTo(b.dayOfWeek);
+          if (byDay != 0) return byDay;
+          final bySec = a.startSection.compareTo(b.startSection);
+          if (bySec != 0) return bySec;
+          return (a.id ?? 0x7FFFFFFF).compareTo(b.id ?? 0x7FFFFFFF);
+        });
+
+      for (final c in effective) {
         final startSlot = slotBySection[c.startSection];
         final endSlot = slotBySection[c.endSection];
-        if (startSlot == null || endSlot == null) {
-          // 节次时间缺失（如课程引用了被删掉的节次号），无法给出时刻，跳过
+        if (startSlot == null ||
+            endSlot == null ||
+            c.dayOfWeek < 1 ||
+            c.dayOfWeek > 7) {
+          // 节次时间缺失或星期非法（如课程引用了被删掉的节次号/脏数据），无法给出时刻，跳过
           skippedCount++;
           continue;
         }
         // 第 week 周该课程星期几对应的日期（weekDatesOf 返回周一~周日）
-        final day =
-            WeekCalc.weekDatesOf(semesterStart, week)[c.dayOfWeek - 1];
-
+        final day = WeekCalc.weekDatesOf(semesterStart, week)[c.dayOfWeek - 1];
         buffer.write('BEGIN:VEVENT\r\n');
         buffer.write(
-            'UID:st-${c.id ?? 'new'}-${c.dayOfWeek}-${c.startSection}'
-            '-w$week-$stamp@simple-timetable\r\n');
+          'UID:st-${c.id ?? 'new'}-${c.dayOfWeek}-${c.startSection}'
+          '-w$week-$stamp@xiaoma-timetable\r\n',
+        );
         buffer.write('DTSTAMP:$stamp\r\n');
         buffer.write('SUMMARY:${_escapeText(c.name)}\r\n');
         if (c.classroom != null && c.classroom!.isNotEmpty) {
@@ -92,8 +108,8 @@ class IcsExporter {
         eventCount++;
       }
     }
-    buffer.write('END:VCALENDAR\r\n');
 
+    buffer.write('END:VCALENDAR\r\n');
     return IcsExportResult(
       content: buffer.toString(),
       eventCount: eventCount,
@@ -119,9 +135,11 @@ class IcsExporter {
         'T${two(utc.hour)}${two(utc.minute)}${two(utc.second)}Z';
   }
 
-  /// RFC 5545 TEXT 值转义：反斜杠、分号、逗号、换行。
+  /// RFC 5545 TEXT 值转义：先归一化 \r\n / \r 为 \n，再转义反斜杠、分号、逗号、换行。
   /// 必须先转义反斜杠本身，否则会把后续生成的转义符又吃掉。
   static String _escapeText(String raw) => raw
+      .replaceAll('\r\n', '\n')
+      .replaceAll('\r', '\n')
       .replaceAll('\\', '\\\\')
       .replaceAll(';', '\\;')
       .replaceAll(',', '\\,')

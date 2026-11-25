@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../main.dart';
 import '../models/course.dart';
+import '../models/ui_settings.dart';
 import '../utils/app_haptics.dart';
+import '../utils/color_schemes.dart';
 import '../utils/conflict_detector.dart';
 import '../utils/import_planner.dart';
 import '../utils/week_parser.dart';
@@ -18,10 +20,15 @@ class ImportConflictsPage extends StatefulWidget {
     super.key,
     required this.drafts,
     required this.items,
+    this.colorScheme,
   });
 
   final List<Course> drafts;
   final List<ImportConflictItem> items;
+
+  /// 草稿色点用的配色方案；未传用默认方案（UiSettings 默认 colorSchemeId）。
+  /// 由调用方传入，避免本页依赖 ProviderScope（测试可直接裸测）。
+  final CourseColorScheme? colorScheme;
 
   @override
   State<ImportConflictsPage> createState() => _ImportConflictsPageState();
@@ -141,6 +148,11 @@ class _ImportConflictsPageState extends State<ImportConflictsPage> {
   }
 
   Widget _draftHeader(Course draft) {
+    final dotColor = resolveCourseDisplayColor(
+      draft.colorValue,
+      widget.colorScheme ?? const UiSettings().colorScheme,
+      Theme.of(context).brightness,
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
@@ -149,7 +161,7 @@ class _ImportConflictsPageState extends State<ImportConflictsPage> {
             width: 10,
             height: 10,
             decoration: BoxDecoration(
-              color: Color(draft.colorValue),
+              color: dotColor,
               borderRadius: BorderRadius.circular(3),
             ),
           ),

@@ -10,15 +10,18 @@ class WeekCalc {
   /// 把任意日期对齐到所在周的周一
   static DateTime alignToMonday(DateTime date) {
     final d = DateTime(date.year, date.month, date.day);
-    return d.subtract(Duration(days: d.weekday - DateTime.monday));
+    return DateTime(d.year, d.month, d.day - (d.weekday - DateTime.monday));
   }
 
   /// 计算 [target] 相对开学日期 [semesterStart] 是第几周。
   /// 开学前返回 0（表示未开学）；开学当天所在周返回 1。
   static int currentWeek(DateTime semesterStart, DateTime target) {
     final startMonday = alignToMonday(semesterStart);
-    final targetDay = DateTime(target.year, target.month, target.day);
-    final diffDays = targetDay.difference(startMonday).inDays;
+    // 先转 UTC 日历日期再作差，消除夏令时切换日 23/25 小时导致的截断误差
+    final startUtc =
+        DateTime.utc(startMonday.year, startMonday.month, startMonday.day);
+    final targetUtc = DateTime.utc(target.year, target.month, target.day);
+    final diffDays = targetUtc.difference(startUtc).inDays;
     if (diffDays < 0) return 0;
     return diffDays ~/ 7 + 1;
   }
@@ -58,14 +61,24 @@ class WeekCalc {
   /// 返回 [target] 所在周周一到周日的日期列表（共 7 天）
   static List<DateTime> weekDates(DateTime target) {
     final monday = alignToMonday(target);
-    return List.generate(7, (i) => monday.add(Duration(days: i)));
+    return List.generate(
+      7,
+      (i) => DateTime(monday.year, monday.month, monday.day + i),
+    );
   }
 
   /// 返回第 [week] 周周一到周日的日期列表
   static List<DateTime> weekDatesOf(DateTime semesterStart, int week) {
     final startMonday = alignToMonday(semesterStart);
-    final monday = startMonday.add(Duration(days: (week - 1) * 7));
-    return List.generate(7, (i) => monday.add(Duration(days: i)));
+    final offsetDays = (week - 1) * 7;
+    return List.generate(
+      7,
+      (i) => DateTime(
+        startMonday.year,
+        startMonday.month,
+        startMonday.day + offsetDays + i,
+      ),
+    );
   }
 
   /// 顶部栏展示文本，如「第 3 周 · 单周」

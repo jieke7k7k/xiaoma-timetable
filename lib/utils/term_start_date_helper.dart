@@ -6,8 +6,12 @@ class TermStartDateHelper {
   /// 计算指定日期所在周的周一（归零到 00:00:00）
   static DateTime mondayOfWeek(DateTime date) {
     final normalized = DateTime(date.year, date.month, date.day);
-    // DateTime.monday == 1
-    return normalized.subtract(Duration(days: normalized.weekday - 1));
+    // DateTime.monday == 1；按日历天减法，避免夏令时跨日漂移
+    return DateTime(
+      normalized.year,
+      normalized.month,
+      normalized.day - (normalized.weekday - 1),
+    );
   }
 
   /// §9 默认开学日期锚点：
@@ -30,8 +34,11 @@ class TermStartDateHelper {
     required DateTime today,
   }) {
     final startMonday = mondayOfWeek(startDate);
-    final todayDate = DateTime(today.year, today.month, today.day);
-    final diffDays = todayDate.difference(startMonday).inDays;
+    // 先转 UTC 日历日期再作差，消除夏令时切换日 23/25 小时导致的截断误差
+    final startUtc =
+        DateTime.utc(startMonday.year, startMonday.month, startMonday.day);
+    final todayUtc = DateTime.utc(today.year, today.month, today.day);
+    final diffDays = todayUtc.difference(startUtc).inDays;
     if (diffDays < 0) return 0;
     return (diffDays ~/ 7) + 1;
   }
@@ -42,7 +49,11 @@ class TermStartDateHelper {
     required DateTime today,
   }) {
     final thisMonday = mondayOfWeek(today);
-    return thisMonday.subtract(Duration(days: (detectedCurrentWeek - 1) * 7));
+    return DateTime(
+      thisMonday.year,
+      thisMonday.month,
+      thisMonday.day - (detectedCurrentWeek - 1) * 7,
+    );
   }
 
   /// 从教务页文本中抽取当前第 X 周（1~30 合理范围内）；读不到返回 null

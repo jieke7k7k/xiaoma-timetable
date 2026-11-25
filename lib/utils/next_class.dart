@@ -63,13 +63,27 @@ String fmtHhmm(DateTime t) =>
 
 /// 相对今天的日期标签：今天 / 明天 / 周X（M月D日）
 String dayLabel(DateTime date, DateTime now) {
-  final today = DateTime(now.year, now.month, now.day);
-  final d = DateTime(date.year, date.month, date.day);
-  final diff = d.difference(today).inDays;
+  // 转 UTC 日历日期再作差，避免夏令时切换日 23/25 小时导致 inDays 截断偏移
+  final todayUtc = DateTime.utc(now.year, now.month, now.day);
+  final dateUtc = DateTime.utc(date.year, date.month, date.day);
+  final diff = dateUtc.difference(todayUtc).inDays;
   if (diff == 0) return '今天';
   if (diff == 1) return '明天';
   const names = ['一', '二', '三', '四', '五', '六', '日'];
   return '周${names[date.weekday - 1]}（${date.month}月${date.day}日）';
+}
+
+/// 课次确定性排序比较器（与 Kotlin 侧 SESSION_COMPARATOR 同口径）：
+/// 按开始时刻、结束时刻、课程 id 升序排列（无 id 排在最后），
+/// 解决 Dart List.sort 在 >32 条时不稳定导致双端焦点课分歧的问题。
+int _compareSessions(ClassSession a, ClassSession b) {
+  final byStart = a.start.compareTo(b.start);
+  if (byStart != 0) return byStart;
+  final byEnd = a.end.compareTo(b.end);
+  if (byEnd != 0) return byEnd;
+  final idA = a.course.id ?? 0x7FFFFFFF;
+  final idB = b.course.id ?? 0x7FFFFFFF;
+  return idA.compareTo(idB);
 }
 
 /// 计算 [now] 时刻的课程焦点。
@@ -84,16 +98,19 @@ ClassFocus computeClassFocus({
   List<CourseOverride> overrides = const [],
 }) {
   final today = DateTime(now.year, now.month, now.day);
+  // 开学日期按 today 一次解析、9 天复用（与 Kotlin 侧 OngoingFocusCalculator 同构）
+  final semesterStart = semester.parseStartDate(reference: today);
   final sessions = <ClassSession>[
     for (var offset = 0; offset <= 8; offset++)
       ...sessionsOnDay(
-        date: today.add(Duration(days: offset)),
+        date: DateTime(today.year, today.month, today.day + offset),
         semester: semester,
         courses: courses,
         timeSlots: timeSlots,
         overrides: overrides,
+        semesterStart: semesterStart,
       ),
-  ]..sort((a, b) => a.start.compareTo(b.start));
+  ]..sort(_compareSessions);
 
   ClassSession? current;
   for (final s in sessions) {
@@ -129,9 +146,12 @@ List<ClassSession> sessionsOnDay({
   required List<Course> courses,
   required List<TimeSlot> timeSlots,
   List<CourseOverride> overrides = const [],
+  DateTime? semesterStart,
 }) {
   final day = DateTime(date.year, date.month, date.day);
-  final week = WeekCalc.currentWeek(semester.startDateParsed, day);
+  final resolvedStart =
+      semesterStart ?? semester.parseStartDate(reference: day);
+  final week = WeekCalc.currentWeek(resolvedStart, day);
   if (week < 1 || week > semester.totalWeeks) return const [];
   final slotMap = {for (final s in timeSlots) s.section: s};
   final out = <ClassSession>[];
@@ -150,6 +170,6 @@ List<ClassSession> sessionsOnDay({
     if (start == null || end == null) continue;
     out.add(ClassSession(course: c, date: day, start: start, end: end));
   }
-  out.sort((a, b) => a.start.compareTo(b.start));
+  out.sort(_compareSessions);
   return out;
 }

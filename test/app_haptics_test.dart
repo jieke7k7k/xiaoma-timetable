@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xiaoma_timetable/utils/app_haptics.dart';
@@ -55,10 +57,50 @@ void main() {
       expect(calls, ['HapticFeedbackType.mediumImpact']);
     });
 
-    test('不提供 heavyImpact：类上没有这个方法（编译期就挡住）', () {
-      // 反射拿不到方法也无所谓——这里用「源码不出现 heavyImpact」静态兜底，
-      // 真正的编译期约束是 AppHaptics 只暴露 tap/select/medium 三个入口。
-      expect(AppHaptics.throttleWindow, const Duration(milliseconds: 45));
+    test('不提供 heavyImpact：门控与全仓业务源码均不得调用 heavyImpact', () {
+      final libDir = Directory('lib');
+      final offenders = <String>[];
+      for (final entity in libDir.listSync(recursive: true)) {
+        if (entity is! File || !entity.path.endsWith('.dart')) continue;
+        final lines = entity.readAsLinesSync();
+        // L1（DeepSeek 264 复审 B 段）：以前只剥 // 行注释，/* */ 块注释里的
+        // heavyImpact 字面量会被误判；现用状态机同时剥块注释，行号保持不变。
+        var inBlock = false;
+        for (var i = 0; i < lines.length; i++) {
+          var code = lines[i];
+          while (true) {
+            if (inBlock) {
+              final end = code.indexOf('*/');
+              if (end == -1) {
+                code = '';
+                break;
+              }
+              code = code.substring(end + 2);
+              inBlock = false;
+            } else {
+              final start = code.indexOf('/*');
+              if (start == -1) break;
+              final end = code.indexOf('*/', start + 2);
+              if (end == -1) {
+                code = code.substring(0, start);
+                inBlock = true;
+                break;
+              }
+              code = code.substring(0, start) + code.substring(end + 2);
+            }
+          }
+          // 去掉单行注释后再检测，避免命中文档说明里的禁用字样
+          final codeOnly = code.split('//').first;
+          if (codeOnly.contains('heavyImpact')) {
+            offenders.add('${entity.path}:${i + 1}');
+          }
+        }
+      }
+      expect(
+        offenders,
+        isEmpty,
+        reason: '全仓业务代码严禁调用 heavyImpact，违规位置：$offenders',
+      );
     });
   });
 

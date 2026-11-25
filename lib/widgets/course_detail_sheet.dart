@@ -85,11 +85,13 @@ class CourseDetailSheet extends ConsumerWidget {
                   width: 12,
                   height: 12,
                   decoration: BoxDecoration(
-                    // 色点跟随当前课程配色方案（与卡片显示色一致）
-                    color: Color(mapCourseColor(
-                        course.colorValue,
-                        (ref.watch(uiSettingsProvider).value ?? const UiSettings())
-                            .colorScheme)),
+                    // 色点跟随当前课程配色方案与深浅色模式（与卡片显示色同源）
+                    color: resolveCourseDisplayColor(
+                      course.colorValue,
+                      (ref.watch(uiSettingsProvider).value ?? const UiSettings())
+                          .colorScheme,
+                      Theme.of(context).brightness,
+                    ),
                     // 12px 考试色点近似正圆的微圆角，属微小装饰元素，不归入 AppRadii
                     borderRadius: BorderRadius.circular(3),
                   ),

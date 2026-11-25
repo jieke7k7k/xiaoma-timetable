@@ -42,7 +42,7 @@ void main() {
               bands: computeActiveBands(
                 lunchAfter: 5,
                 dinnerAfter: 9,
-                sectionCount: 14,
+                sectionCount: defaultTimeSlots.length,
                 settings: const BandSettings(),
               ),
               ui: ui,

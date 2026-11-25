@@ -115,6 +115,8 @@ class SemesterFormDialogState extends ConsumerState<SemesterFormDialog> {
   // 初始值只是占位：initState 里编辑/新建两个分支都会立即覆盖（复审优化 2）
   final _weeksController = TextEditingController();
   DateTime? _startDate;
+  String? _nameError;
+  String? _weeksError;
 
   /// 新建时日历的定位日（推测月份的 1 号，WB_SPEC_224 第 3.3 节）。
   ///
@@ -175,12 +177,21 @@ class SemesterFormDialogState extends ConsumerState<SemesterFormDialog> {
   Future<void> _submit() async {
     final name = _nameController.text.trim();
     final weeksText = _weeksController.text.trim();
-    final error = validateSemesterForm(name: name, weeks: weeksText);
-    if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+    // S4-3：校验改走输入框内联 errorText，不再弹底层 SnackBar
+    // （文案与 validateSemesterForm 逐字一致）
+    final nameErr = name.isEmpty ? '请填写学期名称' : null;
+    final parsedWeeks = int.tryParse(weeksText);
+    final weeksErr = (parsedWeeks == null || parsedWeeks < 1 || parsedWeeks > 30)
+        ? '请输入 1~30 之间的周数'
+        : null;
+    if (nameErr != null || weeksErr != null) {
+      setState(() {
+        _nameError = nameErr;
+        _weeksError = weeksErr;
+      });
       return;
     }
-    final weeks = int.parse(weeksText);
+    final weeks = parsedWeeks!;
     // 默认开学日期：今天对齐到周一（用户没选就给一个合理初值）
     final start = WeekCalc.alignToMonday(_startDate ?? DateTime.now());
     // 1.2.1：落库前强制过目确认开学日期（错一位全表周次错位），弹窗内可改。
@@ -232,10 +243,14 @@ class SemesterFormDialogState extends ConsumerState<SemesterFormDialog> {
           TextField(
             controller: _nameController,
             autofocus: true,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: '学期名称',
               hintText: '如：大三下学期',
+              errorText: _nameError,
             ),
+            onChanged: (_) {
+              if (_nameError != null) setState(() => _nameError = null);
+            },
           ),
           const SizedBox(height: 8),
           ListTile(
@@ -278,10 +293,14 @@ class SemesterFormDialogState extends ConsumerState<SemesterFormDialog> {
           TextField(
             controller: _weeksController,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: '总周数',
               suffixText: '周',
+              errorText: _weeksError,
             ),
+            onChanged: (_) {
+              if (_weeksError != null) setState(() => _weeksError = null);
+            },
           ),
           ],
         ),

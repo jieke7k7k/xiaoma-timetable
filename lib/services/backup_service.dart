@@ -74,6 +74,9 @@ class BackupService {
     if (data.fonts.isNotEmpty) {
       await FontsService.restoreFonts(data.fonts);
     }
+    // 无论备份是否携带字体文件，恢复事务结束后统一按数据库注册表重载内存列表，
+    // 并剔除磁盘缺失的孤儿条目，避免残留恢复前的旧内存状态。
+    await FontsService.init();
     return summary;
   }
 
@@ -94,6 +97,9 @@ class BackupService {
       fileName: fileName,
       bytes: bytes,
     );
-    return uri?.toFilePath();
+    if (uri == null) return null;
+    // Android SAF 返回 content:// URI，调用 toFilePath() 会抛 UnsupportedError；
+    // 仅 file:// 方案转本地路径，其余直接返回 URI 字符串。
+    return uri.isScheme('file') ? uri.toFilePath() : uri.toString();
   }
 }

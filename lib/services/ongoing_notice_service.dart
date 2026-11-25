@@ -30,6 +30,11 @@ class OngoingNoticeService {
   static const MethodChannel _channel =
       MethodChannel('com.jieke.xiaomakebiao/ongoing_course');
 
+  /// 测试钩子：refresh() 被调次数（264 C7 回归用）。生产代码只递增不读取；
+  /// 计数放在 try 块入口之前，测试环境插件失败也不影响计数。
+  @visibleForTesting
+  static int debugRefreshCalls = 0;
+
   /// 重算并下发常驻通知，同时把闹钟链接上。
   ///
   /// 这就是「刷新常驻通知」的唯一入口：App 启动、改课、切学期、改开关、周视图
@@ -39,6 +44,7 @@ class OngoingNoticeService {
   ///
   /// 读 app_settings 键 ongoing_enabled（默认开启）：关闭即 [stop]（两个通道都停）。
   Future<void> refresh() async {
+    debugRefreshCalls++;
     try {
       final enabled =
           await Dao.instance.getSettingBool('ongoing_enabled', true);

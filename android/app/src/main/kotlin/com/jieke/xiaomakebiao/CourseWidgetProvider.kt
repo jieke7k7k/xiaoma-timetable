@@ -11,9 +11,7 @@ import android.view.View
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetProvider
 import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.time.LocalDate
 
 /**
  * 今日课程桌面小部件 Provider（Android only）
@@ -113,15 +111,13 @@ class CourseWidgetProvider : HomeWidgetProvider() {
             if (h > 0) h else null
         }.getOrNull()
 
-    /** 色条位图缓存：按颜色生成一张小纯色图（替代反射 setBackgroundColor） */
-    private val barBitmapCache = HashMap<Int, Bitmap>()
-
-    private fun barBitmap(color: Int): Bitmap =
+    private fun barBitmap(color: Int): Bitmap = synchronized(barBitmapCache) {
         barBitmapCache.getOrPut(color) {
             Bitmap.createBitmap(6, 54, Bitmap.Config.ARGB_8888).apply {
                 eraseColor(color)
             }
         }
+    }
 
     private data class Row(
         val name: String,
@@ -185,49 +181,54 @@ class CourseWidgetProvider : HomeWidgetProvider() {
         if (!daysJson.isNullOrBlank()) {
             val fromDays = runCatching {
                 val o = JSONObject(daysJson)
-                val key = DAY_KEY_FORMAT.format(Date())
-                if (o.has(key)) parsePayload(o.optString(key, null)) else null
+                val key = LocalDate.now().toString()
+                val dayObj = o.optJSONObject(key)
+                if (dayObj != null) parsePayload(dayObj) else null
             }.getOrNull()
             if (fromDays != null) return fromDays
         }
         return runCatching { parsePayload(data.getString(KEY_PAYLOAD, null)) }.getOrNull()
     }
 
-    /** 解析整包 JSON；缺失/损坏时返回 null（render 用默认文案兜底） */
+    /** 解析整包 JSON 字符串；缺失/损坏时返回 null（render 用默认文案兜底） */
     private fun parsePayload(json: String?): Payload? {
         if (json.isNullOrBlank()) return null
         return try {
-            val o = JSONObject(json)
-            val arr = o.optJSONArray("rows")
-            val rows = mutableListOf<Row>()
-            if (arr != null) {
-                for (i in 0 until minOf(arr.length(), MAX_ROWS)) {
-                    val r = arr.optJSONObject(i) ?: continue
-                    rows.add(
-                        Row(
-                            name = r.optString("name"),
-                            sub = r.optString("sub"),
-                            start = r.optString("start"),
-                            end = r.optString("end"),
-                            // JSON 数字按 double/long 读，统一转 Int（ARGB 位模式不变）
-                            color = r.optLong("color", 0).toInt(),
-                        )
-                    )
-                }
-            }
-            Payload(
-                headerLeft = o.optString("headerLeft", DEFAULT_TITLE),
-                headerRight = o.optString("headerRight"),
-                rows = rows,
-                footer = o.optString("footer"),
-                emptyText = o.optString("emptyText", DEFAULT_EMPTY),
-                // 备注是 v3 才加的可选字段：老 payload 没有 notes 键时为空列表，
-                // 下面的 notesText 直接跳过，渲染与升级前完全一致
-                notes = parseNotes(o),
-            )
+            parsePayload(JSONObject(json))
         } catch (_: Exception) {
             null
         }
+    }
+
+    /** 直接解析已构造的 JSONObject（避免逐日表场景二次序列化/解析） */
+    private fun parsePayload(o: JSONObject): Payload {
+        val arr = o.optJSONArray("rows")
+        val rows = mutableListOf<Row>()
+        if (arr != null) {
+            for (i in 0 until minOf(arr.length(), MAX_ROWS)) {
+                val r = arr.optJSONObject(i) ?: continue
+                rows.add(
+                    Row(
+                        name = r.optString("name"),
+                        sub = r.optString("sub"),
+                        start = r.optString("start"),
+                        end = r.optString("end"),
+                        // JSON 数字按 double/long 读，统一转 Int（ARGB 位模式不变）
+                        color = r.optLong("color", 0).toInt(),
+                    )
+                )
+            }
+        }
+        return Payload(
+            headerLeft = o.optString("headerLeft", DEFAULT_TITLE),
+            headerRight = o.optString("headerRight"),
+            rows = rows,
+            footer = o.optString("footer"),
+            emptyText = o.optString("emptyText", DEFAULT_EMPTY),
+            // 备注是 v3 才加的可选字段：老 payload 没有 notes 键时为空列表，
+            // 下面的 notesText 直接跳过，渲染与升级前完全一致
+            notes = parseNotes(o),
+        )
     }
 
     /**
@@ -391,12 +392,14 @@ class CourseWidgetProvider : HomeWidgetProvider() {
         private const val KEY_DBG_IDS = "dbg_widget_ids"
         private const val KEY_DBG_ERROR = "dbg_widget_error"
 
-        /**
-         * 逐日表的日期键格式，与 Dart 端 widgetDayKey 必须一致。
-         * 用 Locale.US 固定公历（避免部分地区的佛历/和历导致年份对不上），
-         * 时区取设备本地，与 Dart 的本地日期口径相同。
-         */
-        private val DAY_KEY_FORMAT = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        /** 色条位图缓存上限（C19）：16 色方案为主，32 条足以覆盖切方案且防内存膨胀 */
+        private const val MAX_BAR_BITMAP_CACHE = 32
+
+        /** 色条位图缓存：按颜色生成一张小纯色图（替代反射 setBackgroundColor），跨实例复用 */
+        private val barBitmapCache = object : LinkedHashMap<Int, Bitmap>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, Bitmap>?): Boolean =
+                size > MAX_BAR_BITMAP_CACHE
+        }
 
         private val ROW_IDS = intArrayOf(
             R.id.widget_row_1, R.id.widget_row_2, R.id.widget_row_3, R.id.widget_row_4,

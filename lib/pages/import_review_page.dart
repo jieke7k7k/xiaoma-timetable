@@ -8,6 +8,7 @@ import '../main.dart';
 import '../models/course.dart';
 import '../models/semester.dart';
 import '../models/time_slot.dart';
+import '../models/ui_settings.dart';
 import '../providers/providers.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
@@ -281,8 +282,13 @@ class _ImportReviewPageState extends ConsumerState<ImportReviewPage> {
         final result = await Navigator.push<List<ConflictResolution>>(
           context,
           MaterialPageRoute(
-            builder: (_) =>
-                ImportConflictsPage(drafts: _drafts, items: items),
+            builder: (_) => ImportConflictsPage(
+              drafts: _drafts,
+              items: items,
+              colorScheme: (ref.read(uiSettingsProvider).value ??
+                      const UiSettings())
+                  .colorScheme,
+            ),
           ),
         );
         if (result == null) {

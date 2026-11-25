@@ -63,8 +63,9 @@ List<ReminderPlan> buildDailyReminderPlan({
   List<CourseOverride> overrides = const [],
 }) {
   // 未开学（周次 0）没有任何课
+  // 未开学（周次 <= 0）或已超出学期总周数没有任何课（与 sessionsOnDay 同口径）
   final week = WeekCalc.currentWeek(semester.startDateParsed, date);
-  if (week <= 0) return const [];
+  if (week <= 0 || week > semester.totalWeeks) return const [];
 
   // 应用单次调课：得到本周有效上课实例（停课移除、调课替换为新时间/教室）
   final effective = effectiveCoursesForWeek(

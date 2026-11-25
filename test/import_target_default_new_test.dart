@@ -8,6 +8,8 @@ import 'package:xiaoma_timetable/database/db_helper.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/pages/import_page.dart';
 
+import 'helpers/pump_helpers.dart';
+
 /// WB_SPEC_256 §7 测试（原 WB_SPEC_220 的底部弹层已废弃）
 ///
 /// 覆盖：
@@ -65,17 +67,12 @@ void main() {
   });
 
   Future<void> pumpImportPage(WidgetTester tester) async {
-    await tester.runAsync(() async {
-      await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(home: ImportPage()),
-        ),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 1500));
-    });
-    for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: ImportPage()),
+      ),
+    );
+    await pumpUntil(tester, find.text('更改'));
   }
 
   /// 点一个会触发真实异步数据库读写的控件：FFI 完成要靠 pump 投递，

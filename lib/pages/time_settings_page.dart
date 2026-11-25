@@ -28,7 +28,7 @@ class TimeSettingsPage extends ConsumerWidget {
     final segSettings = ref.watch(segmentSettingsProvider).value;
     final lunch = segSettings?.lunchAfterSection ?? 5;
     final dinner = segSettings?.dinnerAfterSection ?? 9;
-    final initialBand = currentTimeBand(DateTime.now());
+    final initialBand = currentTimeBand(timeSettingsNow());
 
     final morning = slots.where((s) => s.section <= lunch).toList();
     final afternoon = slots
@@ -317,6 +317,10 @@ class _SlotTimeChip extends StatelessWidget {
     );
   }
 }
+
+/// 可替换的「现在」时钟（WB_SPEC_264 T10）：运行时即 [DateTime.now]，
+/// 仅测试锁定早/午/晚三个固定时刻时替换，避免整点分界跨分钟抖动。
+DateTime Function() timeSettingsNow = DateTime.now;
 
 /// 当前时段（§5）：06:00–12:00 上午、12:00–18:00 下午、18:00–次日 06:00 晚上。
 ///

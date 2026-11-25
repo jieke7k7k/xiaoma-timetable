@@ -230,22 +230,29 @@ class _ParallaxShellBodyState extends State<ParallaxShellBody>
             fit: StackFit.expand,
             children: [
               for (final tab in HomeShellTab.values)
-                // 完全透明时 IgnorePointer 禁用点击，但保持挂载不销毁
+                // 完全透明时 IgnorePointer 禁用点击，TickerMode 停掉隐藏页动画，
+                // ExcludeSemantics 阻断非当前页的读屏焦点穿透（S3-3）
               IgnorePointer(
                   ignoring: widget.currentTab != tab,
-                child: Visibility(
+                child: ExcludeSemantics(
+                  excluding: widget.currentTab != tab,
+                  child: Visibility(
                     visible: opacities[tab]! > 0.0,
-                  maintainState: true,
-                  maintainAnimation: true,
-                  maintainSize: true,
-                  child: Opacity(
-                      opacity: opacities[tab]!,
-                    child: Transform.translate(
-                        offset: Offset(_dxFor(tab, opacities[tab]!), 0),
-                      child: Transform.scale(
-                          // 微缩放（仅对正在显现的页面做 0.985→1.0）
-                          scale: 0.985 + 0.015 * opacities[tab]!,
-                          child: _pages[_tabIndex(tab)],
+                    maintainState: true,
+                    maintainAnimation: true,
+                    maintainSize: true,
+                    child: TickerMode(
+                      enabled: opacities[tab]! > 0.0,
+                      child: Opacity(
+                          opacity: opacities[tab]!,
+                        child: Transform.translate(
+                            offset: Offset(_dxFor(tab, opacities[tab]!), 0),
+                          child: Transform.scale(
+                              // 微缩放（仅对正在显现的页面做 0.985→1.0）
+                              scale: 0.985 + 0.015 * opacities[tab]!,
+                              child: _pages[_tabIndex(tab)],
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -280,32 +287,52 @@ class QuickFadeShellBody extends StatelessWidget {
       children: [
         IgnorePointer(
           ignoring: currentTab != HomeShellTab.today,
-          child: AnimatedOpacity(
-            opacity: currentTab == HomeShellTab.today ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 140),
-            curve: Curves.easeOut,
-            child: RepaintBoundary(
-              child: TodayViewPage(onNavigateToSchedule: onNavigateToSchedule),
+          child: ExcludeSemantics(
+            excluding: currentTab != HomeShellTab.today,
+            child: AnimatedOpacity(
+              opacity: currentTab == HomeShellTab.today ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 140),
+              curve: Curves.easeOut,
+              // TickerMode 放在 AnimatedOpacity 内部：淡出动效照常完成，
+              // 隐藏页内的 MarqueeText 等 Ticker 立即停转（S3-3）
+              child: TickerMode(
+                enabled: currentTab == HomeShellTab.today,
+                child: RepaintBoundary(
+                  child: TodayViewPage(onNavigateToSchedule: onNavigateToSchedule),
+                ),
+              ),
             ),
           ),
         ),
         IgnorePointer(
           ignoring: currentTab != HomeShellTab.schedule,
-          child: AnimatedOpacity(
-            opacity: currentTab == HomeShellTab.schedule ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 140),
-            curve: Curves.easeOut,
-            child: const RepaintBoundary(child: WeekViewPage()),
+          child: ExcludeSemantics(
+            excluding: currentTab != HomeShellTab.schedule,
+            child: AnimatedOpacity(
+              opacity: currentTab == HomeShellTab.schedule ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 140),
+              curve: Curves.easeOut,
+              child: TickerMode(
+                enabled: currentTab == HomeShellTab.schedule,
+                child: const RepaintBoundary(child: WeekViewPage()),
+              ),
+            ),
           ),
         ),
         IgnorePointer(
           ignoring: currentTab != HomeShellTab.settings,
-          child: AnimatedOpacity(
-            opacity: currentTab == HomeShellTab.settings ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 140),
-            curve: Curves.easeOut,
-            child: const RepaintBoundary(
-              child: SettingsPage(isEmbeddedInShell: true),
+          child: ExcludeSemantics(
+            excluding: currentTab != HomeShellTab.settings,
+            child: AnimatedOpacity(
+              opacity: currentTab == HomeShellTab.settings ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 140),
+              curve: Curves.easeOut,
+              child: TickerMode(
+                enabled: currentTab == HomeShellTab.settings,
+                child: const RepaintBoundary(
+                  child: SettingsPage(isEmbeddedInShell: true),
+                ),
+              ),
             ),
           ),
         ),

@@ -72,6 +72,11 @@ class NotificationService {
   /// 另注：Android AlarmManager 同时活跃闹钟上限约 500，360 仍在安全区内。
   static const int _windowDays = 30;
 
+  /// 单次滚动窗口最多排期的课程提醒条数（C16）：
+  /// 低于 Android AlarmManager 约 500 条活跃闹钟上限，且保证 id 永远小于
+  /// [kOngoingCourseNotificationId]（1001），绝不撞号。
+  static const int _maxScheduledReminders = 400;
+
   /// 初始化只跑一次的未来：并发调用（App 启动 + rescheduleAll 兜底）共享它。
   ///
   /// 1.3.2 起通知初始化挪到首帧之后，rescheduleAll 可能比它先跑到，
@@ -85,7 +90,8 @@ class NotificationService {
   Future<void> initialize() => _initFuture ??= _initialize();
 
   Future<void> _initialize() async {
-    // 精确闹钟需要在本地时区准点触发，先加载时区库并固定东八区
+    // 全 App 定时通知与排链统一采用「固定东八区（Asia/Shanghai）」墙上时间口径
+    // （与原生 OngoingCourseReceiver.SHANGHAI 同源，且不引入额外时区探测依赖）。
     tz.initializeTimeZones();
     try {
       tz.setLocalLocation(tz.getLocation('Asia/Shanghai'));
@@ -334,11 +340,11 @@ class NotificationService {
           : AndroidScheduleMode.inexactAllowWhileIdle;
 
       final now = tz.TZDateTime.now(tz.local);
-      final today = tz.TZDateTime(tz.local, now.year, now.month, now.day);
       int nextId = 1;
-
-      for (int offset = 0; offset < _windowDays; offset++) {
-        final day = today.add(Duration(days: offset));
+      var truncated = false;
+      for (int offset = 0; offset < _windowDays && !truncated; offset++) {
+        // 按日历天进位构造前瞻日期，避免 Duration(days:) 在非固定偏移时区下受夏令时影响
+        final day = tz.TZDateTime(tz.local, now.year, now.month, now.day + offset);
         final plans = buildDailyReminderPlan(
           date: DateTime(day.year, day.month, day.day),
           semester: semester,
@@ -348,7 +354,24 @@ class NotificationService {
           overrides: overrides,
         );
         for (final plan in plans) {
-          final fireAt = tz.TZDateTime.from(plan.reminderTime, tz.local);
+          if (nextId > _maxScheduledReminders) {
+            truncated = true;
+            debugPrint(
+              '课程提醒数量超过安全上限（$_maxScheduledReminders 条），已截断后续排期',
+            );
+            break;
+          }
+          // 按墙上时间直接构造 tz.local（Asia/Shanghai）时刻，
+          // 避免 tz.TZDateTime.from 把设备本地时区时刻二次换算导致跨时区偏移（C9）
+          final rt = plan.reminderTime;
+          final fireAt = tz.TZDateTime(
+            tz.local,
+            rt.year,
+            rt.month,
+            rt.day,
+            rt.hour,
+            rt.minute,
+          );
           // 已过时刻不再排，避免一打开 App 就补响一堆过期提醒
           if (!fireAt.isAfter(now)) continue;
           await _plugin.zonedSchedule(

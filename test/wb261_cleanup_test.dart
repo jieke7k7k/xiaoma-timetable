@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +15,8 @@ import 'package:xiaoma_timetable/providers/providers.dart';
 import 'package:xiaoma_timetable/services/permission_service.dart';
 import 'package:xiaoma_timetable/ui/app_styles.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
+
+import 'helpers/pump_helpers.dart';
 
 /// WB_SPEC_261 大扫除回归测试。
 ///
@@ -54,30 +54,6 @@ void main() {
     await db.close();
   });
 
-  /// 手动泵法：每轮 runAsync 80ms + pump 100ms，共 5 轮（不使用 pumpAndSettle）
-  Future<void> drain(WidgetTester tester) async {
-    for (var i = 0; i < 5; i++) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 80)),
-      );
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-  }
-
-  Future<void> pumpUntil(
-    WidgetTester tester,
-    Finder finder, {
-    int rounds = 25,
-  }) async {
-    for (var i = 0; i < rounds; i++) {
-      if (finder.evaluate().isNotEmpty) return;
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 80)),
-      );
-      await tester.pump(const Duration(milliseconds: 60));
-    }
-  }
-
   group('§4 权限自检直达 /permissions', () {
     testWidgets('点「权限自检」直接打开权限页，不经过中间页', (tester) async {
       tester.view.physicalSize = const Size(1200, 4200);
@@ -94,13 +70,15 @@ void main() {
             ),
           ),
         );
-        await Future<void>.delayed(const Duration(milliseconds: 600));
       });
-      await drain(tester);
+      // L7（DeepSeek 264 复审 B 段）：600ms 死等改走 pumpUntil——等到「权限自检」
+      // 瓦片出现即停，不空转；pumpUntil 放在 runAsync 外（它内部自己管真实异步窗口）
+      await pumpUntil(tester, find.text('权限自检'));
+      await drainAsync(tester);
 
       expect(find.text('权限自检'), findsOneWidget);
       await tester.tap(find.text('权限自检'));
-      await drain(tester);
+      await drainAsync(tester);
 
       // 权限页 AppBar 标题为「权限」，三项权限平铺。
       expect(find.text('权限'), findsOneWidget);
@@ -123,7 +101,7 @@ void main() {
       await tester.pumpWidget(
         const ProviderScope(child: MaterialApp(home: CourseToolsPage())),
       );
-      await drain(tester);
+      await drainAsync(tester);
 
       await tester.tap(find.text('导出课表图片'));
       await tester.pump(const Duration(milliseconds: 300));
@@ -162,7 +140,7 @@ void main() {
       await tester.pumpWidget(
         const ProviderScope(child: MaterialApp(home: CourseSearchPage())),
       );
-      await drain(tester);
+      await drainAsync(tester);
 
       // AppBar 标题是纯文字「课程搜索」，搜索框不在 AppBar 里。
       final appBar = tester.widget<AppBar>(find.byType(AppBar));
@@ -221,32 +199,23 @@ void main() {
       sundayDialogNow = () => monday;
 
       final container = ProviderContainer();
+      addTearDown(container.dispose);
+
       tester.view.physicalSize = const Size(1170, 2532);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      await tester.runAsync(() async {
-        await HttpOverrides.runZoned(
-          () async {
-            await tester.pumpWidget(
-              UncontrolledProviderScope(
-                container: container,
-                child: const MaterialApp(home: HomeShell()),
-              ),
-            );
-            await tester.pump();
-            await Future<void>.delayed(const Duration(milliseconds: 1500));
-          },
-          createHttpClient: (_) => throw const SocketException('测试环境阻断网络'),
-        );
-      });
-      await tester.pump();
-      await pumpUntil(tester, find.byIcon(Icons.more_vert));
+
+      await pumpHomeShell(
+        tester,
+        container: container,
+        readyFinder: find.byIcon(Icons.more_vert),
+      );
 
       // 切到非本周，竖条出现（竖排文字逐字渲染，找首字「回」）。
       final today = container.read(todayWeekProvider);
       container.read(displayWeekProvider.notifier).setWeek(today == 1 ? 2 : 1);
-      await drain(tester);
+      await drainAsync(tester);
       final railText = find.text('回');
       expect(railText, findsOneWidget, reason: '非本周视图应显示「回到本周」竖条');
 
@@ -273,6 +242,7 @@ void main() {
       });
       expect(materialRadius, expected);
       expect(materialRadius, inkWell.borderRadius);
+      await finishHomeShell(tester);
     });
   });
 }

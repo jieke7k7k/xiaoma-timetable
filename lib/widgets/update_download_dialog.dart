@@ -48,6 +48,8 @@ class _UpdateDownloadDialogState extends State<UpdateDownloadDialog>
   );
   String? _errorMessage;
   File? _downloadedFile;
+  /// 调起安装器重入锁（S3-5）：防「授权回流 + 手动点立即安装」并发重复调起系统安装器
+  bool _isTriggeringInstall = false;
 
   @override
   void initState() {
@@ -135,27 +137,32 @@ class _UpdateDownloadDialogState extends State<UpdateDownloadDialog>
   }
 
   Future<void> _triggerInstall() async {
+    if (_isTriggeringInstall) return;
     final file = _downloadedFile;
     if (file == null) return;
-
-    final canInstall = await _service.canRequestPackageInstalls();
-    if (!mounted) return;
-
-    if (!canInstall) {
-      // 首次安装需系统「允许安装未知应用」授权：App 内展示引导文案
-      setState(() => _phase = _DownloadPhase.needPermission);
-      return;
-    }
-
-    setState(() => _phase = _DownloadPhase.readyToInstall);
+    _isTriggeringInstall = true;
     try {
-      await _service.installApk(file.path);
-    } catch (e) {
+      final canInstall = await _service.canRequestPackageInstalls();
       if (!mounted) return;
-      setState(() {
-        _phase = _DownloadPhase.failed;
-        _errorMessage = '调起系统安装器失败：$e';
-      });
+
+      if (!canInstall) {
+        // 首次安装需系统「允许安装未知应用」授权：App 内展示引导文案
+        setState(() => _phase = _DownloadPhase.needPermission);
+        return;
+      }
+
+      setState(() => _phase = _DownloadPhase.readyToInstall);
+      try {
+        await _service.installApk(file.path);
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _phase = _DownloadPhase.failed;
+          _errorMessage = '调起系统安装器失败：$e';
+        });
+      }
+    } finally {
+      _isTriggeringInstall = false;
     }
   }
 

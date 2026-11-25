@@ -148,15 +148,43 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
   /// 周日弹窗判定器（读/写 app_settings 里的已读日期）
   final SundayDialogGate _sundayDialogGate = SundayDialogGate();
 
-  /// 状态条分钟级刷新计时器（下一节课倒计时/上下课切换靠它推进）
-  ///
-  /// 2.2.0（WB_SPEC_229 第 6.4 节）：加了生命周期守卫——App 切后台就停表，
-  /// 回前台再起。切后台后界面不重绘、build 也不跑，这口表只是在空转（每 30 秒
-  /// 白唤醒一次 CPU），停掉不影响任何可见行为。
-  Timer? _focusTimer;
+  /// 上次刷新时的本地日期键（yyyy-M-d），用于前后台切换与定时跨午夜检测（C12）
+  late String _lastDayKey = _currentDayKey();
 
-  /// 上次下发常驻通知时的焦点签名；焦点（当前课/下一节）变了才刷新通知
-  String _focusSig = '';
+  String _currentDayKey() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month}-${now.day}';
+  }
+
+  /// 检测是否跨日；跨日时刷新 todayWeekProvider，并复位周日弹窗当日判定标记
+  void _checkDayRollover({bool forceInvalidate = false}) {
+    final todayKey = _currentDayKey();
+    final crossed = todayKey != _lastDayKey;
+    if (crossed) {
+      _lastDayKey = todayKey;
+      _sundayDialogChecked = false;
+    }
+    if (crossed || forceInvalidate) {
+      ref.invalidate(todayWeekProvider);
+    }
+  }
+
+  /// 仅做跨日检测的轻量定时器（H2：DeepSeek 264 复审）。
+  /// C17 把 30 秒焦点定时器搬进只在「上课播报」开启时挂载的 _ClassFocusBar 后，
+  /// 播报关闭时页面停留跨午夜不再重算今日周次；常驻通知本身由精确闹钟链
+  /// （OngoingCourseReceiver）按边界刷新，不依赖这里。本定时器只调
+  /// _checkDayRollover，不算焦点、不 setState，未跨日时零开销。
+  Timer? _dayRolloverTimer;
+
+  void _startDayRolloverTimer() {
+    _dayRolloverTimer?.cancel();
+    _dayRolloverTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) {
+        if (mounted) _checkDayRollover();
+      },
+    );
+  }
 
   /// 时间轴宽度
   static const double _timeAxisWidth = kTimeAxisWidth;
@@ -176,7 +204,14 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
     final seenFuture = ChannelService.seenIds();
     final dismissedFuture = ChannelService.dismissedIds();
     final dismissedCodeFuture = ChannelService.dismissedVersionCode();
-    final pkgFuture = PackageInfo.fromPlatform();
+    // C23：PackageInfo 平台通道异常兜底，避免拖垮整段通道/公告加载
+    final pkgFuture = PackageInfo.fromPlatform().then<PackageInfo?>(
+      (info) => info,
+      onError: (Object e) {
+        debugPrint('读取应用版本信息失败：$e');
+        return null;
+      },
+    );
     final cached = await cachedFuture;
     final seen = await seenFuture;
     final dismissed = await dismissedFuture;
@@ -188,7 +223,7 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
       _seenAnn = seen;
       _dismissedAnn = dismissed;
       _dismissedCode = dismissedCode;
-      _currentCode = int.tryParse(pkg.buildNumber) ?? 0;
+      _currentCode = pkg == null ? 0 : (int.tryParse(pkg.buildNumber) ?? 0);
     });
     _maybeShowImportant();
     if (await ChannelService.shouldSilentCheck()) {
@@ -250,9 +285,10 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
   @override
   void initState() {
     super.initState();
-    // 监听 App 前后台切换：后台停表、前台重新起表（见 _stopFocusTimer 注释）
+    // 监听 App 前后台切换：回前台重算 todayWeekProvider（跨日/改系统时间场景，C12）
     WidgetsBinding.instance.addObserver(this);
-    _startFocusTimer();
+    // H2：播报关闭时 _ClassFocusBar 不挂载，跨日检测靠本页自己的轻量定时器
+    _startDayRolloverTimer();
     // WB-202 第 3 项补充：PageController 不在这里创建了——initState 时刻
     // 学期通常还没加载完（todayWeek 读成 0、总周数读成 0），initialPage 只能
     // 瞎猜成 0；改为学期就绪后的首次 build 里按显示周懒创建（见 build）。
@@ -266,42 +302,23 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
-      _stopFocusTimer();
-    } else if (state == AppLifecycleState.resumed) {
-      // 回前台立刻重绘一次（后台期间可能已经上下课好几次），再恢复定时器：
-      // 焦点签名比较在 build 里，重绘会把常驻通知一并对齐
-      _startFocusTimer();
+    if (state == AppLifecycleState.resumed) {
+      // 回前台重算 todayWeekProvider（覆盖跨日/改系统时间场景，C12），
+      // 立刻重绘一次刷新表头与课表状态
+      _startDayRolloverTimer();
+      _checkDayRollover(forceInvalidate: true);
       if (mounted) setState(() {});
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      // 后台停表：回前台由 resumed 分支重起并强制重算一次
+      _dayRolloverTimer?.cancel();
     }
-  }
-
-  /// 起 30 秒状态条刷新表（幂等：已存在就不重复起，避免回前台时叠出两条表）
-  void _startFocusTimer() {
-    if (_focusTimer != null) return;
-    _focusTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (!mounted) return;
-      setState(() {});
-    });
-    debugPrint('周视图状态条刷新已启动（30 秒一次）');
-  }
-
-  /// 停表：切后台时调用。
-  ///
-  /// 启停各打一条日志（不是每 30 秒打）——真机验收「切后台 5 分钟不再空转」时，
-  /// logcat 里只应看到进入后台的这一条，之后 5 分钟没有任何周期日志。
-  void _stopFocusTimer() {
-    if (_focusTimer == null) return;
-    _focusTimer?.cancel();
-    _focusTimer = null;
-    debugPrint('周视图状态条刷新已暂停（App 进入后台）');
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _focusTimer?.cancel();
+    _dayRolloverTimer?.cancel();
     _pageController?.dispose();
     // §8：页面 dispose 时复位长按高亮活跃态，避免残留状态。
     _highlightActive = false;
@@ -505,10 +522,11 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
           // WB_SPEC_235 跟进 §1-15 / §4：弹窗按钮改走标准构造
           AppDialogAction(
             label: '全部考试倒计时',
-            onPressed: () =>
-                Navigator.pushNamed(context, '/exam-countdown').then((_) {
-              if (ctx.mounted) Navigator.pop(ctx);
-            }),
+            // C23：先关闭弹窗再跳转，避免从考试倒计时返回时闪一下旧弹窗
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pushNamed(context, '/exam-countdown');
+            },
           ),
           AppDialogAction(
             label: '好的',
@@ -587,7 +605,19 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
 
   @override
   Widget build(BuildContext context) {
-    final semester = ref.watch(currentSemesterProvider).value;
+    final semesterAsync = ref.watch(currentSemesterProvider);
+    if (semesterAsync.hasError && !semesterAsync.isLoading) {
+      return Scaffold(
+        body: EmptyState(
+          icon: Icons.error_outline,
+          title: '学期加载失败',
+          message: '${semesterAsync.error}',
+          actionLabel: '重试',
+          onAction: () => ref.read(currentSemesterProvider.notifier).reload(),
+        ),
+      );
+    }
+    final semester = semesterAsync.valueOrNull;
     if (semester == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
@@ -600,6 +630,37 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
         weekDataNotReady(overridesAsync) ||
         weekDataNotReady(slotsAsync)) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    final dataError = coursesAsync.hasError
+        ? coursesAsync.error
+        : overridesAsync.hasError
+            ? overridesAsync.error
+            : slotsAsync.hasError
+                ? slotsAsync.error
+                : null;
+    if (dataError != null &&
+        !coursesAsync.isLoading &&
+        !overridesAsync.isLoading &&
+        !slotsAsync.isLoading) {
+      return Scaffold(
+        body: EmptyState(
+          icon: Icons.error_outline,
+          title: '课表加载失败',
+          message: '$dataError',
+          actionLabel: '重试',
+          onAction: () {
+            if (coursesAsync.hasError) {
+              ref.read(coursesProvider.notifier).reload();
+            }
+            if (overridesAsync.hasError) {
+              ref.read(courseOverridesProvider.notifier).reload();
+            }
+            if (slotsAsync.hasError) {
+              ref.read(timeSlotsProvider.notifier).reload();
+            }
+          },
+        ),
+      );
     }
     final displayWeek = ref.watch(displayWeekProvider);
     // WB_SPEC_223：跳转条开关由 provider 持有（底部栏也要读它），本页只读。
@@ -642,24 +703,6 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
       if (c.examDate == null) continue;
       final d = DateTime.fromMillisecondsSinceEpoch(c.examDate!);
       examsByDay.putIfAbsent('${d.year}-${d.month}-${d.day}', () => []).add(c);
-    }
-    // 顶部状态条焦点（与常驻通知共用同一套计算）；焦点变化时顺手刷新常驻通知，
-    // 保证通知栏里的「下一节」跟主页状态条同步切换
-    final now = DateTime.now();
-    final focus = computeClassFocus(
-      now: now,
-      semester: semester,
-      courses: courses,
-      timeSlots: slotsAsync.value ?? const [],
-      overrides: overrides,
-    );
-    final focusSig =
-        '${focus.current?.course.id}@${focus.current?.start}|${focus.next?.course.id}@${focus.next?.start}';
-    if (focusSig != _focusSig) {
-      _focusSig = focusSig;
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => OngoingNoticeService.instance.refresh(),
-      );
     }
 
     // 学期切换联动：semester 变化时把 PageController 跳到新学期的「本周」，
@@ -888,12 +931,16 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
       ),
       body: Column(
         children: [
-          // 当前/下一节课状态条（1.2.0）：点一下回到本周；由「上课播报」开关控制显隐
+          // 当前/下一节课状态条（1.2.0；C17 拆为独立有状态子组件）：
+          // 仅局部每 30 秒刷新自身；关闭「上课播报」时不挂载、不启动定时器。
           // WB_SPEC_223：横幅在跳转条上方，点按层盖不到，回调里守卫。
           if (ui.showClassBroadcast)
             _ClassFocusBar(
-              focus: focus,
-              now: now,
+              semester: semester,
+              courses: courses,
+              timeSlots: slotsAsync.value ?? const [],
+              overrides: overrides,
+              onDayRollover: () => _checkDayRollover(),
               onTap: () {
                 if (_guardJumper()) return;
                 // WB_SPEC_235 §7：点状态条回本周 = 轻点档
@@ -1011,9 +1058,11 @@ class _WeekViewPageState extends ConsumerState<WeekViewPage>
                       ),
                     ],
                   ),
-                  // 「回到本周」竖条悬浮按钮（WB_SPEC_209 第 2 节）：非本周视图时
-                  // 贴主页右缘中间，本周视图不渲染
-                  if (displayWeek != todayWeek)
+                  // 「回到本周」竖条悬浮按钮（WB_SPEC_209 第 2 节；C11）：
+                  // 未开学（todayWeek <= 0）时隐藏；其余情况与钳制后的本周页码比对
+                  if (todayWeek > 0 &&
+                      displayWeek !=
+                          WeekCalc.clampForPage(todayWeek, semester.totalWeeks))
                     Align(
                       alignment: Alignment.centerRight,
                       child: _BackToWeekRail(onTap: _goToday),
@@ -2243,7 +2292,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
                           icon: Icons.wb_sunny_outlined,
                           title: '本周没有课程',
                           message: editMode
-                              ? '点击空白格子新建，或从底部「新建」导入课表'
+                              ? '点击空白格子新建，或点右上角「+」导入课表'
                               : '开启右上角编辑模式后，可添加课程',
                         ),
                       ),
@@ -2291,7 +2340,7 @@ class _WeekGridState extends ConsumerState<_WeekGrid> {
                     icon: Icons.wb_sunny_outlined,
                     title: '本周没有课程',
                     message: editMode
-                        ? '点击空白格子新建，或从底部「新建」导入课表'
+                        ? '点击空白格子新建，或点右上角「+」导入课表'
                         : '开启右上角编辑模式后，可添加课程',
                   ),
                 ),
@@ -2746,7 +2795,8 @@ class _PositionedCourseCard extends StatelessWidget {
                 );
               },
             ),
-            Consumer(
+            if (canOverride)
+              Consumer(
               builder: (ctx2, ref, _) => ListTile(
                 // 删除是高危不可逆操作：走 destructive 红（WB_SPEC_230 第 3.3 节）
                 leading: const SettingsIconBox(
@@ -2755,6 +2805,8 @@ class _PositionedCourseCard extends StatelessWidget {
                 ),
                 title: const Text('删除课程'),
                 onTap: () async {
+                  final courseId = course.id;
+                  if (courseId == null) return;
                   // WB_SPEC_235 §7：菜单项 = 轻点档（后面确认框的删除键另算中档）
                   AppHaptics.tap();
                   Navigator.pop(ctx);
@@ -2770,7 +2822,7 @@ class _PositionedCourseCard extends StatelessWidget {
                     try {
                       await ref
                           .read(coursesProvider.notifier)
-                          .deleteCourse(course.id!);
+                          .deleteCourse(courseId);
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('已删除《${course.name}》')),
@@ -2797,18 +2849,83 @@ class _PositionedCourseCard extends StatelessWidget {
 /// - 课前/课间：「下一节 · 摘要 · 还有多久」（未来的课带日期标签）
 /// - 无课：「近期暂无课程」
 /// 点击回到本周。
-class _ClassFocusBar extends StatelessWidget {
+/// 当前 / 下一节课状态条（1.2.0；C17 拆为独立有状态子组件）：
+/// 数据与常驻通知共用 [computeClassFocus]，每 30 秒仅局部刷新本状态条，
+/// 不再触发整页周视图重建；App 切后台自动停表、回前台立即刷新并起表。
+/// - 上课中：「正在上课 · 摘要 ｜ 下一节 X HH:MM」（摘要自带时间段，不再重复下课时间）
+/// - 课前/课间：「下一节 · 摘要 · 还有多久」（未来的课带日期标签）
+/// - 无课：「近期暂无课程」
+/// 点击回到本周。
+class _ClassFocusBar extends StatefulWidget {
   const _ClassFocusBar({
-    required this.focus,
-    required this.now,
+    required this.semester,
+    required this.courses,
+    required this.timeSlots,
+    required this.overrides,
+    required this.onDayRollover,
     required this.onTap,
   });
 
-  final ClassFocus focus;
-  final DateTime now;
+  final Semester semester;
+  final List<Course> courses;
+  final List<TimeSlot> timeSlots;
+  final List<CourseOverride> overrides;
+  final VoidCallback onDayRollover;
   final VoidCallback onTap;
 
-  String _untilText(DateTime start) {
+  @override
+  State<_ClassFocusBar> createState() => _ClassFocusBarState();
+}
+
+class _ClassFocusBarState extends State<_ClassFocusBar>
+    with WidgetsBindingObserver {
+  Timer? _timer;
+  String _focusSig = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startTimer();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _stopTimer();
+    } else if (state == AppLifecycleState.resumed) {
+      _startTimer();
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _startTimer() {
+    if (_timer != null) return;
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      widget.onDayRollover();
+      setState(() {});
+    });
+    debugPrint('周视图状态条刷新已启动（30 秒一次）');
+  }
+
+  void _stopTimer() {
+    if (_timer == null) return;
+    _timer?.cancel();
+    _timer = null;
+    debugPrint('周视图状态条刷新已暂停（App 进入后台）');
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String _untilText(DateTime start, DateTime now) {
     final diff = start.difference(now);
     if (diff.inMinutes < 1) return '马上开始';
     if (diff.inMinutes < 60) return '还有 ${diff.inMinutes} 分钟';
@@ -2819,6 +2936,23 @@ class _ClassFocusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final focus = computeClassFocus(
+      now: now,
+      semester: widget.semester,
+      courses: widget.courses,
+      timeSlots: widget.timeSlots,
+      overrides: widget.overrides,
+    );
+    final focusSig =
+        '${focus.current?.course.id}@${focus.current?.start}|${focus.next?.course.id}@${focus.next?.start}';
+    if (focusSig != _focusSig) {
+      _focusSig = focusSig;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => OngoingNoticeService.instance.refresh(),
+      );
+    }
+
     final scheme = Theme.of(context).colorScheme;
     final cur = focus.current;
     final nxt = focus.next;
@@ -2829,8 +2963,7 @@ class _ClassFocusBar extends StatelessWidget {
       var t = '正在上课 · ${cur.summary}';
       if (nxt != null) {
         final dl = dayLabel(nxt.date, now);
-        t +=
-            ' ｜ 下一节 ${nxt.course.name} '
+        t += ' ｜ 下一节 ${nxt.course.name} '
             '${dl == '今天' ? '' : '$dl '}${fmtHhmm(nxt.start)}';
       }
       text = t;
@@ -2838,7 +2971,7 @@ class _ClassFocusBar extends StatelessWidget {
       icon = Icons.schedule_outlined;
       final dl = dayLabel(nxt.date, now);
       text = dl == '今天'
-          ? '下一节 · ${nxt.summary} · ${_untilText(nxt.start)}'
+          ? '下一节 · ${nxt.summary} · ${_untilText(nxt.start, now)}'
           : '下一节 · $dl ${nxt.summary}';
     } else {
       icon = Icons.event_available_outlined;
@@ -2847,7 +2980,7 @@ class _ClassFocusBar extends StatelessWidget {
     return Material(
       color: scheme.surfaceContainerHighest,
       child: InkWell(
-        onTap: onTap,
+        onTap: widget.onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
           child: Row(
@@ -2921,6 +3054,7 @@ class _ExportBottomSheetContentState
 
   void _showEmptySemesterSnackBar() {
     Navigator.pop(context);
+    if (!widget.parentContext.mounted) return;
     ScaffoldMessenger.of(widget.parentContext)
         .showSnackBar(const SnackBar(content: Text('本学期暂无课程')));
   }
@@ -2993,10 +3127,12 @@ class _ExportBottomSheetContentState
       if (!mounted) return;
       Navigator.pop(context);
       popped = true;
-      // P1-2：分享面板打开前先弹提示（之前在 await share 之后才弹，
-      // 面板关了才看到，「正在打开」已是过去时）。
-      ScaffoldMessenger.of(widget.parentContext)
-          .showSnackBar(const SnackBar(content: Text('已生成整学期课表图片，正在打开分享面板…')));
+      // P1-2 / C13：分享面板打开前先弹提示，并校验 parentContext 仍挂载
+      if (widget.parentContext.mounted) {
+        ScaffoldMessenger.of(widget.parentContext).showSnackBar(
+          const SnackBar(content: Text('已生成整学期课表图片，正在打开分享面板…')),
+        );
+      }
       await SharePlus.instance.share(
         ShareParams(
           files: [
@@ -3060,9 +3196,11 @@ class _ExportBottomSheetContentState
       // gal 3.x 会按字节自行识别扩展名并拼到 name 后面（见 gal 源码
       // getUniqueFileUri），name 里不要带 .png，否则存成「.png.png」。
       await saveImageToGalleryHandler(res.bytes, name: '${res.semester.name}课表');
-      ScaffoldMessenger.of(widget.parentContext).showSnackBar(
-        SnackBar(content: Text('已保存到相册：$fileName')),
-      );
+      if (widget.parentContext.mounted) {
+        ScaffoldMessenger.of(widget.parentContext).showSnackBar(
+          SnackBar(content: Text('已保存到相册：$fileName')),
+        );
+      }
     } catch (e) {
       if (popped) {
         // 保存阶段失败：sheet 已收起，用外层 context 弹失败弹窗。
@@ -3078,6 +3216,29 @@ class _ExportBottomSheetContentState
         showAppInfoDialog(widget.parentContext, title: '保存失败', message: '$e');
       }
     }
+  }
+
+  /// 当前周导出：同样等待 coursesProvider.future 就绪后再判断空学期（C13）
+  Future<void> _exportCurrentWeekPng() async {
+    late final List<Course> courses;
+    try {
+      courses = await ref.read(coursesProvider.future);
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      if (widget.parentContext.mounted) {
+        showAppInfoDialog(widget.parentContext, title: '导出失败', message: '$e');
+      }
+      return;
+    }
+    if (!mounted) return;
+    if (courses.isEmpty) {
+      _showEmptySemesterSnackBar();
+      return;
+    }
+    Navigator.pop(context); // 先收起 BottomSheet，避免遮挡分享页
+    if (!widget.parentContext.mounted) return;
+    Navigator.pushNamed(widget.parentContext, '/share-image');
   }
 
   @override
@@ -3149,13 +3310,7 @@ class _ExportBottomSheetContentState
               ? null
               : () {
                   AppHaptics.tap();
-                  final courses = ref.read(coursesProvider).value ?? [];
-                  if (courses.isEmpty) {
-                    _showEmptySemesterSnackBar();
-                    return;
-                  }
-                  Navigator.pop(context); // 先收起 BottomSheet，避免遮挡分享页
-                  Navigator.pushNamed(widget.parentContext, '/share-image');
+                  _exportCurrentWeekPng();
                 },
           enableFeedback: false,
         ),

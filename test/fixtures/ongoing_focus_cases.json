@@ -171,6 +171,81 @@
         "lines": ["18:00–19:30", "今天没有其他课了"],
         "boundary": "2026-09-11 19:30"
       }
+    },
+    {
+      "name": "踩点边界：now == start（08:00）立即算正在上课",
+      "now": "2026-09-07 08:00",
+      "expected": {
+        "title": "正在上课：高等数学",
+        "lines": ["08:00–09:30 · A101", "带习题册", "下一节：大学物理 · 今天 09:40 · B202"],
+        "boundary": "2026-09-07 09:30"
+      }
+    },
+    {
+      "name": "踩点边界：now == end（09:30）已下课，立刻切到下一节",
+      "now": "2026-09-07 09:30",
+      "expected": {
+        "title": "下一节：大学物理",
+        "lines": ["09:40–11:10 · B202", "带电脑", "今天后面还有 2 节课"],
+        "boundary": "2026-09-07 09:40"
+      }
+    },
+    {
+      "name": "开学前 3 天（≤9 天前瞻窗口内）：预告开学第 1 周第一节课",
+      "now": "2026-09-04 10:00",
+      "expected": {
+        "title": "下一节：高等数学",
+        "lines": ["周一（9月7日） 08:00–09:30 · A101", "带习题册"],
+        "boundary": "2026-09-07 08:00"
+      }
+    },
+    {
+      "name": "跨周调课隔离：第 1 周被调走的课在第 2 周原时段照常上课",
+      "now": "2026-09-18 16:35",
+      "expected": {
+        "title": "正在上课：调课课",
+        "lines": ["16:30–17:10 · H808", "下一节：体育 · 明天 09:40 · 操场"],
+        "boundary": "2026-09-18 17:10"
+      }
+    },
+    {
+      "name": "同时间重叠课程：双端按（开始、结束、id 升序）稳定选中 id 较小者",
+      "now": "2026-09-07 08:20",
+      "courses": [
+        { "id": 202, "name": "后插重叠课", "classroom": "B202", "dayOfWeek": 1, "startSection": 1, "endSection": 2, "weeks": [1], "weekType": 0 },
+        { "id": 201, "name": "先插重叠课", "classroom": "A101", "dayOfWeek": 1, "startSection": 1, "endSection": 2, "weeks": [1], "weekType": 0 }
+      ],
+      "expected": {
+        "title": "正在上课：先插重叠课",
+        "lines": ["08:00–09:30 · A101", "今天没有其他课了"],
+        "boundary": "2026-09-07 09:30"
+      }
+    },
+    {
+      "name": "纯空白备注：裁剪后不占行",
+      "now": "2026-09-07 08:20",
+      "courses": [
+        { "id": 301, "name": "空白备注课", "classroom": "A101", "note": "   \t\n  ", "dayOfWeek": 1, "startSection": 1, "endSection": 2, "weeks": [1], "weekType": 0 },
+        { "id": 302, "name": "多行备注课", "classroom": "B202", "note": "  第一行\n第二行  ", "dayOfWeek": 1, "startSection": 3, "endSection": 4, "weeks": [1], "weekType": 0 }
+      ],
+      "expected": {
+        "title": "正在上课：空白备注课",
+        "lines": ["08:00–09:30 · A101", "下一节：多行备注课 · 今天 09:40 · B202"],
+        "boundary": "2026-09-07 09:30"
+      }
+    },
+    {
+      "name": "多行备注：去除首尾空白后原样保留内部换行",
+      "now": "2026-09-07 09:35",
+      "courses": [
+        { "id": 301, "name": "空白备注课", "classroom": "A101", "note": "   \t\n  ", "dayOfWeek": 1, "startSection": 1, "endSection": 2, "weeks": [1], "weekType": 0 },
+        { "id": 302, "name": "多行备注课", "classroom": "B202", "note": "  第一行\n第二行  ", "dayOfWeek": 1, "startSection": 3, "endSection": 4, "weeks": [1], "weekType": 0 }
+      ],
+      "expected": {
+        "title": "下一节：多行备注课",
+        "lines": ["09:40–11:10 · B202", "第一行\n第二行"],
+        "boundary": "2026-09-07 09:40"
+      }
     }
   ]
 }

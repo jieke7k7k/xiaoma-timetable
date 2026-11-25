@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,12 +5,13 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:xiaoma_timetable/database/dao.dart';
 import 'package:xiaoma_timetable/database/db_helper.dart';
-import 'package:xiaoma_timetable/main.dart';
 import 'package:xiaoma_timetable/models/semester.dart';
 import 'package:xiaoma_timetable/pages/course_tools_page.dart';
 import 'package:xiaoma_timetable/pages/import_page.dart';
 import 'package:xiaoma_timetable/pages/semester_manage_page.dart';
 import 'package:xiaoma_timetable/utils/sunday_dialog.dart';
+
+import 'helpers/pump_helpers.dart';
 
 /// WB_SPEC_257：弹出菜单按钮顺序统一（Widget 测试）
 ///
@@ -61,54 +60,12 @@ void main() {
     await db.close();
   });
 
-  /// 手动泵法：每轮 runAsync 80ms + pump 100ms，共 5 轮（不使用 pumpAndSettle）
-  Future<void> drain(WidgetTester tester) async {
-    for (var i = 0; i < 5; i++) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 80)),
-      );
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-  }
-
-  Future<void> pumpUntil(
-    WidgetTester tester,
-    Finder finder, {
-    int rounds = 25,
-  }) async {
-    for (var i = 0; i < rounds; i++) {
-      if (finder.evaluate().isNotEmpty) return;
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 80)),
-      );
-      await tester.pump(const Duration(milliseconds: 60));
-    }
-  }
-
   Future<void> pumpHome(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-
-    await tester.runAsync(() async {
-      await HttpOverrides.runZoned(
-        () async {
-          await tester.pumpWidget(
-            const ProviderScope(
-              child: MaterialApp(
-                home: HomeShell(),
-              ),
-            ),
-          );
-          await tester.pump();
-          await Future<void>.delayed(const Duration(milliseconds: 1500));
-        },
-        createHttpClient: (_) => throw const SocketException('测试环境阻断网络'),
-      );
-    });
-    await tester.pump();
-    await pumpUntil(tester, find.byIcon(Icons.more_vert));
+    await pumpHomeShell(tester, readyFinder: find.byIcon(Icons.more_vert));
   }
 
   /// 断言一组 Finder 自上而下 y 坐标严格递增（菜单/列表顺序回归通用断言）
@@ -166,7 +123,7 @@ void main() {
     expect(moreBtn, findsOneWidget);
 
     await tester.tap(moreBtn);
-    await drain(tester);
+    await drainAsync(tester);
 
     final switchFinder = find.text('切换到该学期');
     final editFinder = find.text('编辑学期');
@@ -193,7 +150,7 @@ void main() {
     expect(appBarMore, findsOneWidget, reason: '顶栏应只有一个 ⋮ 菜单按钮');
 
     await tester.tap(appBarMore);
-    await drain(tester);
+    await drainAsync(tester);
 
     const expectedOrder = [
       '导出课表图片',
@@ -221,6 +178,7 @@ void main() {
       [for (final title in expectedOrder) menuText(title)],
       expectedOrder,
     );
+    await finishHomeShell(tester);
   });
 
   testWidgets('导入页：4 张导入卡片顺序为 教务官网 < 拍照 < ICS < PDF', (tester) async {
@@ -233,14 +191,11 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.runAsync(() async {
-      await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(home: ImportPage()),
-        ),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 600));
-    });
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: ImportPage()),
+      ),
+    );
     await pumpUntil(tester, find.text('从教务官网导入'));
 
     const expectedOrder = [
@@ -266,8 +221,11 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
+    // T1（防御性）：补包 ProviderScope，避免后续点击导出等 Consumer 交互时抛错
     await tester.pumpWidget(
-      const MaterialApp(home: CourseToolsPage()),
+      const ProviderScope(
+        child: MaterialApp(home: CourseToolsPage()),
+      ),
     );
     await tester.pump();
 

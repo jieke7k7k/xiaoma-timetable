@@ -39,6 +39,15 @@ class Semester {
         isCurrent: (map['isCurrent'] as int? ?? 0) == 1,
       );
 
+  /// 开学日期的安全解析（纯函数版本，显式传入回退参考日期 [reference]）。
+  ///
+  /// 解析失败时回退到 [reference] 所在周的周一（与 Kotlin 侧
+  /// OngoingFocusCalculator.startDate 同构）；由调用方在计算入口按
+  /// today 一次解析后复用，避免多天前瞻或跨午夜瞬间重复读实时时钟。
+  DateTime parseStartDate({DateTime? reference}) =>
+      DateTime.tryParse(startDate.trim()) ??
+      WeekCalc.alignToMonday(reference ?? DateTime.now());
+
   /// 开学日期的安全解析（防御性）
   ///
   /// [startDate] 在库里是 TEXT，正常恒为 yyyy-MM-dd；但手工改过备份、旧版本
@@ -48,8 +57,7 @@ class Semester {
   /// 固定日期在若干年后会算出上千周、在若干年前也会让周次远超总周数，
   /// 页面定位照样越界；回退到本周一则恒等于第 1 周，任何周次计算与
   /// PageView 定位都落在合理区间内，是最安全的兜底。
-  DateTime get startDateParsed =>
-      DateTime.tryParse(startDate) ?? WeekCalc.alignToMonday(DateTime.now());
+  DateTime get startDateParsed => parseStartDate();
 
   Semester copyWith({
     int? id,

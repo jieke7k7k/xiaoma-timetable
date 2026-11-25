@@ -100,6 +100,12 @@ Future<Uint8List?> renderWithinLimit(
   return bytes;
 }
 
+/// 分享文案与文件名（WB_SPEC_264 T13）：从 _share() / _saveToLocal() 内联字面量抽出的
+/// 顶层纯函数，可直接单测；文件名不是图内水印，保留「小马课表」前缀。
+String buildWeekShareText(int week) => '我的课表（第 $week 周）';
+
+String buildWeekShareFileName(int week) => '小马课表-第$week周.png';
+
 /// 课表导出图片页
 ///
 /// 1.2.0 初版用自定版式（720 宽、海报比例），用户反馈「形状和主页对不上」。
@@ -205,7 +211,7 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
     try {
       final bytes = await _obtainPngBytes();
       final week = ref.read(displayWeekProvider);
-      final fileName = '小马课表-第$week周.png';
+      final fileName = buildWeekShareFileName(week);
       // gal 3.x 会按字节自行识别扩展名并拼到 name 后面（见 gal 源码
       // getUniqueFileUri），name 里不要带 .png，否则存成「.png.png」。
       await saveImageToGalleryHandler(bytes, name: '小马课表-第$week周');
@@ -236,12 +242,12 @@ class _ShareImagePageState extends ConsumerState<ShareImagePage> {
         files: [
           XFile.fromData(
             pngBytes,
-            name: '小马课表-第$week周.png',
+            name: buildWeekShareFileName(week),
             mimeType: 'image/png',
           ),
         ],
         // WB_SPEC_232 第 4 节：分享文案不再带「· 小马课表」
-        text: '我的课表（第 $week 周）',
+        text: buildWeekShareText(week),
         ),
       );
     } catch (e) {

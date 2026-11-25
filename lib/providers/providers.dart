@@ -29,13 +29,16 @@ class CurrentSemesterNotifier extends AsyncNotifier<Semester> {
     return s;
   }
 
-  Future<void> updateSemester(Semester updated) async {
-    await Dao.instance.updateSemester(updated);
-    state = AsyncData(updated);
-  }
+  /// 收口学期更新唯一入口至 [SemestersNotifier.updateSemester]（C15），
+  /// 保证学期列表、当前学期状态、浏览周钳制与通知/小组件联动完全一致。
+  Future<void> updateSemester(Semester updated) =>
+      ref.read(semestersProvider.notifier).updateSemester(updated);
 
   Future<void> reload() async {
-    state = const AsyncLoading();
+    // C18：仅从错误态重试时切加载态；已有数据时静默刷新，保留旧数据不闪全屏转圈
+    if (state.hasError) {
+      state = const AsyncLoading();
+    }
     state = await AsyncValue.guard(build);
   }
 
@@ -82,7 +85,10 @@ class SemestersNotifier extends AsyncNotifier<List<Semester>> {
   Future<List<Semester>> build() => Dao.instance.getAllSemesters();
 
   Future<void> reload() async {
-    state = const AsyncLoading();
+    // C18：仅从错误态重试时切加载态；已有数据时静默刷新，保留旧数据不闪全屏转圈
+    if (state.hasError) {
+      state = const AsyncLoading();
+    }
     state = await AsyncValue.guard(build);
   }
 
@@ -160,16 +166,22 @@ final semestersProvider =
 ///
 /// 2.0.0 复审 C3：作息时间直接决定桌面小部件每行开头的「上课时间」，所以
 /// [updateSlot] / [addSection] / [removeLastSection] / [applyPresetBigSections]
-/// 四个改动作息的方法末尾统一挂一次小部件刷新。放在 provider 层而不是每个页面
+/// 四个改动作息的方法末尾统一挂一次联动刷新。放在 provider 层而不是每个页面
 /// 各补一遍——改作息的入口有三个（作息设置页、导入校准、一键套用），漏一处就会
 /// 出现「页面上是新时间、桌面还是旧时间」这类对不上的反馈。
+/// 2.16.1（C8）：改为统一走 [_notifyDataChanged]，同步重排上课提醒、重建
+/// 常驻通知与闹钟链，并并行刷新桌面小组件。
 class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
   @override
   Future<List<TimeSlot>> build() => Dao.instance.getTimeSlots();
 
   Future<void> updateSlot(TimeSlot slot) async {
+    // L3（DeepSeek 264 复审）：数据加载失败时 state.value 为空，await future 会
+    // 把原始异常抛给 UI（未捕获）；此时直接返回，错误页/重试是恢复路径。
+    if (state.hasError) return;
+
+    final list = state.value ?? await future;
     await Dao.instance.updateTimeSlot(slot);
-    final list = state.value ?? [];
     // 已有节次替换、没有的新增（导入校准扩出的新节次靠这条进状态）
     state = AsyncData(
       [
@@ -177,14 +189,18 @@ class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
         if (!list.any((s) => s.section == slot.section)) slot,
       ]..sort((a, b) => a.section.compareTo(b.section)),
     );
-    // 小部件每行都要带上课/下课时间，作息一改就得重推（2.0.0 复审 C3）
-    unawaited(WidgetService.instance.refreshWidgets());
+    // 作息变了 → 统一联动：重排提醒 + 重建常驻通知并排链 + 刷新小组件（见类注释）
+    _notifyDataChanged();
   }
 
   /// 增加一节（末尾追加）：开始 = 上一节结束 + 10 分钟课间，时长沿用上一节；
-  /// 一节都没有时从第 1 节 08:00-08:40 起步。总节数上限 20。
+  /// 一节都没有时从第 1 节 08:00-08:40 起步。总节数上限 20，起止不超过 23:59。
   Future<void> addSection() async {
-    final list = <TimeSlot>[...(state.value ?? const <TimeSlot>[])]
+    // L3（DeepSeek 264 复审）：数据加载失败时 state.value 为空，await future 会
+    // 把原始异常抛给 UI（未捕获）；此时直接返回，错误页/重试是恢复路径。
+    if (state.hasError) return;
+
+    final list = [...(state.value ?? await future)]
       ..sort((a, b) => a.section.compareTo(b.section));
     if (list.length >= 20) return;
     final TimeSlot next;
@@ -194,23 +210,31 @@ class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
       final last = list.last;
       final lastStart = _slotMin(last.startTime) ?? 8 * 60;
       final lastEnd = _slotMin(last.endTime) ?? lastStart + 40;
-      final duration = lastEnd - lastStart;
+      final duration = lastEnd - lastStart > 0 ? lastEnd - lastStart : 40;
+      const maxMinute = 23 * 60 + 59; // 1439（当天 23:59，不超过 24:00）
       final start = lastEnd + 10;
+      // 已无法在当天 23:59 前继续追加有效节次时直接拦截
+      if (start >= maxMinute) return;
+      final end = (start + duration).clamp(start + 1, maxMinute);
       next = TimeSlot(
         section: last.section + 1,
         startTime: _slotHm(start),
-        endTime: _slotHm(start + (duration > 0 ? duration : 40)),
+        endTime: _slotHm(end),
       );
     }
     await Dao.instance.updateTimeSlot(next);
     state = AsyncData([...list, next]);
-    // 作息变了 → 小部件重推（见类注释）
-    unawaited(WidgetService.instance.refreshWidgets());
+    // 作息变了 → 统一联动（见类注释）
+    _notifyDataChanged();
   }
 
   /// 减少一节（删除最后一节），并把午间/晚间分段点钳回新范围。总节数下限 4。
   Future<void> removeLastSection() async {
-    final list = <TimeSlot>[...(state.value ?? const <TimeSlot>[])]
+    // L3（DeepSeek 264 复审）：数据加载失败时 state.value 为空，await future 会
+    // 把原始异常抛给 UI（未捕获）；此时直接返回，错误页/重试是恢复路径。
+    if (state.hasError) return;
+
+    final list = [...(state.value ?? await future)]
       ..sort((a, b) => a.section.compareTo(b.section));
     if (list.length <= 4) return;
     await Dao.instance.deleteTimeSlot(list.last.section);
@@ -230,34 +254,83 @@ class TimeSlotsNotifier extends AsyncNotifier<List<TimeSlot>> {
             .setDinnerAfterSection(n);
       }
     }
-    // 作息变了 → 小部件重推（见类注释）
-    unawaited(WidgetService.instance.refreshWidgets());
+    // 作息变了 → 统一联动（见类注释）
+    _notifyDataChanged();
   }
 
   /// 一键套用常用大节时间（1-2 节 09:40-12:00，3-4 节 14:00-16:20）
+  /// 事务内同步顺延第 5 节之后的冲突节次（超出 23:59 的节次自动清理），消除时间倒置。
   Future<void> applyPresetBigSections() async {
+    // L3（DeepSeek 264 复审）：数据加载失败时 state.value 为空，await future 会
+    // 把原始异常抛给 UI（未捕获）；此时直接返回，错误页/重试是恢复路径。
+    if (state.hasError) return;
+
     const preset = {
       1: ('09:40', '10:40'),
       2: ('10:40', '12:00'),
       3: ('14:00', '15:10'),
       4: ('15:10', '16:20'),
     };
-    for (final entry in preset.entries) {
-      await Dao.instance.updateTimeSlot(
-        TimeSlot(
-          section: entry.key,
-          startTime: entry.value.$1,
-          endTime: entry.value.$2,
-        ),
-      );
-    }
+    const maxMinute = 23 * 60 + 59; // 1439（23:59）
+    final current = [...(state.value ?? await future)]
+      ..sort((a, b) => a.section.compareTo(b.section));
+
+    await Dao.instance.runInTransaction((txn) async {
+      for (final entry in preset.entries) {
+        await Dao.instance.updateTimeSlot(
+          TimeSlot(
+            section: entry.key,
+            startTime: entry.value.$1,
+            endTime: entry.value.$2,
+          ),
+          txn: txn,
+        );
+      }
+      var prevEnd = _slotMin(preset[4]!.$2)!; // 第 4 节结束 16:20
+      for (final slot in current) {
+        if (slot.section <= 4) continue;
+        final origStart = _slotMin(slot.startTime);
+        final origEnd = _slotMin(slot.endTime);
+        final duration = (origStart != null &&
+                origEnd != null &&
+                origEnd > origStart)
+            ? origEnd - origStart
+            : 40;
+        if (origStart != null &&
+            origEnd != null &&
+            origStart >= prevEnd &&
+            origEnd > origStart &&
+            origEnd <= maxMinute) {
+          prevEnd = origEnd;
+          continue;
+        }
+        final shiftedStart = prevEnd + 10;
+        if (shiftedStart >= maxMinute) {
+          await Dao.instance.deleteTimeSlot(slot.section, txn: txn);
+          continue;
+        }
+        final shiftedEnd =
+            (shiftedStart + duration).clamp(shiftedStart + 1, maxMinute);
+        await Dao.instance.updateTimeSlot(
+          slot.copyWith(
+            startTime: _slotHm(shiftedStart),
+            endTime: _slotHm(shiftedEnd),
+          ),
+          txn: txn,
+        );
+        prevEnd = shiftedEnd;
+      }
+    });
     await reload();
-    // 作息变了 → 小部件重推（见类注释）
-    unawaited(WidgetService.instance.refreshWidgets());
+    // 作息变了 → 统一联动（见类注释）
+    _notifyDataChanged();
   }
 
   Future<void> reload() async {
-    state = const AsyncLoading();
+    // C18：仅从错误态重试时切加载态；已有数据时静默刷新，保留旧数据不闪全屏转圈
+    if (state.hasError) {
+      state = const AsyncLoading();
+    }
     state = await AsyncValue.guard(build);
   }
 }
@@ -335,7 +408,10 @@ class CoursesNotifier extends AsyncNotifier<List<Course>> {
   }
 
   Future<void> reload() async {
-    state = const AsyncLoading();
+    // C18：仅从错误态重试时切加载态；已有数据时静默刷新，保留旧数据不闪全屏转圈
+    if (state.hasError) {
+      state = const AsyncLoading();
+    }
     state = await AsyncValue.guard(build);
   }
 }
@@ -376,7 +452,10 @@ class CourseOverridesNotifier extends AsyncNotifier<List<CourseOverride>> {
   void _notifyServices() => _notifyDataChanged();
 
   Future<void> reload() async {
-    state = const AsyncLoading();
+    // C18：仅从错误态重试时切加载态；已有数据时静默刷新，保留旧数据不闪全屏转圈
+    if (state.hasError) {
+      state = const AsyncLoading();
+    }
     state = await AsyncValue.guard(build);
   }
 }
@@ -421,7 +500,10 @@ class NotesNotifier extends AsyncNotifier<List<Note>> {
   }
 
   Future<void> reload() async {
-    state = const AsyncLoading();
+    // C18：仅从错误态重试时切加载态；已有数据时静默刷新，保留旧数据不闪全屏转圈
+    if (state.hasError) {
+      state = const AsyncLoading();
+    }
     state = await AsyncValue.guard(build);
   }
 }
@@ -430,7 +512,7 @@ final notesProvider = AsyncNotifierProvider<NotesNotifier, List<Note>>(
   NotesNotifier.new,
 );
 
-/// 今天是本学期第几周（依赖当前学期，设置页改开学日期后自动刷新）
+/// 今天是本学期第几周（依赖当前学期，设置页改开学日期或前后台切换/跨午夜时自动刷新）
 final todayWeekProvider = Provider<int>((ref) {
   final semester = ref.watch(currentSemesterProvider).value;
   if (semester == null) return 0;
@@ -561,29 +643,30 @@ class ReminderSettingsNotifier extends AsyncNotifier<ReminderSettings> {
     return ReminderSettings(enabled: enabled, advanceMinutes: advance);
   }
 
-  /// 开启/关闭提醒。开启时由 UI 先申请权限再调用；此处只负责持久化 + 重排
+  /// 开启/关闭提醒。开启时由 UI 先申请权限再调用；此处只负责持久化 + 联动重排
   Future<void> setEnabled(bool value) async {
+    // L3（DeepSeek 264 复审）：数据加载失败时 state.value 为空，await future 会
+    // 把原始异常抛给 UI（未捕获）；此时直接返回，错误页/重试是恢复路径。
+    if (state.hasError) return;
+
+    final cur = state.value ?? await future;
     await Dao.instance.setSetting('reminder_enabled', value ? '1' : '0');
-    state = AsyncData(
-      ReminderSettings(
-        enabled: value,
-        advanceMinutes: state.value?.advanceMinutes ?? 15,
-      ),
-    );
-    // 开启则排期，关闭则清空（rescheduleAll 内部处理）
-    unawaited(NotificationService.instance.rescheduleAll());
+    state = AsyncData(cur.copyWith(enabled: value));
+    // 走统一联动（rescheduleAll → OngoingNoticeService.refresh + 刷新小组件），
+    // 避免 rescheduleAll 的 cancelAll 清掉 id 1001 常驻通知后未重建（C7）。
+    _notifyDataChanged();
   }
 
   /// 修改提前分钟（5/10/15/30）
   Future<void> setAdvanceMinutes(int minutes) async {
+    // L3（DeepSeek 264 复审）：数据加载失败时 state.value 为空，await future 会
+    // 把原始异常抛给 UI（未捕获）；此时直接返回，错误页/重试是恢复路径。
+    if (state.hasError) return;
+
+    final cur = state.value ?? await future;
     await Dao.instance.setSetting('reminder_advance_minutes', '$minutes');
-    state = AsyncData(
-      ReminderSettings(
-        enabled: state.value?.enabled ?? false,
-        advanceMinutes: minutes,
-      ),
-    );
-    unawaited(NotificationService.instance.rescheduleAll());
+    state = AsyncData(cur.copyWith(advanceMinutes: minutes));
+    _notifyDataChanged();
   }
 }
 
@@ -700,7 +783,12 @@ class SegmentSettingsNotifier extends AsyncNotifier<SegmentSettings> {
 
   /// 修改午间分段点。钳制到 [1, 晚间分段点-1]，保证午间点 < 晚间点且上午段至少 1 节。
   Future<void> setLunchAfterSection(int value) async {
-    final dinner = state.value?.dinnerAfterSection ?? 9;
+    // L3（DeepSeek 264 复审）：数据加载失败时 state.value 为空，await future 会
+    // 把原始异常抛给 UI（未捕获）；此时直接返回，错误页/重试是恢复路径。
+    if (state.hasError) return;
+
+    final cur = state.value ?? await future;
+    final dinner = cur.dinnerAfterSection;
     final max = dinner - 1;
     final v = value < 1 ? 1 : (value > max ? max : value);
     await Dao.instance.setSetting('lunch_after_section', '$v');
@@ -712,7 +800,12 @@ class SegmentSettingsNotifier extends AsyncNotifier<SegmentSettings> {
   /// 修改晚间分段点。钳制到 [午间分段点+1, +∞)，保证午间点 < 晚间点；
   /// 上限由作息设置页按当前最大节次进一步钳制。
   Future<void> setDinnerAfterSection(int value) async {
-    final lunch = state.value?.lunchAfterSection ?? 5;
+    // L3（DeepSeek 264 复审）：数据加载失败时 state.value 为空，await future 会
+    // 把原始异常抛给 UI（未捕获）；此时直接返回，错误页/重试是恢复路径。
+    if (state.hasError) return;
+
+    final cur = state.value ?? await future;
+    final lunch = cur.lunchAfterSection;
     final min = lunch + 1;
     final v = value < min ? min : value;
     await Dao.instance.setSetting('dinner_after_section', '$v');
@@ -747,33 +840,53 @@ class BandSettingsNotifier extends AsyncNotifier<BandSettings> {
     );
   }
 
-  BandSettings get _cur => state.value ?? const BandSettings();
+  Future<BandSettings> _current() async => state.value ?? await future;
 
   Future<void> setLunchVisible(bool value) async {
+    // L3（DeepSeek 264 复审）：数据加载失败时 state.value 为空，await future 会
+    // 把原始异常抛给 UI（未捕获）；此时直接返回，错误页/重试是恢复路径。
+    if (state.hasError) return;
+
+    final cur = await _current();
     await Dao.instance.setSetting('band_lunch_visible', value ? '1' : '0');
-    state = AsyncData(_cur.copyWith(lunchVisible: value));
+    state = AsyncData(cur.copyWith(lunchVisible: value));
   }
 
   Future<void> setDinnerVisible(bool value) async {
+    // L3（DeepSeek 264 复审）：数据加载失败时 state.value 为空，await future 会
+    // 把原始异常抛给 UI（未捕获）；此时直接返回，错误页/重试是恢复路径。
+    if (state.hasError) return;
+
+    final cur = await _current();
     await Dao.instance.setSetting('band_dinner_visible', value ? '1' : '0');
-    state = AsyncData(_cur.copyWith(dinnerVisible: value));
+    state = AsyncData(cur.copyWith(dinnerVisible: value));
   }
 
   /// 设置午间起止时间；开始早于结束才保存，返回是否保存成功。
   Future<bool> setLunchTime(String start, String end) async {
+    // L3（DeepSeek 264 复审）：数据加载失败时 state.value 为空，await future 会
+    // 把原始异常抛给 UI（未捕获）；此时直接返回，错误页/重试是恢复路径。
+    if (state.hasError) return false;
+
     if (!bandRangeValid(start, end)) return false;
+    final cur = await _current();
     await Dao.instance.setSetting('band_lunch_start', start);
     await Dao.instance.setSetting('band_lunch_end', end);
-    state = AsyncData(_cur.copyWith(lunchStart: start, lunchEnd: end));
+    state = AsyncData(cur.copyWith(lunchStart: start, lunchEnd: end));
     return true;
   }
 
   /// 设置晚间起止时间；开始早于结束才保存，返回是否保存成功。
   Future<bool> setDinnerTime(String start, String end) async {
+    // L3（DeepSeek 264 复审）：数据加载失败时 state.value 为空，await future 会
+    // 把原始异常抛给 UI（未捕获）；此时直接返回，错误页/重试是恢复路径。
+    if (state.hasError) return false;
+
     if (!bandRangeValid(start, end)) return false;
+    final cur = await _current();
     await Dao.instance.setSetting('band_dinner_start', start);
     await Dao.instance.setSetting('band_dinner_end', end);
-    state = AsyncData(_cur.copyWith(dinnerStart: start, dinnerEnd: end));
+    state = AsyncData(cur.copyWith(dinnerStart: start, dinnerEnd: end));
     return true;
   }
 }
@@ -825,7 +938,11 @@ class UiSettingsNotifier extends AsyncNotifier<UiSettings> {
 
   /// 便捷更新：基于当前值 copyWith 后整体替换
   Future<void> updateWith(UiSettings Function(UiSettings) fn) async {
-    final cur = state.value ?? const UiSettings();
+    // L3（DeepSeek 264 复审）：数据加载失败时 state.value 为空，await future 会
+    // 把原始异常抛给 UI（未捕获）；此时直接返回，错误页/重试是恢复路径。
+    if (state.hasError) return;
+
+    final cur = state.value ?? await future;
     await apply(fn(cur));
   }
 }

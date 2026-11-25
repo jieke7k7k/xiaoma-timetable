@@ -48,8 +48,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               d: notes.where((n) => n.date == d).toList(),
           };
           return ListView.builder(
+            // S4-2：底部留足 88dp 避让右下角 FAB，防止末条备注右侧删除图标被挡住
             padding: const EdgeInsets.fromLTRB(
-                AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.l),
+                AppSpacing.l, AppSpacing.s, AppSpacing.l, 88),
             itemCount: sections.length,
             itemBuilder: (context, i) {
               final date = sections[i];
@@ -140,94 +141,30 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   /// 新增/编辑备注对话框（必填内容 + 可选日期，默认今天）
   Future<void> _showEditor({Note? note}) async {
     final isEdit = note != null;
-    var pickedDate = note != null
+    final initialDate = note != null
         ? (DateTime.tryParse(note.date) ?? DateTime.now())
         : DateTime.now();
-    final controller = TextEditingController(text: note?.content ?? '');
-
-    final saved = await showDialog<bool>(
+    final result = await showDialog<({DateTime date, String content})>(
       context: context,
-      // WB_SPEC_230 第 4.2 节第 5 类：只换外层壳（StatefulBuilder 仍在外层），
-      // content 的 Column 外包 SingleChildScrollView——小屏软键盘顶起时
-      // 多行备注输入框不会 RenderFlex overflowed。
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AppDialog(
-          title: isEdit ? '编辑备注' : '新增备注',
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.event_outlined),
-                  title: Text(_dateTitle(noteDayKey(pickedDate))),
-                  subtitle: Text(noteDayKey(pickedDate)),
-                  trailing: const Icon(Icons.chevron_right),
-                  // WB_SPEC_235 跟进 §1-9 / §2：编辑器内「选日期」= 选择档
-                  // 复审 M2：补 enableFeedback: false 防双写
-                  enableFeedback: false,
-                  onTap: () async {
-                    AppHaptics.select();
-                    final d = await showDatePicker(
-                      context: ctx,
-                      initialDate: pickedDate,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2035),
-                      helpText: '选择备注日期',
-                    );
-                    if (d != null) setState(() => pickedDate = d);
-                  },
-                ),
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  maxLines: 3,
-                  textInputAction: TextInputAction.done,
-                  // WB_SPEC_230 第 5.2 节：手写圆角框删掉，统一吃全局 inputDecorationTheme
-                  decoration: const InputDecoration(
-                    hintText: '输入备注内容',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            // WB_SPEC_235 跟进 §1-15 / §4：弹窗按钮走标准 action 构造
-            AppDialogAction(
-              label: '取消',
-              onPressed: () => Navigator.pop(ctx, false),
-            ),
-            AppDialogAction(
-              label: '保存',
-              primary: true,
-              // 保存类 = 中档（§2）
-              haptic: AppDialogHaptic.medium,
-              onPressed: () {
-                if (controller.text.trim().isEmpty) {
-                  ScaffoldMessenger.of(ctx)
-                      .showSnackBar(const SnackBar(content: Text('备注内容不能为空')));
-                  return;
-                }
-                Navigator.pop(ctx, true);
-              },
-            ),
-          ],
-        ),
+      builder: (ctx) => _NoteEditorDialog(
+        isEdit: isEdit,
+        initialDate: initialDate,
+        initialContent: note?.content ?? '',
+        dateTitleBuilder: _dateTitle,
       ),
     );
-    if (saved != true || !mounted) return;
+    if (result == null || !mounted) return;
 
-    final content = controller.text.trim();
-    final dateKey = noteDayKey(pickedDate);
+    final dateKey = noteDayKey(result.date);
     try {
       if (isEdit) {
         await ref
             .read(notesProvider.notifier)
-            .updateNote(note.copyWith(date: dateKey, content: content));
+            .updateNote(note.copyWith(date: dateKey, content: result.content));
       } else {
         await ref.read(notesProvider.notifier).addNote(Note(
               date: dateKey,
-              content: content,
+              content: result.content,
               createdAt: DateTime.now().millisecondsSinceEpoch,
             ));
       }
@@ -267,5 +204,117 @@ class _NotesPageState extends ConsumerState<NotesPage> {
             .showSnackBar(SnackBar(content: Text('删除失败：$e')));
       }
     }
+  }
+}
+
+/// 备注新增/编辑弹窗（S3-2 独立持有并释放控制器；S4-3 表单校验改走内联 errorText）
+class _NoteEditorDialog extends StatefulWidget {
+  const _NoteEditorDialog({
+    required this.isEdit,
+    required this.initialDate,
+    required this.initialContent,
+    required this.dateTitleBuilder,
+  });
+
+  final bool isEdit;
+  final DateTime initialDate;
+  final String initialContent;
+  final String Function(String dateKey) dateTitleBuilder;
+
+  @override
+  State<_NoteEditorDialog> createState() => _NoteEditorDialogState();
+}
+
+class _NoteEditorDialogState extends State<_NoteEditorDialog> {
+  late final TextEditingController _controller;
+  late DateTime _pickedDate;
+  String? _contentError;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialContent);
+    _pickedDate = widget.initialDate;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // WB_SPEC_230 第 4.2 节第 5 类：只换外层壳，
+    // content 的 Column 外包 SingleChildScrollView——小屏软键盘顶起时
+    // 多行备注输入框不会 RenderFlex overflowed。
+    return AppDialog(
+      title: widget.isEdit ? '编辑备注' : '新增备注',
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.event_outlined),
+              title: Text(widget.dateTitleBuilder(noteDayKey(_pickedDate))),
+              subtitle: Text(noteDayKey(_pickedDate)),
+              trailing: const Icon(Icons.chevron_right),
+              // WB_SPEC_235 跟进 §1-9 / §2：编辑器内「选日期」= 选择档
+              // 复审 M2：补 enableFeedback: false 防双写
+              enableFeedback: false,
+              onTap: () async {
+                AppHaptics.select();
+                final d = await showDatePicker(
+                  context: context,
+                  initialDate: _pickedDate,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime(2035),
+                  helpText: '选择备注日期',
+                );
+                if (d != null && mounted) setState(() => _pickedDate = d);
+              },
+            ),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              maxLines: 3,
+              textInputAction: TextInputAction.done,
+              // WB_SPEC_230 第 5.2 节：手写圆角框删掉，统一吃全局 inputDecorationTheme
+              decoration: InputDecoration(
+                hintText: '输入备注内容',
+                errorText: _contentError,
+              ),
+              onChanged: (_) {
+                if (_contentError != null) {
+                  setState(() => _contentError = null);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        // WB_SPEC_235 跟进 §1-15 / §4：弹窗按钮走标准 action 构造
+        AppDialogAction(
+          label: '取消',
+          onPressed: () => Navigator.pop(context),
+        ),
+        AppDialogAction(
+          label: '保存',
+          primary: true,
+          // 保存类 = 中档（§2）
+          haptic: AppDialogHaptic.medium,
+          onPressed: () {
+            final content = _controller.text.trim();
+            if (content.isEmpty) {
+              setState(() => _contentError = '备注内容不能为空');
+              return;
+            }
+            Navigator.pop(context, (date: _pickedDate, content: content));
+          },
+        ),
+      ],
+    );
   }
 }

@@ -965,6 +965,7 @@ class DataSettingsPage extends ConsumerWidget {
         semester: semester,
         courses: courses,
         slots: ref.read(timeSlotsProvider).value ?? const [],
+        overrides: ref.read(courseOverridesProvider).value ?? const [],
         now: DateTime.now(),
       );
       // 学期名进入文件名，过滤文件系统非法字符（Windows 同步盘也可能存这份文件）

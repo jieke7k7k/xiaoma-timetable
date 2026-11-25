@@ -103,12 +103,12 @@ class DbHelper {
 
   Database? _db;
 
-  /// 打开数据库的共享 Future（2.0.0 复审 C1）。
+  /// 打开数据库的共享 Future（2.0.0 复审 C1；2.16.1 改为失败后可重试）。
   ///
-  /// 目的是**缓存打开失败**：升级 SQL 报错、磁盘满、库文件损坏时，旧写法
-  /// `_db ??= await _open()` 会让每个调用点（启动瞬间十几个 provider 同时读库）
-  /// 各自再跑一次 openDatabase → 再跑一遍 onUpgrade，错误刷屏且可能越修越坏。
-  /// 共享 Future 之后「第一次失败即定论」，后续调用拿到同一个错误，不再重试。
+  /// 目的是**并发打开去重**：启动瞬间十几个 provider 同时读库时只跑一次
+  /// openDatabase，避免各自再跑一遍 onUpgrade 导致错误刷屏。
+  /// 打开失败时在 catchError 里把 [_opening] 置空并原样抛出：失败不等同定论，
+  /// 后续调用（例如主页「重试」按钮）可以重新打开，而不是永久锁死在旧错误上。
   Future<Database>? _opening;
 
   /// 仅测试用：注入外部数据库实例（如 sqflite_common_ffi 的内存库），
@@ -119,7 +119,10 @@ class DbHelper {
   Future<Database> get database {
     final db = _db;
     if (db != null) return Future<Database>.value(db);
-    return _opening ??= _open();
+    return _opening ??= _open().catchError((Object e, StackTrace s) {
+      _opening = null;
+      Error.throwWithStackTrace(e, s);
+    });
   }
 
   /// 恢复出厂（1.2.4 数据管理页）：关库并删除数据库文件。
@@ -140,6 +143,8 @@ class DbHelper {
     final db = await openDatabase(
       path,
       version: _dbVersion,
+      // 启用 SQLite 外键约束，使 createSchema 中声明的 ON DELETE CASCADE 真正生效（C15）
+      onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, version) => createSchema(db),
       // 老库升级统一走 [upgradeSchema]（抽出来是为了让迁移测试能直接驱动同一份 SQL）。
       onUpgrade: upgradeSchema,
@@ -187,11 +192,12 @@ class DbHelper {
     // 升级链上没有再补建它们的理由；v3 老库升到 6 时直接由下方分支删干净。
     // v4 -> v5（2.1.0 云同步）：courses 补考试结束时间/地点与 updatedAt 水位列，
     // notes 补 updatedAt 水位列。全部可空，旧数据保持 null、一行不丢。
+    // 先查 PRAGMA table_info 跳过已存在列，避免降级到 ≤v4 再升回时重复加列失败。
     if (oldVersion < 5) {
-      await db.execute('ALTER TABLE courses ADD COLUMN examEndTime TEXT');
-      await db.execute('ALTER TABLE courses ADD COLUMN examPlace TEXT');
-      await db.execute('ALTER TABLE courses ADD COLUMN updatedAt INTEGER');
-      await db.execute('ALTER TABLE notes ADD COLUMN updatedAt INTEGER');
+      await _addColumnIfMissing(db, 'courses', 'examEndTime', 'TEXT');
+      await _addColumnIfMissing(db, 'courses', 'examPlace', 'TEXT');
+      await _addColumnIfMissing(db, 'courses', 'updatedAt', 'INTEGER');
+      await _addColumnIfMissing(db, 'notes', 'updatedAt', 'INTEGER');
     }
     // v5 -> v6（2.1.3 WB_SPEC_214 第 2 节）：一次性删除两张遗留表并清掉十个
     // 遗留设置键。DROP 带 IF EXISTS：极早期老库（v1/v2，从未建过这两张表）直接
@@ -215,6 +221,20 @@ class DbHelper {
         where: 'key IN ($placeholders)',
         whereArgs: retiredSyncKeys,
       );
+    }
+  }
+
+  /// 先通过 PRAGMA table_info 校验列是否存在，缺失时再执行 ALTER TABLE ADD COLUMN
+  Future<void> _addColumnIfMissing(
+    DatabaseExecutor db,
+    String table,
+    String column,
+    String type,
+  ) async {
+    final columns = await db.rawQuery('PRAGMA table_info($table)');
+    final exists = columns.any((row) => row['name'] == column);
+    if (!exists) {
+      await db.execute('ALTER TABLE $table ADD COLUMN $column $type');
     }
   }
 

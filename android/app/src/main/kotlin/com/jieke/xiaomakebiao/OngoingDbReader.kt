@@ -85,15 +85,20 @@ object OngoingDbReader {
         Log.w(TAG, "读取 $tag 失败，按空结果处理", t)
     }
 
-    /** ongoing_enabled：缺失按开；'1' / 'true' 为开；其余为关（与 Dart getSettingBool 一致） */
+    /**
+     * ongoing_enabled：表正常但无该键（或值为 NULL）按默认开；'1' / 'true' 为开；其余为关
+     * （与 Dart getSettingBool 一致）。
+     *
+     * 不走 readOrEmpty 吞异常：读表失败必须向上抛给 [read] 返回 null 停链，
+     * 避免用户关了开关却因读表异常被误判成「默认开」。
+     */
     private fun readOngoingEnabled(db: SQLiteDatabase): Boolean {
-        val rows = readOrEmpty("app_settings", ::logReadFailure) {
-            db.rawQuery(
-                "SELECT value FROM app_settings WHERE key = ? LIMIT 1",
-                arrayOf("ongoing_enabled"),
-            ).use { c -> if (c.moveToFirst()) listOf(c.getStringOrNull(0)) else emptyList() }
+        val value = db.rawQuery(
+            "SELECT value FROM app_settings WHERE key = ? LIMIT 1",
+            arrayOf("ongoing_enabled"),
+        ).use { c ->
+            if (c.moveToFirst()) c.getStringOrNull(0) else null
         }
-        val value = rows.firstOrNull()
         if (value == null) return true
         return value == "1" || value.equals("true", ignoreCase = true)
     }
@@ -131,7 +136,8 @@ object OngoingDbReader {
         readOrEmpty("courses", ::logReadFailure) {
             db.rawQuery(
                 "SELECT id, name, classroom, dayOfWeek, startSection, endSection, " +
-                    "weeksJson, weekType, note FROM courses WHERE semesterId = ?",
+                    "weeksJson, weekType, note FROM courses WHERE semesterId = ? " +
+                    "ORDER BY id ASC",
                 arrayOf(semesterId.toString()),
             ).use { c ->
                 buildList {
@@ -188,11 +194,17 @@ object OngoingDbReader {
             ).use { c ->
                 buildList {
                     while (c.moveToNext()) {
+                        // targetWeek 为空属于异常记录，直接跳过，不按停课（CANCEL_FLAG）处理
+                        val targetWeek = c.getIntOrNull(2)
+                        if (targetWeek == null) {
+                            Log.w(TAG, "跳过异常调课记录：targetWeek 为空")
+                            continue
+                        }
                         add(
                             FocusOverride(
                                 courseId = c.getIntOrNull(0) ?: 0,
                                 originalWeek = c.getIntOrNull(1) ?: 0,
-                                targetWeek = c.getIntOrNull(2) ?: FocusOverride.CANCEL_FLAG,
+                                targetWeek = targetWeek,
                                 targetDayOfWeek = c.getIntOrNull(3),
                                 targetStartSection = c.getIntOrNull(4),
                                 targetEndSection = c.getIntOrNull(5),

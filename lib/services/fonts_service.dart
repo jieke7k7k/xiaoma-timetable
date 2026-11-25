@@ -110,7 +110,12 @@ class FontsService {
   /// 导入一个字体文件：复制进私有目录 → 注册加载（无效文件会抛错并清理）
   /// → 写注册表。成功返回字体记录，调用方一般随即把它设为当前字体。
   static Future<ImportedFont> importFont(File src, String displayName) async {
-    final ext = src.path.split('.').last.toLowerCase();
+    final fileName = src.path.split(RegExp(r'[/\\]')).last;
+    final dot = fileName.lastIndexOf('.');
+    final ext = dot > 0 ? fileName.substring(dot + 1).toLowerCase() : '';
+    if (ext != 'ttf' && ext != 'otf') {
+      throw const FormatException('仅支持导入 .ttf 或 .otf 格式的字体文件');
+    }
     final id = 'imp_${DateTime.now().millisecondsSinceEpoch}';
     final font = ImportedFont(id: id, name: displayName, ext: ext);
     final dir = await _fontsDir();

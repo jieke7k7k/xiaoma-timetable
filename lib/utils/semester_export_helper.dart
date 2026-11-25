@@ -1,4 +1,5 @@
 import '../models/course.dart';
+import 'week_parser.dart';
 
 /// 方案 C 全学期母版格子类型（WB_SPEC_239 §3 & §4）
 enum SemesterMasterSlotKind {
@@ -85,11 +86,8 @@ class SemesterExportHelper {
     if (wa.isEmpty || wb.isEmpty) return null;
 
     if (week != null) {
-      final aActive = a.isActiveInWeek(week);
-      final bActive = b.isActiveInWeek(week);
-      // 前后交接的课在 1..max(wa∪wb) 范围内的周视图也展示冲突块；
-      // 若指定周既不在 wa 也不在 wb 内则不展示
-      if (!aActive && !bActive && !wa.contains(week) && !wb.contains(week)) {
+      // 指定周次时，校验该周是否至少有一门课活跃（既不在 wa 也不在 wb 内则不展示）
+      if (!wa.contains(week) && !wb.contains(week)) {
         return null;
       }
     }
@@ -227,15 +225,27 @@ class SemesterExportHelper {
     return result;
   }
 
-  /// 格式化课程周次胶囊文案（如 "1-18周"、"1-15单周"、"2-16双周"）
+  /// 格式化课程周次胶囊文案（如 "1-18周"、"1-15单周"、"2-16双周"、"第3周"、"1-3, 5-8周"）
   static String formatWeekCapsule(Course c) {
     final eff = effectiveWeeksOf(c).toList()..sort();
     if (eff.isEmpty) return '';
-    final first = eff.first;
-    final last = eff.last;
-    if (c.weekType == 1) return '$first-$last单周';
-    if (c.weekType == 2) return '$first-$last双周';
-    if (first == last) return '第$first周';
-    return '$first-$last周';
+    // 仅剩单周时优先显示「第X周」，避免出现「3-3单周」
+    if (eff.length == 1) return '第${eff.first}周';
+
+    // 检测是否为等差步长为 2 的连续纯单周 / 纯双周
+    var isStep2 = true;
+    for (var i = 1; i < eff.length; i++) {
+      if (eff[i] - eff[i - 1] != 2) {
+        isStep2 = false;
+        break;
+      }
+    }
+    if (isStep2) {
+      if (eff.every((w) => w.isOdd)) return '${eff.first}-${eff.last}单周';
+      if (eff.every((w) => w.isEven)) return '${eff.first}-${eff.last}双周';
+    }
+
+    // 连续单区间（如 1-18）与非连续多段（如 1-3, 5-12）统一复用 WeekParser.toText
+    return '${WeekParser.toText(eff, WeekParser.allWeeks)}周';
   }
 }

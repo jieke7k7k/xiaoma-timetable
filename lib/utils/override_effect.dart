@@ -144,6 +144,8 @@ List<String> checkOverrideConflicts({
     }
     final other = _findById(allCourses, o.courseId);
     if (other == null) continue; // 找不到课程定义，无法判定，跳过
+    // 课程在该周本就不上课时，其调课记录无效，不计入冲突（与第 1 步同口径）
+    if (!other.isActiveInWeek(week)) continue;
     final oDay = o.targetDayOfWeek ?? other.dayOfWeek;
     final oStart = o.targetStartSection ?? other.startSection;
     final oEnd = o.targetEndSection ?? other.endSection;

@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import '../models/course.dart';
+import '../models/time_slot.dart';
 import '../utils/heuristic_parser.dart';
+import '../utils/time_slots_checker.dart';
 
 /// PDF 课表导入服务（阶段三）
 ///
@@ -17,10 +19,20 @@ import '../utils/heuristic_parser.dart';
 class PdfImport {
   PdfImport._();
 
-  /// 提取 PDF 全部文本并启发式解析为草稿课程
+  /// 提取 PDF 全部文本并启发式解析为草稿课程（兼容既有调用方）
   static Future<List<Course>> extractAndParse(String filePath) async {
+    final res = await extractAndParseWithSlots(filePath);
+    return res.courses;
+  }
+
+  /// 提取 PDF 全部文本并启发式解析为草稿课程，同时像 OcrService 一样
+  /// 顺带提取左侧节次时间（读不到时 timeSlots 为空列表，S4-8）
+  static Future<({List<Course> courses, List<TimeSlot> timeSlots})>
+      extractAndParseWithSlots(String filePath) async {
     final lines = await extractLines(filePath);
-    return HeuristicParser.parse(lines);
+    final courses = HeuristicParser.parse(lines);
+    final timeSlots = TimeSlotsChecker.extractFromSectionTexts(lines);
+    return (courses: courses, timeSlots: timeSlots);
   }
 
   /// 提取 PDF 全部文本，按行返回
